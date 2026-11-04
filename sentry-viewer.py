@@ -587,8 +587,8 @@ function renderClip() {
   if (!md.timestamp) rh += '<div><span class="ick">元数据</span>无 event.json（该事件未写入元数据）</div>';
   const rows = document.getElementById('ic-rows');
   rows.innerHTML = rh;
-  rows.classList.add('open');
-  document.getElementById('ic-fold').textContent = '收起详细数据 ⌃';
+  rows.classList.remove('open');
+  document.getElementById('ic-fold').textContent = '展开详细数据 ⌄';
   layoutPlayer();
   document.getElementById('player').classList.add('open');
   const sm = document.getElementById('startmask');
@@ -607,6 +607,8 @@ function loadTelemetry(url, meta) {
   TEL_META = meta || {};
   const p = document.getElementById('tpanel');
   p.classList.remove('show');
+  p.classList.remove('folded');   // 面板详细数据默认展开
+  document.getElementById('tp-fold').textContent = '收起详细数据 ⌃';
   telT0 = null;
   if (!url) return;
   const m = url.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
