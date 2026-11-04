@@ -511,6 +511,10 @@ function reasonOf(ev) {
   return (ev.meta && ev.meta.reason) || 'unknown';
 }
 /* 事件目录名以 YYYY-MM-DD_HH-MM-SS 开头, 取前 10 位作为日期 */
+/* 哨兵事件: reason 以 sentry_ 开头; camera 字段只有哨兵触发才有意义 */
+function isSentryEv(md) {
+  return String((md || {}).reason || '').indexOf('sentry_') === 0;
+}
 function dateOf(ev) {
   const m = String(ev.name || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? m[1] + '-' + m[2] + '-' + m[3] : '';
@@ -680,7 +684,8 @@ function renderClip() {
   if (md.street) rh += '<div data-k="street"><span class="ick">位置</span>' + md.street + '</div>';
   if (md.est_lat && md.est_lon) rh += '<div data-k="coord"><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
   if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASON_LABEL[md.reason] || md.reason) + '</div>';
-  if (md.camera) rh += '<div data-k="camera"><span class="ick">触发画面</span>摄像头 #' + md.camera + '</div>';
+  /* camera 字段只有哨兵事件有意义; 手动保存等也会带 camera:"0" */
+  if (md.camera && isSentryEv(md)) rh += '<div data-k="camera"><span class="ick">触发画面</span>摄像头 #' + md.camera + '</div>';
   if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + md.campaign_id + '</div>';
   rh += '<div><span class="ick">画面</span>' + clip.vids.length + ' 路</div>';
   if (curClips.length > 1) rh += '<div><span class="ick">片段</span>共 ' + curClips.length + ' 段, 当前第 ' + (curClipIx + 1) + ' 段</div>';
@@ -714,9 +719,9 @@ function loadTelemetry(url, meta) {
   document.getElementById('tp-fold').textContent = '展开详细数据 ⌄';
   document.getElementById('tp-loc').textContent =
     [TEL_META.city, TEL_META.street].filter(Boolean).join(' · ');
-  // 触发画面摄像头: 有 event.json 的 camera 字段才显示 (哨兵事件基本都有)
+  // 触发画面摄像头: 只有哨兵事件显示 (手动保存等也会带无意义的 camera:"0")
   const camTag = document.getElementById('tp-tag');
-  if (TEL_META.camera) {
+  if (TEL_META.camera && isSentryEv(TEL_META)) {
     camTag.innerHTML = '触发画面 <b>摄像头 #' + TEL_META.camera + '</b>';
     camTag.classList.add('show');
   } else {
