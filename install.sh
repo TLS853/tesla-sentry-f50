@@ -66,6 +66,7 @@ mkdir -p "$TSF_DIR"
 cp "$SRC_DIR/sentry-viewer.py"      "$TSF_DIR/sentry-viewer.py"
 cp "$SRC_DIR/scripts/tesla-gadget.sh" "$TSF_DIR/tesla-gadget.sh"
 cp "$SRC_DIR/scripts/tesla-sync.sh"   "$TSF_DIR/tesla-sync.sh"
+cp "$SRC_DIR/scripts/usb-selfheal.sh" "$TSF_DIR/usb-selfheal.sh"
 chmod +x "$TSF_DIR"/*.sh "$TSF_DIR/sentry-viewer.py"
 
 mkdir -p "$ARCHIVE"/SentryClips "$ARCHIVE"/SavedClips "$ARCHIVE"/RecentClips \
@@ -132,11 +133,12 @@ EOF
     /etc/init.d/tesla-gadget enable
     /etc/init.d/sentry-viewer enable
 
-    # 归档定时任务
+    # 归档定时任务 + U盘自愈(主机 eject 后自动重新导出)
     mkdir -p /etc/crontabs
     touch /etc/crontabs/root
-    sed -i '/tesla-sync.sh/d' /etc/crontabs/root 2>/dev/null || true
+    sed -i '/tesla-sync.sh/d;/usb-selfheal.sh/d' /etc/crontabs/root 2>/dev/null || true
     echo "*/10 * * * * /bin/sh $TSF_DIR/tesla-sync.sh >/dev/null 2>&1" >> /etc/crontabs/root
+    echo "*/2 * * * * /bin/sh $TSF_DIR/usb-selfheal.sh >/dev/null 2>&1" >> /etc/crontabs/root
     /etc/init.d/cron enable 2>/dev/null || true
     /etc/init.d/cron restart 2>/dev/null || true
 
@@ -169,7 +171,10 @@ RestartSec=5
 WantedBy=multi-user.target
 EOF
     mkdir -p /etc/cron.d
-    echo "*/10 * * * * root /bin/sh $TSF_DIR/tesla-sync.sh >/dev/null 2>&1" > /etc/cron.d/tesla-sentry
+    cat > /etc/cron.d/tesla-sentry <<EOF
+*/10 * * * * root /bin/sh $TSF_DIR/tesla-sync.sh >/dev/null 2>&1
+*/2 * * * * root /bin/sh $TSF_DIR/usb-selfheal.sh >/dev/null 2>&1
+EOF
     systemctl daemon-reload
     systemctl enable tesla-gadget.service sentry-viewer.service >/dev/null 2>&1
 else

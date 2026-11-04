@@ -61,7 +61,8 @@ do_on() {
     mkdir -p "$FUNC_DIR"
     echo 1 > "$FUNC_DIR/lun.0/removable"
     echo "$IMG" > "$FUNC_DIR/lun.0/file"
-    [ -e "$LINK" ] || ln -sf "$FUNC_DIR" "$LINK"
+    # 链接已存在(含悬空链接)时不要再 ln, configfs 下会报 Operation not permitted
+    if [ ! -L "$LINK" ] && [ ! -e "$LINK" ]; then ln -sf "$FUNC_DIR" "$LINK"; fi
 
     bind; sleep 3
     st=$(state)
