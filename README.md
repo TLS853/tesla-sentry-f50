@@ -67,10 +67,14 @@
 | 内核 | `CONFIG_USB_F_MASS_STORAGE=y`（configfs 方式）或 `g_mass_storage` 模块 |
 | 文件系统 | 内核支持 `exfat`（`/proc/filesystems` 里有 `exfat`） |
 | 存储 | ≥ 32G（建议 128G+，镜像 + 归档各占一部分） |
-| 系统 | 任意 Linux（已在 **OpenWrt 25.12.5 / 主线内核 7.2.9** 验证） |
-| Python | 3.8+，**查看器零第三方依赖**（纯标准库） |
+| 系统 | OpenWrt（procd）、systemd 系发行版，或任意带 `rc.local` 的 Linux（已在 **OpenWrt 25.12.5 / 主线内核 7.2.9** 验证） |
+| Python | 3.7+，**查看器零第三方依赖**（纯标准库） |
 
-> 本项目在**中兴 F50 存储版**（紫光展锐 T760、8 核、eMMC 256G、USB 3.0、无电池纯 USB 供电）上完整验证。理论上适用于任何能跑 Linux 且 USB 口支持 Device 模式的设备（部分开发板、随身 WiFi、电视盒子）。
+> 本项目在**中兴 F50 存储版**（紫光展锐 T760、8 核、eMMC 256G、USB 3.0、无电池纯 USB 供电）上完整验证。
+
+**先自检再动手**：在候选设备上跑 `sh scripts/tsf-check.sh`，它会逐项告出 UDC / configfs / exFAT / Python / init 系统是否满足，并给出结论。完整设备清单（随身 WiFi、开发板、电视盒子、x86 为何不行、各系统适配度、功能降级矩阵）见 **[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)**。
+
+> 没有 USB Device 模式的机器（绝大多数 x86、NAS、软路由）跑不了"虚拟 U 盘"，但仍可作为**网页查看器**使用：把车机 U 盘或已归档的 `TeslaCam/` 放到本机，`TSF_ARCHIVE=/path python3 sentry-viewer.py` 即可。
 
 ---
 
@@ -82,6 +86,12 @@
 git clone https://github.com/baicyber/tesla-sentry-f50.git
 cd tesla-sentry-f50
 sudo ./install.sh              # 默认 170G 镜像 + 归档区 /archive
+```
+
+装之前可以先看这台设备够不够格（不改动任何东西）：
+
+```sh
+sh scripts/tsf-check.sh
 ```
 
 自定义参数：
@@ -173,6 +183,8 @@ TSF_LIVE_INTERVAL=15             # 在线只读同步轮询间隔 (秒)
 ├── tesla-sync.sh        # 归档同步 + 音频写入
 ├── tesla-img.sh         # 安全写镜像 (自动 detach LUN, 避免主机缓存错乱)
 ├── usb-selfheal.sh      # LUN 被电脑"弹出"后自动挂回
+├── tsf-start.sh         # 通用启动入口 (非 procd/systemd 系统用)
+├── cache/               # 缩略图 / 遥测缓存 (仅非 F50 设备, F50 用 /opt/mu300)
 └── sentry-viewer.py     # Web 查看器 (纯标准库)
 
 /archive/                # 归档区 (ext4)
@@ -222,7 +234,7 @@ TSF_LIVE_INTERVAL=15             # 在线只读同步轮询间隔 (秒)
    - **性能**：只读目录项，不扫全盘；170G 镜像每轮扫描毫秒级，新片段通常在 15–30 秒内出现在网页。
    - **兜底**：`tesla-live-sync` 不可用时，`tesla-sync.sh` 会在镜像空闲后照旧挂载归档（此时才会短暂断开 U 盘）。
 
-更多细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
+更多细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)、[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
 
 ---
 
