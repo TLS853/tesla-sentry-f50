@@ -231,13 +231,17 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 <div class="expp" id="expp">
   <div class="expt">选择要导出的画面<button class="x" onclick="closeExport()">✕</button></div>
   <div id="expchks"></div>
+  <label class="expitem" id="expwm-row" style="border-top:1px solid #2a333e;margin-top:6px;align-items:flex-start">
+    <input type="checkbox" id="expwm" style="margin-top:2px">
+    <span style="line-height:1.45">叠加行车信息水印<small style="display:block;color:#7d8894;font-size:11px;margin-top:2px">时间/位置/车速/挡位/油门/刹车, 烧录到画面顶部</small></span>
+  </label>
   <div class="expr">
     <button class="mini" onclick="expChk(true)">全选</button>
     <button class="mini" onclick="expChk(false)">清空</button>
     <button class="mini" onclick="doExportZip()">打包zip</button>
     <button class="mini primary" onclick="doExport()">合成视频</button>
   </div>
-  <div class="hint" style="margin-top:8px;margin-bottom:0">单选直接下载原文件; 多选合成 <b>一个多画面视频</b></div>
+  <div class="hint" style="margin-top:8px;margin-bottom:0">单选直接下载原文件(加水印时走本机合成); 多选合成 <b>一个多画面视频</b></div>
 </div>
 
 <div class="mask" id="mask" onclick="closePanel()"></div>
@@ -415,6 +419,7 @@ function openDeepLink() {
       const cell = document.querySelector(`#vgrid .vcell[data-cam="${cam}"]`);
       if (cell) focusCell(cell);
     }
+    if (q.get('exp') === '1') setTimeout(openExport, 600);
     return;
   }
 }
@@ -673,6 +678,90 @@ function toggleTelRows() {
   p.classList.toggle('folded');
   b.textContent = p.classList.contains('folded') ? '展开详细数据 ⌄' : '收起详细数据 ⌃';
 }
+
+/* ---------- 导出视频水印 (与遥测面板同款) ---------- */
+function telFrameAt(t) {
+  const fr = TEL.frames;
+  let lo = 0, hi = fr.length - 1, ans = fr[0];
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (fr[mid][0] <= t) { ans = fr[mid]; lo = mid + 1; } else { hi = mid - 1; }
+  }
+  return ans;
+}
+function rrPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+function wmPill(ctx, xRight, yMid, text, bg, fg, s) {
+  const fs = Math.round(15 * s);
+  ctx.font = '700 ' + fs + 'px system-ui,"Segoe UI",sans-serif';
+  const pw = ctx.measureText(text).width + Math.round(24 * s), ph = Math.round(27 * s);
+  const x = xRight - pw;
+  ctx.fillStyle = bg;
+  rrPath(ctx, x, yMid - ph / 2, pw, ph, ph / 2); ctx.fill();
+  ctx.fillStyle = fg;
+  ctx.fillText(text, x + Math.round(12 * s), yMid + Math.round(fs * 0.36));
+  return x;
+}
+function drawWm(ctx, t, W) {
+  if (!TEL || !TEL.frames || !TEL.frames.length) return;
+  const f = telFrameAt(t);
+  const s = W / 1280, pad = Math.round(16 * s);
+  const h = Math.round(100 * s), yc1 = Math.round(34 * s), yMid2 = h - Math.round(30 * s);
+  ctx.save();
+  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  // 面板底
+  ctx.fillStyle = 'rgba(16,22,30,.92)';
+  ctx.fillRect(0, 0, W, h);
+  ctx.fillStyle = 'rgba(255,255,255,.08)';
+  ctx.fillRect(0, h, W, Math.max(1, Math.round(1 * s)));
+  // 行1: 日期时间 + 城市/位置
+  ctx.font = '600 ' + Math.round(19 * s) + 'px system-ui,"Segoe UI",sans-serif';
+  ctx.fillStyle = '#fff';
+  const dateStr = telT0 ? fmtTelDate(new Date(telT0.getTime() + f[0] * 1000)) : '';
+  ctx.fillText(dateStr, pad, yc1 + Math.round(7 * s));
+  const dw = ctx.measureText(dateStr).width;
+  const loc = [(TEL_META || {}).city, (TEL_META || {}).street].filter(Boolean).join(' · ');
+  if (loc) {
+    ctx.fillStyle = '#93a0ac';
+    ctx.fillText(loc, pad + dw + Math.round(12 * s), yc1 + Math.round(7 * s));
+  }
+  // 行1 右: 转向灯三角 + 绿色挡位圆徽
+  const gr = Math.round(16 * s), gx = W - pad - gr;
+  const triS = Math.round(13 * s);
+  ctx.fillStyle = f[6] === 1 ? '#f59e0b' : '#39434f';
+  ctx.beginPath(); ctx.moveTo(gx - gr - Math.round(46*s), yc1 - triS*0.62); ctx.lineTo(gx - gr - Math.round(46*s), yc1 + triS*0.62); ctx.lineTo(gx - gr - Math.round(46*s) - triS, yc1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = f[6] === 2 ? '#f59e0b' : '#39434f';
+  ctx.beginPath(); ctx.moveTo(gx - gr - Math.round(22*s), yc1 - triS*0.62); ctx.lineTo(gx - gr - Math.round(22*s), yc1 + triS*0.62); ctx.lineTo(gx - gr - Math.round(22*s) + triS, yc1); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#34c759';
+  ctx.beginPath(); ctx.arc(gx, yc1, gr, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
+  ctx.font = '800 ' + Math.round(19 * s) + 'px system-ui,"Segoe UI",sans-serif';
+  ctx.fillText(f[1], gx, yc1 + Math.round(7 * s));
+  ctx.textAlign = 'left';
+  // 行2 左: 大字车速
+  ctx.font = '800 ' + Math.round(40 * s) + 'px system-ui,"Segoe UI",sans-serif';
+  ctx.fillStyle = '#fff';
+  const sp = String(Math.round(f[2]));
+  ctx.fillText(sp, pad, yMid2 + Math.round(12 * s));
+  const sw = ctx.measureText(sp).width;
+  ctx.font = '600 ' + Math.round(15 * s) + 'px system-ui,"Segoe UI",sans-serif';
+  ctx.fillStyle = '#9aa4af';
+  ctx.fillText('km/h', pad + sw + Math.round(8 * s), yMid2 + Math.round(13 * s));
+  // 行2 右: 油门/刹车 胶囊
+  let xr = W - pad;
+  xr = wmPill(ctx, xr, yMid2, f[3] + '%', '#1f7ae0', '#fff', s);
+  xr -= Math.round(10 * s);
+  wmPill(ctx, xr, yMid2, '刹车 ' + (f[5] ? '100%' : '0%'),
+    f[5] ? '#ff453a' : '#2a323d', f[5] ? '#fff' : '#8d99a5', s);
+  ctx.restore();
+}
 function updateHud(t) {
   if (!TEL || !TEL.frames || !TEL.frames.length) return;
   const fr = TEL.frames;
@@ -696,6 +785,13 @@ function openExport() {
     lb.appendChild(document.createTextNode(camLabel(v.cam) + ' (' + v.cam + ')'));
     box.appendChild(lb);
   });
+  // 水印勾选: 有遥测数据才可用, 默认勾上
+  const hasTel = !!(TEL && TEL.frames && TEL.frames.length);
+  const wm = document.getElementById('expwm'), wmRow = document.getElementById('expwm-row');
+  wm.disabled = !hasTel;
+  wm.checked = hasTel;
+  wmRow.style.opacity = hasTel ? '' : '.45';
+  wmRow.title = hasTel ? '' : '该片段没有行车遥测数据 (SEI)';
   document.getElementById('expp').classList.add('open');
 }
 function closeExport() { document.getElementById('expp').classList.remove('open'); }
@@ -704,21 +800,22 @@ function doExport() {
   if (!cur) return;
   const sel = [...document.querySelectorAll('#expchks input:checked')].map(c => c.value);
   if (!sel.length) { toast('请至少选择一路'); return; }
+  const telOk = !!(TEL && TEL.frames && TEL.frames.length);
+  const wm = document.getElementById('expwm').checked && telOk;
   closeExport();
-  if (sel.length === 1) {
+  if (sel.length === 1 && !wm) {
     const v = curVids().find(x => x.cam === sel[0]);
     if (v) location.href = '/dl?path=' + encodeURIComponent('/archive/' + v.url.replace(/^\/media\//, ''));
     return;
   }
-  const st = document.getElementById('stitch');
-  startLocalStitch(sel, st);
+  startLocalStitch(sel, document.getElementById('stitch'), wm);
 }
 /* 浏览器本机合成: 设备端 ffmpeg 多路 1080p 会触发内核重启, 改由电脑实时录制合成 */
 let recBusy = false;
-function startLocalStitch(sel, st) {
+function startLocalStitch(sel, st, wm) {
   if (recBusy) { toast('已有合成在进行'); return; }
   const vids = camSort(curVids()).filter(v => sel.includes(v.cam));
-  if (vids.length < 2) { toast('至少需要选择两路'); return; }
+  if (!vids.length) { toast('请至少选择一路'); return; }
   if (!window.MediaRecorder || !HTMLCanvasElement.prototype.captureStream) {
     toast('此浏览器不支持本机合成, 请使用打包下载'); return;
   }
@@ -728,7 +825,10 @@ function startLocalStitch(sel, st) {
   hint.textContent = '正在本机合成 ' + vids.length + ' 路画面 (实时录制, 约 1 分钟), 请保持页面前台';
   st.classList.add('open');
   recBusy = true;
-  const n = vids.length, cols = n <= 4 ? 2 : 3, CW = 640, CH = 360;
+  const n = vids.length;
+  let cols, CW, CH;
+  if (n === 1) { cols = 1; CW = 1280; CH = 960; }        // 单路保持 4:3 原比例
+  else { cols = n <= 4 ? 2 : 3; CW = 640; CH = 360; }
   const canvas = document.createElement('canvas');
   canvas.width = cols * CW; canvas.height = Math.ceil(n / cols) * CH;
   const ctx = canvas.getContext('2d');
@@ -782,6 +882,7 @@ function startLocalStitch(sel, st) {
       els.forEach((e, i) => {
         try { ctx.drawImage(e, (i % cols) * CW, Math.floor(i / cols) * CH, CW, CH); } catch (err) {}
       });
+      if (wm) drawWm(ctx, t, canvas.width);
       const p = Math.min(99, Math.round(t / dur * 100));
       fill.style.width = p + '%'; pct.textContent = p + '%';
       const allDone = els.every(e => e.ended || (isFinite(e.duration) && e.currentTime >= e.duration - 0.05));
