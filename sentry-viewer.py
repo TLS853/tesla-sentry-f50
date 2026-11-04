@@ -282,13 +282,17 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
     <input type="checkbox" id="expwm" style="margin-top:2px">
     <span style="line-height:1.45">叠加行车信息水印<small style="display:block;color:#7d8894;font-size:11px;margin-top:2px">半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面</small></span>
   </label>
+  <div class="expitem" id="expq-row" style="border-top:1px solid #2a333e;margin-top:6px">
+    <span style="flex:0 0 auto;color:#c6cdd4;cursor:default">下载清晰度</span>
+    <div class="qsel" id="expq" style="flex:1;justify-content:flex-end;flex-wrap:wrap"></div>
+  </div>
   <div class="expr">
     <button class="mini" onclick="expChk(true)">全选</button>
     <button class="mini" onclick="expChk(false)">清空</button>
     <button class="mini" onclick="doExportZip()">打包zip</button>
     <button class="mini primary" onclick="doExport()">合成视频</button>
   </div>
-  <div class="hint" style="margin-top:8px;margin-bottom:0">单选直接下载原文件(加水印时走本机合成); 多选合成 <b>一个多画面视频</b></div>
+  <div class="hint" style="margin-top:8px;margin-bottom:0">单选直接下载原文件(加水印时走本机合成); 多选合成 <b>一个多画面视频</b>。<b>下载/打包zip</b> 按所选清晰度导出 (首次需等转码); 水印合成始终原画</div>
 </div>
 
 <div class="mask" id="mask" onclick="closePanel()"></div>
@@ -966,6 +970,11 @@ function updateHud(t) {
 window.addEventListener('resize', () => { if (document.getElementById('player').classList.contains('open')) layoutPlayer(); });
 
 /* ---------- 导出 ---------- */
+let expQ = 'orig';
+function renderExpQ() {
+  document.getElementById('expq').innerHTML = Q_LIST.map(([k, label]) =>
+    `<button class="${k === expQ ? 'on' : ''}" onclick="expQ='${k}';renderExpQ()">${label}</button>`).join('');
+}
 function openExport() {
   if (!cur) return;
   const box = document.getElementById('expchks'); box.innerHTML = '';
@@ -983,6 +992,8 @@ function openExport() {
   wm.checked = hasTel;
   wmRow.style.opacity = hasTel ? '' : '.45';
   wmRow.title = hasTel ? '' : '该片段没有行车遥测数据 (SEI)';
+  expQ = curQ;  // 默认跟随当前播放清晰度
+  renderExpQ();
   document.getElementById('expp').classList.add('open');
 }
 function closeExport() { document.getElementById('expp').classList.remove('open'); }
@@ -996,7 +1007,7 @@ function doExport() {
   closeExport();
   if (sel.length === 1 && !wm) {
     const v = curVids().find(x => x.cam === sel[0]);
-    if (v) location.href = '/dl?path=' + encodeURIComponent('/archive/' + v.url.replace(/^\/media\//, ''));
+    if (v) location.href = '/dl?path=' + encodeURIComponent('/archive/' + v.url.replace(/^\/media\//, '')) + (expQ !== 'orig' ? '&q=' + expQ : '');
     return;
   }
   startLocalStitch(sel, document.getElementById('stitch'), wm);
@@ -1107,7 +1118,7 @@ function doExportZip() {
   const sel = [...document.querySelectorAll('#expchks input:checked')].map(c => c.value);
   if (!sel.length) { toast('请至少选择一路'); return; }
   closeExport();
-  location.href = '/api/export/' + encodeURIComponent(currentCat) + '/' + encodeURIComponent(cur.name) + '?cams=' + encodeURIComponent(sel.join(','));
+  location.href = '/api/export/' + encodeURIComponent(currentCat) + '/' + encodeURIComponent(cur.name) + '?cams=' + encodeURIComponent(sel.join(',')) + (expQ !== 'orig' ? '&q=' + expQ : '');
 }
 document.getElementById('startmask').addEventListener('click', playAll);
 function tryPlay(v) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
@@ -2435,7 +2446,11 @@ class Handler(BaseHTTPRequestHandler):
             if not fp:
                 self._send(404, b"not found")
                 return
-            serve_file(self, fp)
+            out = fp
+            qv = q.get("q", [""])[0]
+            if qv in RES_SCALE:  # 下载也支持清晰度: 转码缓存副本, 失败回退原文件
+                out = get_variant(fp, qv)
+            serve_file(self, out)
         elif path.startswith("/api/export/"):
             m2 = re.match(r"^/api/export/([\w-]+)/([\w\-. ]+)/?$", path)
             if not m2:
@@ -2458,12 +2473,18 @@ class Handler(BaseHTTPRequestHandler):
                 return
             evname = m2.group(2)
             zname = evname + (("_" + "-".join(cams)) if cams and len(cams) < 6 else "") + ".zip"
+            qv = q2.get("q", [""])[0]  # 打包zip也支持清晰度: 每路先取转码副本 (串行转码), 失败回退原文件
+            if qv not in RES_SCALE:
+                qv = ""
             tmp = tempfile.NamedTemporaryFile(prefix="exp_", suffix=".zip", delete=False)
             tmp.close()
             try:
                 with zipfile.ZipFile(tmp.name, "w", zipfile.ZIP_STORED) as z:
                     for f in vids:
-                        z.write(os.path.join(evdir, f), arcname=evname + "/" + f)
+                        ffp = os.path.join(evdir, f)
+                        if qv:
+                            ffp = get_variant(ffp, qv)
+                        z.write(ffp, arcname=evname + "/" + f)
                     ej = os.path.join(evdir, "event.json")
                     if os.path.isfile(ej):
                         z.write(ej, arcname=evname + "/event.json")
