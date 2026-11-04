@@ -307,6 +307,17 @@ sudo ./uninstall.sh --purge      # 连镜像和归档一起删（不可恢复）
   </tr>
 </table>
 
+## 💬 交流群
+
+> 遇到问题、想交流玩法，欢迎扫码加入群聊~
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/sponsor/qq_group.jpg" width="320" alt="QQ群二维码"><br><sub><b>QQ 群：831426822</b></sub></td>
+    <td align="center"><img src="docs/sponsor/wechat_group.jpg" width="320" alt="微信群二维码"><br><sub><b>微信群</b>（7 天内有效）</sub></td>
+  </tr>
+</table>
+
 ## License
 
 [MIT](LICENSE)
