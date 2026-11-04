@@ -42,6 +42,14 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .tab { padding:6px 13px; border-radius:18px; background:#232b35; color:#9aa4af; cursor:pointer; font-size:12.5px; border:1px solid #ffffff08; white-space:nowrap; flex:0 0 auto; transition:background .15s,color .15s; }
 .tab:hover { color:#e8eaed; }
 .tab.active { background:#e8443f; color:#fff; box-shadow:0 2px 10px #e8443f55; }
+.filters { display:none; gap:6px; overflow-x:auto; padding:10px 16px 0; scrollbar-width:none; }
+.filters.show { display:flex; }
+.filters::-webkit-scrollbar { display:none; }
+.chip { padding:5px 12px; border-radius:14px; background:#1e252e; color:#98a3ae; border:1px solid #2a333d;
+  font-size:12px; cursor:pointer; white-space:nowrap; flex:0 0 auto; transition:background .15s,color .15s; }
+.chip:hover { color:#e8eaed; border-color:#3a4653; }
+.chip.on { background:#2f6ee0; border-color:#2f6ee0; color:#fff; }
+.chip .n { opacity:.62; margin-left:4px; font-variant-numeric:tabular-nums; }
 @media (max-width:640px){ header .sub { display:none; } .tabs { order:10; width:100%; margin-left:0; } #gear { order:5; margin-left:0; } }
 #gear { background:#242c35; border:none; color:#9aa4af; font-size:18px; cursor:pointer; border-radius:10px; width:36px; height:32px; }
 #gear:hover { color:#fff; }
@@ -136,6 +144,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 <header><h1>🚗 特斯拉哨兵查看器</h1><span class="sub" id="stat"></span>
 <span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#7d8894;background:#1a2027;border:1px solid #232b34;border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
 <nav class="tabs" id="tabs"></nav><button id="gear" title="皮肤与锁车音">⚙</button></header>
+<nav class="filters" id="filters"></nav>
 <div class="grid-wrap" id="grid"></div>
 <div class="empty" id="empty" style="display:none"><div class="big">📹</div>
 <div>暂无归档视频<br><small style="font-size:12px">车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)</small></div></div>
@@ -230,9 +239,19 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 </div>
 
 <script>
-let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '';
+let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '', reasonFilter = 'all';
 let curClips = [], curClipIx = 0;
 const CATS_NAME = __CAT_NAMES__;
+/* event.json 里的 reason → 中文名 */
+const REASON_LABEL = {
+  sentry_aware_object_detection: '哨兵 · 物体感知',
+  sentry_trigger: '哨兵模式触发',
+  user_interaction_dashcam_saved: '手动保存',
+  user_interaction_dashcam_menu: '行车记录仪菜单保存',
+  user_interaction_dashcam_launcher_action_tapped: '点击行车记录仪图标',
+  user_interaction_honk: '按喇叭保存'
+};
+const EMPTY_HTML = document.getElementById('empty').innerHTML;
 /* Model 3/Y (HW3) 只有 4 路: front / back / left_repeater / right_repeater
    Model S/X 与 HW4 车型才有 6 路 (含 left_pillar / right_pillar)
    页面按每个事件实际的文件数自适应, 不写死路数 */
@@ -306,7 +325,7 @@ async function load() {
     const b = document.createElement('button');
     b.className = 'tab' + (c === 'SentryClips' ? ' active' : '');
     b.textContent = `${CATS_NAME[c] || c} (${data[c].length})`;
-    b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; render(c); };
+    b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; reasonFilter = 'all'; render(c); };
     tabs.appendChild(b);
   }
   document.getElementById('stat').textContent = `归档 ${Object.values(data).reduce((a, v) => a + v.length, 0)} 个事件`;
@@ -317,7 +336,17 @@ async function load() {
 
 /* 支持 ?ev=SentryClips/2026-11-04_12-30-00 直接打开某个事件 */
 function openDeepLink() {
-  const m = new URLSearchParams(location.search).get('ev');
+  const q = new URLSearchParams(location.search);
+  /* ?cat=SavedClips 直接切到某个分类 */
+  const qc = q.get('cat');
+  if (qc && Object.keys(data).includes(qc)) {
+    const tabs = document.getElementById('tabs');
+    [...tabs.children].forEach(b => b.classList.remove('active'));
+    const idx = Object.keys(data).indexOf(qc);
+    if (tabs.children[idx]) tabs.children[idx].classList.add('active');
+    currentCat = qc; reasonFilter = 'all'; render(qc);
+  }
+  const m = q.get('ev');
   if (!m) return;
   const keys = Object.keys(data);
   for (const c of keys) {
@@ -327,7 +356,7 @@ function openDeepLink() {
     [...tabs.children].forEach(b => b.classList.remove('active'));
     const idx = keys.indexOf(c);
     if (tabs.children[idx]) tabs.children[idx].classList.add('active');
-    currentCat = c; render(c); openPlayer(ev);
+    currentCat = c; reasonFilter = 'all'; render(c); openPlayer(ev);
     const cam = new URLSearchParams(location.search).get('cam');
     if (cam) {
       const cell = document.querySelector(`#vgrid .vcell[data-cam="${cam}"]`);
@@ -375,11 +404,41 @@ refreshLive();
 setInterval(refreshLive, 10000);
 
 /* 缩略图: 服务端抽帧的静态图, 原生懒加载; 不再用 <video> 预览 (会把设备和解码器一起拖死) */
+function reasonOf(ev) {
+  return (ev.meta && ev.meta.reason) || 'unknown';
+}
+/* 按触发原因生成筛选按钮 (只在当前分类有 2 种以上原因时出现) */
+function renderFilters(cat) {
+  const box = document.getElementById('filters');
+  const evs = data[cat] || [];
+  const cnt = {};
+  evs.forEach(ev => { const r = reasonOf(ev); cnt[r] = (cnt[r] || 0) + 1; });
+  const keys = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]);
+  if (reasonFilter !== 'all' && !cnt[reasonFilter]) reasonFilter = 'all';
+  if (keys.length < 2) { box.className = 'filters'; box.innerHTML = ''; return; }
+  box.className = 'filters show';
+  const items = [['all', '全部', evs.length]].concat(keys.map(k => [k, REASON_LABEL[k] || '未标注原因', cnt[k]]));
+  box.innerHTML = items.map(([k, label, n]) =>
+    `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${label}<span class="n">${n}</span></button>`
+  ).join('');
+}
+function setReason(k) {
+  reasonFilter = k;
+  renderFilters(currentCat);
+  render(currentCat);
+}
 function render(cat) {
   const g = document.getElementById('grid'), e = document.getElementById('empty');
   g.innerHTML = '';
-  const evs = data[cat] || [];
+  renderFilters(cat);
+  let evs = data[cat] || [];
+  if (reasonFilter !== 'all') evs = evs.filter(ev => reasonOf(ev) === reasonFilter);
   e.style.display = evs.length ? 'none' : 'block';
+  if (!evs.length) {
+    e.innerHTML = reasonFilter !== 'all'
+      ? '<div class="big">🔍</div><div>该筛选下暂无事件<br><small style="font-size:12px">点「全部」查看本分类所有事件</small></div>'
+      : EMPTY_HTML;
+  }
   for (const ev of evs) {
     const card = document.createElement('div'); card.className = 'card';
     const groups = groupVideos(ev.videos);
@@ -446,16 +505,8 @@ function renderClip() {
   document.getElementById('ic-time').textContent = fmtFull(ev.name);
   document.getElementById('ic-cat').textContent = CATS_NAME[currentCat] || currentCat;
   const md0 = ev.meta || {};
-  const REASONS = {
-    sentry_aware_object_detection: '哨兵模式 · 物体感知',
-    sentry_trigger: '哨兵模式触发',
-    user_interaction_dashcam_saved: '手动保存',
-    user_interaction_honk: '按喇叭保存',
-    user_interaction_dashcam_launcher_action_tapped: '点击行车记录仪图标',
-    user_interaction_dashcam_menu: '行车记录仪菜单保存'
-  };
   document.getElementById('ic-big').textContent =
-    (md0.reason && (REASONS[md0.reason] || md0.reason)) || CATS_NAME[currentCat] || currentCat;
+    (md0.reason && (REASON_LABEL[md0.reason] || md0.reason)) || CATS_NAME[currentCat] || currentCat;
   const mb = (ev.size || 0) / 1048576;
   document.getElementById('ic-sub').innerHTML = clip.vids.length + ' 路画面 · <span id="ic-dur">--:--</span>' + (mb >= 0.05 ? ' · ' + (mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(mb * 1024) + ' KB') : '');
   const cb = document.getElementById('clipbar');
@@ -476,7 +527,7 @@ function renderClip() {
   if (md.city) rh += '<div><span class="ick">城市</span>' + md.city + '</div>';
   if (md.street) rh += '<div><span class="ick">位置</span>' + md.street + '</div>';
   if (md.est_lat && md.est_lon) rh += '<div><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
-  if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASONS[md.reason] || md.reason) + '</div>';
+  if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASON_LABEL[md.reason] || md.reason) + '</div>';
   if (md.camera) rh += '<div><span class="ick">触发画面</span>摄像头 #' + md.camera + '</div>';
   if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + md.campaign_id + '</div>';
   rh += '<div><span class="ick">画面</span>' + clip.vids.length + ' 路</div>';
