@@ -1,10 +1,17 @@
-# Tesla Sentry F50 · 特斯拉哨兵云盘
+# 特斯拉哨兵云盘 · Tesla Sentry Drive
 
-> 把一台带 USB 口的小 Linux 设备（如中兴 F50 随身 WiFi）变成特斯拉的**虚拟哨兵 U 盘 + 自带 Web 查看器**：车里自动录制，家里/公司远程回看多路画面（Model 3/Y 四路、Model S/X 六路自动适配）。
+**虚拟哨兵 U 盘 · 多路同步回放 · SEI 行车遥测 · 水印导出 —— 跑在任意 USB Gadget 设备上。**
+
+> 拿一台带 USB 口的小 Linux 设备（随身 WiFi、开发板、电视盒子、OpenWrt 路由器……）顶替原车 U 盘插进手套箱：车机照常录制，手机 / 电脑远程回看四路、六路画面，还能逐帧读出**视频码流里的 SEI 遥测**——挡位、车速、油门 / 刹车、方向盘角度、转向灯、AP 状态、坐标，导出视频时可一并烧成水印。
+>
+> 没有 USB Device 模式的机器（绝大多数 x86 / NAS / 软路由）也不会白跑：把 `TeslaCam/` 放到本机跑 `TSF_ARCHIVE=/path python3 sentry-viewer.py`，就是一个纯网页查看器。**A 完整部署 / B 半自动归档 / C 仅网页**，三档按设备能力裁剪，见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
+
+> 仓库名 `tesla-sentry-f50` 来自参考硬件**中兴 F50 存储版**（全功能实测机型），但项目本身不绑机型。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-arm64%20%7C%20aarch64-blue.svg)](#硬件要求)
-[![Python](https://img.shields.io/badge/python-3.8%2B-3776AB.svg)](https://www.python.org/)
+[![Platform](https://img.shields.io/badge/platform-aarch64%20%7C%20armv7%20%7C%20x86-blue.svg)](#硬件要求)
+[![Python](https://img.shields.io/badge/python-3.7%2B-3776AB.svg)](https://www.python.org/)
+[![Deps](https://img.shields.io/badge/deps-%E9%9B%B6%E7%AC%AC%E4%B8%89%E6%96%B9%E5%BA%93-brightgreen.svg)](#硬件要求)
 
 ---
 
@@ -16,7 +23,7 @@
 
 ```
 ┌──────────────┐   USB(供电+数据)   ┌────────────────────────────────┐
-│   特斯拉车机  │ ◄───────────────► │  小 Linux 设备 (如 F50 存储版)  │
+│   特斯拉车机  │ ◄───────────────► │  小 Linux 设备 (如树莓派/盒子)  │
 └──────────────┘                   │                                │
                                    │  /opt/tesla-sentry/            │
    车机以为在写普通 U 盘             │   teslacam.img  ← 虚拟U盘镜像   │
