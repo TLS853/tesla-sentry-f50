@@ -74,20 +74,36 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .pdl { background:none; border:none; color:#fff; font-size:19px; cursor:pointer; padding:4px 6px; }
 .pscroll { flex:1; overflow-y:auto; padding:2px 14px 14px; display:flex; flex-direction:column; gap:12px; }
 .vwrap { position:relative; border-radius:14px; overflow:hidden; max-width:980px; width:100%; margin:0 auto; }
-/* 行车遥测 HUD (Tesla App 风格) */
-.hud { position:absolute; right:12px; bottom:12px; z-index:4; display:none; align-items:center; gap:9px;
-  background:rgba(12,15,19,.85); border:1px solid #ffffff1c; border-radius:16px; padding:9px 15px;
-  pointer-events:none; backdrop-filter:blur(5px); }
-.hud.show { display:flex; }
-.hud .gear { background:#34c759; color:#fff; font-weight:800; font-size:16px; border-radius:10px;
-  min-width:30px; height:30px; display:flex; align-items:center; justify-content:center; }
-.hud .spd { font-size:30px; font-weight:700; color:#fff; min-width:58px; text-align:right; font-variant-numeric:tabular-nums; }
-.hud .unit { font-size:10px; color:#9aa4af; font-weight:600; }
-.hud .pill { background:#232b36; color:#cfd6dd; font-size:11px; border-radius:9px; padding:4px 8px; white-space:nowrap; }
-.hud .pill.br { background:#e8443f; color:#fff; font-weight:700; }
-.hud .pill.ap { background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff; font-weight:700; }
-.hud .sig { font-size:17px; color:#4a5560; line-height:1; }
-.hud .sig.on { color:#f59e0b; }
+/* 行车遥测面板 (视频上方, Tesla App 样式, 不遮挡画面) */
+.tpanel { display:none; background:#1c232c; border-radius:14px 14px 0 0; padding:14px 18px 10px; }
+.tpanel.show { display:block; }
+.tpanel.folded .tp-rows { display:none; }
+.tp-top { display:flex; justify-content:space-between; align-items:center; }
+.tp-date { font-size:13.5px; color:#cfd6dd; font-variant-numeric:tabular-nums; }
+.tp-tr { display:flex; align-items:center; gap:9px; }
+.tp-sig { font-size:16px; color:#3a4450; line-height:1; }
+.tp-sig.on { color:#f59e0b; }
+.tp-gear { background:#34c759; color:#fff; font-weight:800; font-size:14px; width:26px; height:26px;
+  border-radius:50%; display:inline-flex; align-items:center; justify-content:center; }
+.tp-mid { display:flex; align-items:center; margin-top:8px; }
+.tp-spd { font-size:34px; font-weight:800; color:#fff; line-height:1.1; font-variant-numeric:tabular-nums; }
+.tp-unit { font-size:13px; color:#9aa4af; font-weight:600; margin-left:6px; }
+.tp-badges { display:flex; align-items:center; gap:10px; margin-left:auto; }
+.tp-c { width:34px; height:34px; border-radius:50%; display:inline-flex; align-items:center;
+  justify-content:center; font-size:11.5px; font-weight:700; flex:none; }
+.tp-c.t { background:#3a4450; color:#e8edf2; font-size:15px; }
+.tp-c.thr { background:#1f7ae0; color:#fff; font-variant-numeric:tabular-nums; }
+.tp-c.brk { background:#2a323d; color:#8d99a5; font-variant-numeric:tabular-nums; }
+.tp-c.brk.on { background:#ff453a; color:#fff; box-shadow:0 0 8px #ff453a66; }
+.tp-c.ap { background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff; font-size:10.5px; }
+.tp-c.st, .tp-c.cp { background:#2a323d; }
+.tp-c.st svg, .tp-c.cp svg { width:20px; height:20px; }
+.tp-fold { display:block; margin:8px 0 0 auto; background:none; border:none; color:#8d99a5;
+  font-size:12px; cursor:pointer; padding:4px 2px; }
+.tp-rows { border-top:1px solid #2a323d; margin-top:2px; padding-top:8px; display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1px 20px; }
+.tp-rows div { color:#e8edf2; font-size:13px; padding:3px 0; font-variant-numeric:tabular-nums; }
+.tp-rows .k { color:#8d99a5; margin-right:9px; }
 .vgrid { display:grid; gap:3px; background:#000; }
 .vcell { position:relative; overflow:hidden; background:#000; cursor:zoom-in; aspect-ratio:16/9; }
 .vcell.focused { grid-column:1/-1; grid-row:1/-1; cursor:zoom-out; }
@@ -172,7 +188,23 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
   <div class="pscroll">
     <div class="vwrap">
       <div class="startmask" id="startmask">▶ 轻触开始同步播放</div>
-      <div class="hud" id="hud"></div>
+      <div class="tpanel" id="tpanel">
+        <div class="tp-top">
+          <span class="tp-date" id="tp-date">—</span>
+          <span class="tp-tr"><span class="tp-sig" id="tp-bl">⬅</span><span class="tp-sig" id="tp-br">➡</span><span class="tp-gear" id="tp-gear">D</span></span>
+        </div>
+        <div class="tp-mid">
+          <span class="tp-spd" id="tp-spd">0</span><span class="tp-unit">km/h</span>
+          <span class="tp-badges">
+            <span class="tp-c brk" id="tp-brk">B 0%</span>
+            <span class="tp-c thr" id="tp-thr">T 0%</span>
+            <span class="tp-c st" id="tp-st" title="方向盘角度"><svg viewBox="0 0 24 24" fill="none" stroke="#cfd6dd" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M3.2 10.5h6M14.8 10.5h6M12 14.6V21"/></svg></span>
+            <span class="tp-c ap" id="tp-ap" style="display:none">AP</span>
+          </span>
+        </div>
+        <button class="tp-fold" id="tp-fold" onclick="toggleTelRows()">收起详细数据 ⌃</button>
+        <div class="tp-rows" id="tp-rows"></div>
+      </div>
       <div class="vgrid" id="vgrid"></div>
     </div>
     <div class="infocard">
@@ -565,19 +597,23 @@ function renderClip() {
   loadTelemetry(sortedVids.length ? sortedVids[0].url : null);
 }
 
-/* ---------- 行车遥测 HUD (SEI) ---------- */
+/* ---------- 行车遥测面板 (SEI, 视频上方) ---------- */
+let telT0 = null;
 function loadTelemetry(url) {
   TEL = null;
-  const h = document.getElementById('hud');
-  h.classList.remove('show');
+  const p = document.getElementById('tpanel');
+  p.classList.remove('show');
+  telT0 = null;
   if (!url) return;
-  const p = url.replace('/media/', '/archive/');
-  fetch('/api/telemetry?path=' + encodeURIComponent(p))
+  const m = url.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
+  if (m) telT0 = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+  const fp = url.replace('/media/', '/archive/');
+  fetch('/api/telemetry?path=' + encodeURIComponent(fp))
     .then(r => r.json())
     .then(d => {
       if (!d.ok || !d.frames || !d.frames.length) return;
       TEL = d;
-      h.classList.add('show');
+      p.classList.add('show');
       renderHud(d.frames[0]);
       const rows = document.getElementById('ic-rows');
       rows.insertAdjacentHTML('beforeend',
@@ -587,16 +623,41 @@ function loadTelemetry(url) {
         '<div><span class="ick">遥测</span>SEI 元数据 · ' + d.count + ' 帧 @ ' + d.fps + 'fps</div>');
     }).catch(() => {});
 }
+function fmtTelDate(dt) {
+  const z = n => (n < 10 ? '0' : '') + n;
+  return dt.getFullYear() + '/' + z(dt.getMonth()+1) + '/' + z(dt.getDate()) + ' ' +
+    z(dt.getHours()) + ':' + z(dt.getMinutes()) + ':' + z(dt.getSeconds());
+}
 function renderHud(f) {
+  // f: 0=t 1=挡位 2=车速km/h 3=油门% 4=方向盘角度 5=刹车 6=转向灯 7=AP 8=lat 9=lon 10=heading 11=Ax 12=Ay 13=Az
+  const q = id => document.getElementById(id);
+  q('tp-gear').textContent = f[1];
+  q('tp-spd').textContent = Math.round(f[2]);
+  q('tp-date').textContent = telT0 ? fmtTelDate(new Date(telT0.getTime() + f[0]*1000)) : '—';
+  q('tp-thr').textContent = 'T ' + f[3] + '%';
+  q('tp-brk').textContent = 'B ' + (f[5] ? 100 : 0) + '%';
+  q('tp-brk').classList.toggle('on', !!f[5]);
+  q('tp-bl').classList.toggle('on', f[6] === 1);
+  q('tp-br').classList.toggle('on', f[6] === 2);
   const apNames = { 1: 'FSD', 2: 'AP', 3: 'TACC' };
-  document.getElementById('hud').innerHTML =
-    '<span class="gear">' + f[1] + '</span>' +
-    (f[7] ? '<span class="pill ap">' + (apNames[f[7]] || 'AP') + '</span>' : '') +
-    '<span class="sig' + (f[6] === 1 ? ' on' : '') + '">⬅</span>' +
-    '<span class="sig' + (f[6] === 2 ? ' on' : '') + '">➡</span>' +
-    '<span class="spd">' + Math.round(f[2]) + '</span><span class="unit">km/h</span>' +
-    (f[5] ? '<span class="pill br">刹车</span>' : '') +
-    '<span class="pill">油门 ' + f[3] + '%</span>';
+  const ap = q('tp-ap');
+  if (f[7]) { ap.style.display = ''; ap.textContent = apNames[f[7]] || 'AP'; }
+  else ap.style.display = 'none';
+  q('tp-st').title = '方向盘角度 ' + f[4] + '°';
+  q('tp-rows').innerHTML =
+    '<div><span class="k">挡位</span>' + f[1] + '</div>' +
+    '<div><span class="k">车速</span>' + f[2].toFixed(1) + ' km/h</div>' +
+    '<div><span class="k">油门</span>' + f[3] + '%</div>' +
+    '<div><span class="k">刹车</span>' + (f[5] ? '100% (踩下)' : '0%') + '</div>' +
+    '<div><span class="k">方向盘角度</span>' + f[4] + '°</div>' +
+    '<div><span class="k">横向加速度 Ax</span>' + f[11].toFixed(2) + ' m/s²</div>' +
+    '<div><span class="k">前后加速度 Ay</span>' + f[12].toFixed(2) + ' m/s²</div>' +
+    '<div><span class="k">垂直加速度 Az</span>' + f[13].toFixed(2) + ' m/s²</div>';
+}
+function toggleTelRows() {
+  const p = document.getElementById('tpanel'), b = document.getElementById('tp-fold');
+  p.classList.toggle('folded');
+  b.textContent = p.classList.contains('folded') ? '展开详细数据 ⌄' : '收起详细数据 ⌃';
 }
 function updateHud(t) {
   if (!TEL || !TEL.frames || !TEL.frames.length) return;
