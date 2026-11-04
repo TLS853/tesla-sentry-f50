@@ -76,8 +76,8 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .ic-top { display:flex; align-items:center; gap:10px; }
 .ic-time { font-size:14px; color:#c6cdd4; }
 .ic-badge { margin-left:auto; background:#3b82f6; color:#fff; font-size:12px; font-weight:600; border-radius:14px; padding:3px 12px; }
-.ic-mid { display:flex; align-items:baseline; gap:12px; margin:8px 0 2px; flex-wrap:wrap; }
-.ic-dur { font-size:32px; font-weight:700; letter-spacing:1px; }
+.ic-mid { display:flex; align-items:baseline; gap:12px; margin:10px 0 2px; flex-wrap:wrap; }
+.ic-big { font-size:30px; font-weight:700; letter-spacing:.5px; }
 .ic-sub { font-size:12.5px; color:#8d99a5; }
 .clipbar { display:none; gap:6px; flex-wrap:wrap; margin-top:9px; }
 .clipbar.show { display:flex; }
@@ -152,10 +152,10 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
     </div>
     <div class="infocard">
       <div class="ic-top"><span class="ic-time" id="ic-time">—</span><span class="ic-badge" id="ic-cat">—</span></div>
-      <div class="ic-mid"><span class="ic-dur" id="ic-dur">00:00</span><span class="ic-sub" id="ic-sub"></span></div>
+      <div class="ic-mid"><span class="ic-big" id="ic-big">—</span><span class="ic-sub" id="ic-sub"></span></div>
       <div class="clipbar" id="clipbar"></div>
+      <button class="ic-fold" id="ic-fold" onclick="toggleDetail()">收起详细数据 ⌃</button>
       <div class="ic-rows" id="ic-rows"></div>
-      <button class="ic-fold" id="ic-fold" onclick="toggleDetail()">展开详细数据 ⌄</button>
     </div>
   </div>
   <div class="pbar">
@@ -443,9 +443,18 @@ function renderClip() {
   });
   document.getElementById('ic-time').textContent = fmtFull(ev.name);
   document.getElementById('ic-cat').textContent = CATS_NAME[currentCat] || currentCat;
-  document.getElementById('ic-dur').textContent = '00:00';
+  const md0 = ev.meta || {};
+  const REASONS = {
+    sentry_aware_object_detection: '哨兵模式 · 物体感知',
+    sentry_trigger: '哨兵模式触发',
+    user_interaction_dashcam_saved: '手动保存',
+    user_interaction_honk: '按喇叭保存',
+    user_interaction_dashcam_menu: '行车记录仪菜单保存'
+  };
+  document.getElementById('ic-big').textContent =
+    (md0.reason && (REASONS[md0.reason] || md0.reason)) || CATS_NAME[currentCat] || currentCat;
   const mb = (ev.size || 0) / 1048576;
-  document.getElementById('ic-sub').textContent = clip.vids.length + ' 路画面' + (mb >= 0.05 ? ' · ' + (mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(mb * 1024) + ' KB') : '');
+  document.getElementById('ic-sub').innerHTML = clip.vids.length + ' 路画面 · <span id="ic-dur">--:--</span>' + (mb >= 0.05 ? ' · ' + (mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(mb * 1024) + ' KB') : '');
   const cb = document.getElementById('clipbar');
   if (curClips.length > 1) {
     cb.classList.add('show');
@@ -459,19 +468,11 @@ function renderClip() {
     cb.innerHTML = '';
   }
   const md = ev.meta || {};
-  const REASONS = {
-    sentry_aware_object_detection: '哨兵模式 · 物体感知',
-    sentry_trigger: '哨兵模式触发',
-    user_interaction_dashcam_saved: '手动保存',
-    user_interaction_honk: '按喇叭保存',
-    user_interaction_dashcam_menu: '行车记录仪菜单保存'
-  };
   let rh = '';
-  if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASONS[md.reason] || md.reason) + '</div>';
   if (md.city) rh += '<div><span class="ick">城市</span>' + md.city + '</div>';
   if (md.est_lat && md.est_lon) rh += '<div><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
+  if (md.reason) rh += '<div><span class="ick">触发码</span>' + md.reason + '</div>';
   rh += '<div><span class="ick">画面</span>' + clip.vids.length + ' 路</div>';
-  if (mb >= 0.05) rh += '<div><span class="ick">大小</span>' + (mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(mb * 1024) + ' KB') + '</div>';
   if (curClips.length > 1) rh += '<div><span class="ick">片段</span>共 ' + curClips.length + ' 段, 当前第 ' + (curClipIx + 1) + ' 段</div>';
   rh += camSort(clip.vids).map(v => '<div><span class="ick">' + camLabel(v.cam) + '</span>' + v.url.split('/').pop() + '</div>').join('');
   const rows = document.getElementById('ic-rows');
