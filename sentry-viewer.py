@@ -2155,20 +2155,40 @@ class Handler(BaseHTTPRequestHandler):
             return
         key = hashlib.md5(("%s|%d|%d" % (fp, st.st_size, int(st.st_mtime))).encode()).hexdigest()
         out = os.path.join(THUMB_DIR, key + ".jpg")
+        # 0 字节文件是上次 ffmpeg 失败留下的残骸 (片段当时还没同步完), 视为无效缓存
+        try:
+            if os.path.getsize(out) == 0:
+                os.remove(out)
+        except OSError:
+            pass
         if not os.path.isfile(out):
             os.makedirs(THUMB_DIR, exist_ok=True)
+            tmp = os.path.join(THUMB_DIR, "%s.%d.tmp.jpg" % (key, threading.get_ident()))
             if THUMB_SEM.acquire(timeout=12):
                 try:
                     if not os.path.isfile(out):
-                        subprocess.run([FFMPEG_BIN, "-hide_banner", "-loglevel", "error", "-y",
-                                        "-ss", "1", "-i", fp, "-frames:v", "1",
-                                        "-vf", "scale=%d:-2" % THUMB_W, "-q:v", "7", out],
-                                       capture_output=True, timeout=30)
-                except Exception:
-                    pass
+                        # -ss 1 可能落在片段末尾之外(极短片段), 失败则退回第一帧
+                        for ss in ("1", "0"):
+                            try:
+                                if os.path.exists(tmp):
+                                    os.remove(tmp)
+                                subprocess.run([FFMPEG_BIN, "-hide_banner", "-loglevel", "error", "-y",
+                                                "-ss", ss, "-i", fp, "-frames:v", "1",
+                                                "-vf", "scale=%d:-2" % THUMB_W, "-q:v", "7", tmp],
+                                               capture_output=True, timeout=30)
+                                if os.path.isfile(tmp) and os.path.getsize(tmp) > 0:
+                                    os.replace(tmp, out)
+                                    break
+                            except Exception:
+                                pass
                 finally:
                     THUMB_SEM.release()
-            if not os.path.isfile(out):
+                    if os.path.exists(tmp):
+                        try:
+                            os.remove(tmp)
+                        except OSError:
+                            pass
+            if not os.path.isfile(out) or os.path.getsize(out) == 0:
                 self._send(404, b"no thumb")
                 return
         try:
