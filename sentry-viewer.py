@@ -92,12 +92,15 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .tp-c { width:34px; height:34px; border-radius:50%; display:inline-flex; align-items:center;
   justify-content:center; font-size:11.5px; font-weight:700; flex:none; }
 .tp-c.t { background:#3a4450; color:#e8edf2; font-size:15px; }
-.tp-c.thr { background:#1f7ae0; color:#fff; font-variant-numeric:tabular-nums; }
-.tp-c.brk { background:#2a323d; color:#8d99a5; font-variant-numeric:tabular-nums; }
-.tp-c.brk.on { background:#ff453a; color:#fff; box-shadow:0 0 8px #ff453a66; }
+.tp-badge { display:inline-flex; align-items:center; gap:5px; height:30px; padding:0 11px 0 8px;
+  border-radius:15px; font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums; flex:none; }
+.tp-badge svg { width:16px; height:16px; flex:none; }
+.tp-badge.thr { background:#1f7ae0; color:#fff; }
+.tp-badge.brk { background:#2a323d; color:#8d99a5; }
+.tp-badge.brk.on { background:#ff453a; color:#fff; box-shadow:0 0 9px #ff453a66; }
 .tp-c.ap { background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff; font-size:10.5px; }
-.tp-c.st, .tp-c.cp { background:#2a323d; }
-.tp-c.st svg, .tp-c.cp svg { width:20px; height:20px; }
+.tp-c.st { background:#2a323d; }
+.tp-c.st svg { width:20px; height:20px; }
 .tp-fold { display:block; margin:8px 0 0 auto; background:none; border:none; color:#8d99a5;
   font-size:12px; cursor:pointer; padding:4px 2px; }
 .tp-rows { border-top:1px solid #2a323d; margin-top:2px; padding-top:8px; display:grid;
@@ -196,8 +199,8 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
         <div class="tp-mid">
           <span class="tp-spd" id="tp-spd">0</span><span class="tp-unit">km/h</span>
           <span class="tp-badges">
-            <span class="tp-c brk" id="tp-brk">B 0%</span>
-            <span class="tp-c thr" id="tp-thr">T 0%</span>
+            <span class="tp-badge brk" id="tp-brk" title="刹车"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="2.5"/><path d="M17.4 6.6l2.7-2.7"/></svg><b id="tp-brk-n">0%</b></span>
+            <span class="tp-badge thr" id="tp-thr" title="油门"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M9.4 3.6h5.2a1.7 1.7 0 0 1 1.68 1.93l-1.35 12.3a1.8 1.8 0 0 1-1.79 1.6h-2.28a1.8 1.8 0 0 1-1.79-1.6L7.72 5.53A1.7 1.7 0 0 1 9.4 3.6z"/><path d="M8.6 15.1h6.8"/></svg><b id="tp-thr-n">0%</b></span>
             <span class="tp-c st" id="tp-st" title="方向盘角度"><svg viewBox="0 0 24 24" fill="none" stroke="#cfd6dd" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M3.2 10.5h6M14.8 10.5h6M12 14.6V21"/></svg></span>
             <span class="tp-c ap" id="tp-ap" style="display:none">AP</span>
           </span>
@@ -571,10 +574,10 @@ function renderClip() {
   }
   const md = ev.meta || {};
   let rh = '';
-  rh += '<div><span class="ick">时间</span>' + (md.timestamp ? md.timestamp.replace('T', ' ') : fmtFull(ev.name)) + '</div>';
-  if (md.city) rh += '<div><span class="ick">城市</span>' + md.city + '</div>';
-  if (md.street) rh += '<div><span class="ick">位置</span>' + md.street + '</div>';
-  if (md.est_lat && md.est_lon) rh += '<div><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
+  rh += '<div data-k="time"><span class="ick">时间</span>' + (md.timestamp ? md.timestamp.replace('T', ' ') : fmtFull(ev.name)) + '</div>';
+  if (md.city) rh += '<div data-k="city"><span class="ick">城市</span>' + md.city + '</div>';
+  if (md.street) rh += '<div data-k="street"><span class="ick">位置</span>' + md.street + '</div>';
+  if (md.est_lat && md.est_lon) rh += '<div data-k="coord"><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
   if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASON_LABEL[md.reason] || md.reason) + '</div>';
   if (md.camera) rh += '<div><span class="ick">触发画面</span>摄像头 #' + md.camera + '</div>';
   if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + md.campaign_id + '</div>';
@@ -594,13 +597,14 @@ function renderClip() {
   if (syncTimer) clearInterval(syncTimer);
   syncTimer = setInterval(tick, 250);
   const sortedVids = camSort(clip.vids);
-  loadTelemetry(sortedVids.length ? sortedVids[0].url : null);
+  loadTelemetry(sortedVids.length ? sortedVids[0].url : null, md);
 }
 
 /* ---------- 行车遥测面板 (SEI, 视频上方) ---------- */
-let telT0 = null;
-function loadTelemetry(url) {
+let telT0 = null, TEL_META = {};
+function loadTelemetry(url, meta) {
   TEL = null;
+  TEL_META = meta || {};
   const p = document.getElementById('tpanel');
   p.classList.remove('show');
   telT0 = null;
@@ -615,10 +619,12 @@ function loadTelemetry(url) {
       TEL = d;
       p.classList.add('show');
       renderHud(d.frames[0]);
-      const rows = document.getElementById('ic-rows');
-      rows.insertAdjacentHTML('beforeend',
-        '<div><span class="ick">最高车速</span>' + d.max_speed + ' km/h</div>' +
-        '<div><span class="ick">平均车速</span>' + d.avg_speed + ' km/h</div>' +
+      // 事件信息已搬到上方遥测面板, 下方卡片去掉重复项
+      ['time', 'city', 'street', 'coord'].forEach(k => {
+        const el = document.querySelector('#ic-rows > div[data-k="' + k + '"]');
+        if (el) el.remove();
+      });
+      document.getElementById('ic-rows').insertAdjacentHTML('beforeend',
         '<div><span class="ick">刹车占比</span>' + d.brake_ratio + '%</div>' +
         '<div><span class="ick">遥测</span>SEI 元数据 · ' + d.count + ' 帧 @ ' + d.fps + 'fps</div>');
     }).catch(() => {});
@@ -634,8 +640,8 @@ function renderHud(f) {
   q('tp-gear').textContent = f[1];
   q('tp-spd').textContent = Math.round(f[2]);
   q('tp-date').textContent = telT0 ? fmtTelDate(new Date(telT0.getTime() + f[0]*1000)) : '—';
-  q('tp-thr').textContent = 'T ' + f[3] + '%';
-  q('tp-brk').textContent = 'B ' + (f[5] ? 100 : 0) + '%';
+  q('tp-thr-n').textContent = f[3] + '%';
+  q('tp-brk-n').textContent = (f[5] ? 100 : 0) + '%';
   q('tp-brk').classList.toggle('on', !!f[5]);
   q('tp-bl').classList.toggle('on', f[6] === 1);
   q('tp-br').classList.toggle('on', f[6] === 2);
@@ -644,7 +650,11 @@ function renderHud(f) {
   if (f[7]) { ap.style.display = ''; ap.textContent = apNames[f[7]] || 'AP'; }
   else ap.style.display = 'none';
   q('tp-st').title = '方向盘角度 ' + f[4] + '°';
+  const md = TEL_META || {};
   q('tp-rows').innerHTML =
+    (md.city ? '<div><span class="k">城市</span>' + md.city + '</div>' : '') +
+    (md.street ? '<div><span class="k">位置</span>' + md.street + '</div>' : '') +
+    (md.est_lat && md.est_lon ? '<div><span class="k">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>' : '') +
     '<div><span class="k">挡位</span>' + f[1] + '</div>' +
     '<div><span class="k">车速</span>' + f[2].toFixed(1) + ' km/h</div>' +
     '<div><span class="k">油门</span>' + f[3] + '%</div>' +
