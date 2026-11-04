@@ -1,0 +1,15 @@
+# 镜像与运行时数据
+*.img
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# 系统/编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

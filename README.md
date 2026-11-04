@@ -1,0 +1,262 @@
+# Tesla Sentry F50 · 特斯拉哨兵云盘
+
+> 把一台带 USB 口的小 Linux 设备（如中兴 F50 随身 WiFi）变成特斯拉的**虚拟哨兵 U 盘 + 自带 Web 查看器**：车里自动录制，家里/公司远程回看六路画面。
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/platform-arm64%20%7C%20aarch64-blue.svg)](#硬件要求)
+[![Python](https://img.shields.io/badge/python-3.8%2B-3776AB.svg)](https://www.python.org/)
+
+---
+
+## 它是什么
+
+特斯拉的哨兵模式会把 6 路摄像头的告警片段写入手套箱里的 U 盘（`TeslaCam/SentryClips/`）。官方 App 不能远程看这些视频，必须拔盘插电脑——很麻烦。
+
+这个项目让一台小 Linux 设备**伪装成那个 U 盘**：
+
+```
+┌──────────────┐   USB(供电+数据)   ┌────────────────────────────────┐
+│   特斯拉车机  │ ◄───────────────► │  小 Linux 设备 (如 F50 存储版)  │
+└──────────────┘                   │                                │
+                                   │  /opt/tesla-sentry/            │
+   车机以为在写普通 U 盘             │   teslacam.img  ← 虚拟U盘镜像   │
+                                   │        │  空闲时归档            │
+                                   │        ▼                       │
+                                   │   /archive (ext4)              │
+                                   │        │                       │
+                                   │        ▼                       │
+                                   │   sentry-viewer.py :8080       │
+                                   └────────────────────────────────┘
+                                               ▲
+                                    手机/电脑浏览器访问
+```
+
+**核心思路**：镜像文件（exFAT）通过 USB Gadget 的 `mass_storage` 功能导出给车机，车机以为那是真实 U 盘；Linux 侧在车闲置时短暂断开导出、挂载镜像、把新片段拷贝到独立的 ext4 归档区，再恢复导出。网页只读归档区，因此**永远不会和车机同时读写同一个 exFAT**。
+
+---
+
+## 特性
+
+| 功能 | 说明 |
+|---|---|
+| 🗂 **虚拟 U 盘** | 容量任意（默认 170G），稀疏镜像不占实际空间，随写入增长 |
+| 🔌 **车机零改造** | 插上就当普通 U 盘，车机会提示"格式化 USB 设备"，点确认即可 |
+| 📦 **自动归档** | 镜像空闲 N 秒后自动把哨兵/保存/行车片段拷到 ext4 归档区，断电不丢 |
+| 🎬 **六路同步播放** | 网页内 3×2 六宫格同屏播放，帧级同步校正、统一进度条、0.5x–4x 倍速 |
+| 🎨 **页面皮肤** | 上传 CSS / 背景图，即刻换肤 |
+| 🔊 **锁车音 / Boombox 音效** | 网页上传音频，自动写入车机 U 盘 `Boombox/`，车机端直接选 |
+| 📂 **U 盘文件管理** | 网页直接浏览/上传/下载/删除车机 U 盘内容（临时断开、自动恢复导出） |
+| 🛡 **断电自愈** | 车内 USB 硬断电场景友好：归档区 ext4 日志式、开机自检、服务自动拉起 |
+| 🚀 **开机自启** | OpenWrt `procd` 服务，USB 网卡 / 串口 / 虚拟 U 盘可共存 |
+
+---
+
+## 硬件要求
+
+| 项目 | 要求 |
+|---|---|
+| 设备 | 支持 **USB Device (Gadget)** 模式的 Linux 设备（USB 口能当"设备"被主机识别） |
+| 内核 | `CONFIG_USB_F_MASS_STORAGE=y`（configfs 方式）或 `g_mass_storage` 模块 |
+| 文件系统 | 内核支持 `exfat`（`/proc/filesystems` 里有 `exfat`） |
+| 存储 | ≥ 32G（建议 128G+，镜像 + 归档各占一部分） |
+| 系统 | 任意 Linux（已在 **OpenWrt 25.12.5 / 主线内核 7.2.9** 验证） |
+| Python | 3.8+，**查看器零第三方依赖**（纯标准库） |
+
+> 本项目在**中兴 F50 存储版**（紫光展锐 T760、8 核、eMMC 256G、USB 3.0、无电池纯 USB 供电）上完整验证。理论上适用于任何能跑 Linux 且 USB 口支持 Device 模式的设备（部分开发板、随身 WiFi、电视盒子）。
+
+---
+
+## 快速开始
+
+### 1. 部署（在设备 SSH 里执行）
+
+```sh
+git clone https://github.com/baicyber/tesla-sentry-f50.git
+cd tesla-sentry-f50
+sudo ./install.sh              # 默认 170G 镜像 + 归档区 /archive
+```
+
+自定义参数：
+
+```sh
+sudo ./install.sh --size 200 --port 8080 --archive /archive
+```
+
+安装脚本会做这些事：
+
+1. 检查内核 gadget / exFAT / Python 依赖，缺什么直接报错退出
+2. 创建稀疏镜像 `teslacam.img`
+3. 安装脚本到 `/opt/tesla-sentry/`，配置到 `/etc/tesla-sentry.conf`
+4. 注册三个 OpenWrt 服务：`tesla-gadget`（虚拟U盘）、`sentry-viewer`（网页）、cron（归档）
+5. 立即启动，并打印当前状态
+
+### 2. 插到车上
+
+把设备插进手套箱 USB 口 → 车机屏幕提示"**格式化 USB 设备**" → 点确认。
+
+车机会自己建好 `TeslaCam/{SentryClips,SavedClips,RecentClips}` 目录，之后哨兵事件自动写入。
+
+> 也可以在电脑上手动把这块盘格式化成 exFAT（卷标随意）。
+
+### 3. 打开网页
+
+浏览器访问 `http://<设备IP>:8080`：
+
+- 手机连设备热点，或
+- 设备 USB 网卡直连电脑，或
+- 自行加 Tailscale / frp 等实现公网访问（**本项目不包含内网穿透**）
+
+归档任务每 10 分钟检查一次，镜像空闲 10 分钟才动手——所以录完约 10–20 分钟后视频出现在网页上。
+
+---
+
+## 网页功能
+
+### 主界面
+- 三个分类：**哨兵告警 / 手动保存 / 行车记录**，带事件计数
+- 每张卡片是 6 路画面拼图缩略，按时间线倒序
+- 点开进入**六路同步播放器**：3×2 布局、帧级同步（偏差 > 0.35s 自动对齐）、统一进度条、倍速
+
+### ⚙ 个性化面板
+
+| 标签 | 功能 |
+|---|---|
+| 🎨 页面皮肤 | 上传 `.css` / `.jpg` / `.png` / `.webp`；CSS 里用 `/skin-media/文件名` 引用图片 |
+| 🔊 锁车语音 | 上传 WAV/MP3，可"设为锁车音"（改名 `LockChime.wav`），归档时写入车机 U 盘 `Boombox/` |
+| 📂 文件 | **车机U盘**：浏览/上传/下载/删除 U 盘任意目录（含根目录）；**归档区**：浏览 F50 内部文件 |
+
+**锁车音要求**（特斯拉规范）：WAV、44.1kHz、16-bit、< 1MB、1–5 秒。车机端：Toybox → Boombox → Lock Sound → 选 USB。
+
+**U 盘文件管理模式**：点「连接车机U盘」→ 停止导出、挂载镜像 → 网页上改动直接写进车机 U 盘 → 点「恢复车机导出」或 **5 分钟无操作自动恢复**。行车/哨兵活跃时不要长时间挂着。
+
+---
+
+## 配置
+
+配置文件：`/etc/tesla-sentry.conf`
+
+```sh
+TSF_DIR=/opt/tesla-sentry        # 安装目录
+TSF_IMG=/opt/tesla-sentry/teslacam.img   # 虚拟U盘镜像
+TSF_ARCHIVE=/archive             # 归档区 (ext4, 建议独立于镜像)
+TSF_MNT=/tmp/teslamnt            # 临时挂载点
+TSF_LOOP=/dev/loop3              # 挂载用 loop 设备
+TSF_PORT=8080                    # 网页端口
+TSF_IDLE=600                     # 镜像空闲多少秒才归档
+```
+
+改完重启服务生效：
+
+```sh
+/etc/init.d/sentry-viewer restart
+/etc/init.d/tesla-gadget restart
+```
+
+---
+
+## 目录结构
+
+```
+/opt/tesla-sentry/
+├── teslacam.img         # 虚拟U盘镜像 (exFAT, 稀疏文件)
+├── tesla-gadget.sh      # 虚拟U盘开关脚本: on|off|status
+├── tesla-sync.sh        # 归档同步 + 音频写入
+└── sentry-viewer.py     # Web 查看器 (纯标准库)
+
+/archive/                # 归档区 (ext4)
+├── SentryClips/         # 哨兵告警归档
+├── SavedClips/          # 手动保存归档
+├── RecentClips/         # 行车记录归档
+├── .skins/              # 页面皮肤
+├── boombox-queue/       # 待写入车机U盘的音频
+├── boombox-done/        # 已写入的音频
+└── files/               # 通用文件中转
+```
+
+---
+
+## API
+
+| 接口 | 方法 | 说明 |
+|---|---|---|
+| `/api/events` | GET | 归档事件列表（按分类） |
+| `/media/<cat>/<event>/<file>` | GET | 视频流（支持 Range） |
+| `/api/browse?dir=` | GET | 浏览归档区目录 |
+| `/api/usb/attach` | POST | 连接车机U盘（临时停止导出 + 挂载） |
+| `/api/usb/detach` | POST | 恢复车机导出 |
+| `/api/usb/browse?dir=` | GET | 浏览车机U盘（相对路径） |
+| `/api/upload/usb` | POST | 上传到车机U盘（multipart: `file`, `path`） |
+| `/api/upload/file` | POST | 上传到归档区（multipart: `file`, `path`） |
+| `/api/upload/skin` | POST | 上传皮肤 |
+| `/api/upload/audio` | POST | 上传锁车音/音效 |
+| `/api/audio/setlockchime` | POST | 把队列中音频设为锁车音 |
+| `/usbdl?path=` · `/dl?path=` | GET | 下载（U盘 / 归档区） |
+| `/api/usb?path=` · `/api/file?path=` | DELETE | 删除（U盘 / 归档区） |
+
+---
+
+## 工作原理（给想改的人）
+
+1. **USB Gadget**：设备的 USB 控制器（UDC）通过 configfs 暴露一个复合设备 = `ncm`（USB 网卡）+ `acm`（串口）+ `mass_storage`（U 盘）。厂商固件通常已建好前两个，本项目只往现有 gadget 里**加**一个 `mass_storage` 功能并重新绑定，所以网卡/串口不会丢。
+2. **镜像 vs 归档**：镜像（exFAT）只给车机用；归档区（ext4）给 Linux 用。两者物理隔离，归档区是日志式文件系统，硬断电不丢数据。
+3. **归档时机**：以镜像文件的 `mtime` 判断"车是否在写"。空闲超过 `TSF_IDLE` 秒才动手，避免打断行车录制。
+4. **短暂断开**：归档全过程 5–15 秒，期间 U 盘从车机视角消失。车机正在写的时候不会触发（mtime 新）。
+5. **断电自愈**：开机时 `tesla-gadget` 自启重新导出镜像；`sentry-viewer` 启动时若发现残留挂载会自动卸载并恢复导出。
+6. **文件管理互斥**：网页 U 盘管理模式挂载镜像期间，归档任务检测到挂载点被占用会自动跳过，避免抢 loop/UDC。
+
+更多细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
+
+---
+
+## 常见问题
+
+**Q：车机不认盘 / 提示无法读取？**
+先确认 `/sys/class/udc/` 有控制器、`/proc/filesystems` 有 exfat，再跑 `/opt/tesla-sentry/tesla-gadget.sh status`。新盘第一次插车一般会提示格式化，确认即可。
+
+**Q：网页有事件但播放黑屏？**
+视频是 **H.265/HEVC**。Windows 用 Edge/Chrome（需系统 HEVC 解码器），iPhone Safari 原生支持；部分安卓浏览器不支持，可自行加 ffmpeg 转码（注意内存）。
+
+**Q：归档不触发？**
+看 `/var/log/tesla-sync.log`（或安装目录下日志）。常见原因：镜像一直被写（车没休眠）、`mtime` 解析失败（设备缺 `stat`，脚本已用 `ls --full-time` 兜底）、归档任务未启用。
+
+**Q：U 盘连接模式点了没反应？**
+说明停止导出/挂载失败，多半是 loop 设备被占用或镜像不是 exFAT。跑 `losetup -a` 看占用，`umount /tmp/teslamnt` 后再试。
+
+**Q：会不会影响车的哨兵录制？**
+归档只在车闲置时进行，每次几秒；U 盘管理模式下会中断（所以有 5 分钟自动恢复）。只要能接受"偶尔几秒 U 盘不可见"，就完全不影响正常使用。
+
+**Q：设备发热/耗电？**
+5G 模组 + 视频写入负载较高。建议：锁 4G、加散热片、车内避免暴晒。
+
+---
+
+## 卸载
+
+```sh
+sudo ./uninstall.sh              # 停服务、删脚本（保留镜像和归档数据）
+sudo ./uninstall.sh --purge      # 连镜像和归档一起删（不可恢复）
+```
+
+---
+
+## 安全提示
+
+- 查看器**没有身份认证**，请只在内网/可信网络暴露，公网请自行加反向代理认证（或 VPN）。
+- 上传接口限制 100MB，路径被限制在归档区/镜像挂载点内，不可逃逸到系统目录。
+- 本项目只操作 USB gadget、镜像和指定目录，不碰系统其他部分。
+
+---
+
+## 免责声明
+
+本项目为个人爱好项目，与特斯拉公司无关。修改车机存储行为存在风险（数据丢失、录制中断等），请自行评估。使用前建议先在小容量镜像上验证。
+
+## 参考与致谢
+
+- [teslausb](https://github.com/marcone/teslausb) —— 树莓派伪装 U 盘归档的开山之作，本项目思路来源
+- [SentryBox](https://github.com/weitanism/sentrybox) —— 车机常驻设备的产品化实践
+- [tesla-sentry-viewer](https://github.com/denysvitali/tesla-sentry-viewer) —— 网页查看器形态参考
+
+## License
+
+[MIT](LICENSE)
