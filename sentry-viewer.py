@@ -1134,8 +1134,10 @@ function pauseAll() {
   document.querySelectorAll('#vgrid video').forEach(v => v.pause());
   const pp = document.getElementById('ppbtn'); if (pp) pp.textContent = '▶';
 }
+let baseRate = 1;
 function setSpeed(s) {
   const r = parseFloat(s);
+  baseRate = r;
   document.querySelectorAll('#vgrid video').forEach(v => v.playbackRate = r);
   const b = document.getElementById('spdbtn'); if (b) b.textContent = r + 'x';
 }
@@ -1154,8 +1156,19 @@ function tick() {
   if (!vs.length || !vs[0].duration) return;
   const t = vs[0].currentTime;
   vs.forEach((v, i) => {
-    if (i && v.paused && !vs[0].paused) { tryPlay(v); return; }
-    if (Math.abs(v.currentTime - t) > 0.35) { v.currentTime = t; if (!v.paused) v.play(); }
+    if (i && v.paused && !vs[0].paused && !v.ended) {
+      if (v.readyState >= 2) tryPlay(v);   // 还在缓冲(waiting)的视频不要反复强拉, 会卡
+      return;
+    }
+    if (vs[0].paused || v.paused || v.ended) return;
+    const d = v.currentTime - t;
+    if (Math.abs(d) > 1.2) { v.currentTime = t; }              // 大漂移才硬seek
+    else if (Math.abs(d) > 0.05) {                             // 小漂移: 微调倍速平滑收敛, 不跳帧不抽搐
+      const m = Math.min(1.12, Math.max(0.88, 1 - d / 2));
+      v.playbackRate = baseRate * m;
+    } else if (v.playbackRate !== baseRate) {
+      v.playbackRate = baseRate;
+    }
   });
   document.getElementById('seek').value = Math.round(t / vs[0].duration * 1000);
   document.getElementById('ptime').textContent = fmtSec(t);
@@ -1166,9 +1179,22 @@ function fmtSec(x) {
   x = Math.max(0, Math.floor(x || 0));
   return String(Math.floor(x / 60)).padStart(2, '0') + ':' + String(x % 60).padStart(2, '0');
 }
-document.getElementById('seek').oninput = function () {
+let scrubT = 0;
+function applySeekAll(frac) {
   const vs = [...document.querySelectorAll('#vgrid video')];
-  if (vs.length && vs[0].duration) vs.forEach(v => v.currentTime = this.value / 1000 * vs[0].duration);
+  if (!vs.length || !vs[0].duration) return;
+  const tt = frac / 1000 * vs[0].duration;
+  vs.forEach(v => { try { v.currentTime = tt; } catch (e) {} });
+}
+document.getElementById('seek').oninput = function () {
+  const now = Date.now();
+  if (now - scrubT < 250) return;   // 拖动时节流, 避免 4-6 路同时连发 seek 卡顿
+  scrubT = now;
+  applySeekAll(+this.value);
+};
+document.getElementById('seek').onchange = function () {
+  scrubT = 0;
+  applySeekAll(+this.value);   // 松手必须对齐全部, 否则节流会吞掉最后位置
 };
 function closePlayer() {
   pauseAll();
@@ -1717,7 +1743,7 @@ try:
     os.makedirs(RES_DIR, exist_ok=True)
 except OSError:
     pass
-Q_LOCK = threading.Lock()   # 全局同一时刻只跑一个转码任务
+Q_SEM = threading.BoundedSemaphore(int(os.environ.get("TSF_TR_CODES", "2")))  # 并发转码上限: 8核允许2个×4线程, 多路点开排队时间减半
 RES_MAX = 2 * 1024 * 1024 * 1024  # 清晰度缓存总量上限 2GB, 超了从最旧开始删
 
 
@@ -1747,7 +1773,7 @@ def res_cleanup():
 
 
 def get_variant(fp, qv):
-    """返回 qv 清晰度的缓存文件路径; 没有就串行转码一份, 失败回退原文件"""
+    """返回 qv 清晰度的缓存文件路径; 没有就排队转码一份 (最多2个并发), 失败回退原文件"""
     try:
         st = os.stat(fp)
     except OSError:
@@ -1758,8 +1784,8 @@ def get_variant(fp, qv):
         return out
     if not os.path.isfile(FFMPEG_BIN):
         return fp
-    # 排队等正在跑的转码 (最多 10 分钟, 超时回退原文件)
-    if not Q_LOCK.acquire(timeout=600):
+    # 排队等空闲转码槽 (最多 10 分钟, 超时回退原文件)
+    if not Q_SEM.acquire(timeout=600):
         return fp
     try:
         if os.path.isfile(out) and os.path.getsize(out) > 0:  # 别人刚转完
@@ -1779,7 +1805,7 @@ def get_variant(fp, qv):
         cmd = ["sh", "-c",
                'echo 300 > /proc/self/oom_score_adj 2>/dev/null; exec "$0" "$@"',
                FFMPEG_BIN, "-nostdin", "-hide_banner", "-loglevel", "error",
-               "-threads", "8", "-i", fp,
+               "-threads", "4", "-i", fp,
                "-vf", "scale=%d:%d" % (w, h),
                "-c:v", "libx264", "-preset", "superfast",
                "-b:v", "%dk" % kbps, "-maxrate", "%dk" % (kbps * 3 // 2),
@@ -1800,7 +1826,7 @@ def get_variant(fp, qv):
                 pass
         return fp
     finally:
-        Q_LOCK.release()
+        Q_SEM.release()
 CAM_ORDER6 = ["left_pillar", "front", "right_pillar", "left_repeater", "back", "right_repeater"]
 CAM_ORDER4 = ["front", "back", "left_repeater", "right_repeater"]
 
