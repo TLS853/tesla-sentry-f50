@@ -74,12 +74,37 @@ cron 是否在跑：`ps | grep cron`、`cat /etc/crontabs/root`。
 
 ## 播放黑屏 / 只有声音
 
-H.265/HEVC 解码问题：
+先确认片段的实际编码（`ffprobe -show_entries stream=codec_name`）：
 
-- Windows：Edge/Chrome 需安装「HEVC 视频扩展」（微软商店）
-- iPhone/iPad：Safari 原生支持
-- Android：多数浏览器不支持，可装 VLC 或用支持 HEVC 的浏览器
+- **H.264（多数 Model 3/Y）**：主流浏览器原生支持，黑屏通常不是编码问题，看下面「播放黑屏但编码正常」
+- **H.265/HEVC（部分新车型/固件）**：Windows 的 Edge/Chrome 需安装「HEVC 视频扩展」（微软商店）；iPhone/iPad Safari 原生支持；多数 Android 浏览器不支持
 - 也可以直接从「📂 文件」里下载视频到本地用播放器看
+
+## 播放黑屏但编码正常（H.264）
+
+1. 该片段可能还没同步完整（车机正在写）→ 等十几秒刷新
+2. 服务端 Range 请求异常 → `curl -I -H 'Range: bytes=0-100' http://设备/media/<cat>/<ev>/<file>.mp4` 应返回 `206`
+3. 浏览器拦截混合内容 → 页面与视频必须同源（都走设备 IP）
+
+## 列表缩略图显示 🎞 占位符
+
+服务端抽帧失败留下的空文件被当成缓存。已在代码中修复（写 `.tmp.jpg` 成功且非空才落盘、命中 0 字节自动删除重建），若仍有：
+
+```sh
+python3 -c "import glob,os;[os.remove(p) for p in glob.glob('/opt/mu300/thumbs/*') if os.path.getsize(p)==0]"
+```
+
+顺手确认 `ffmpeg` 路径（`TSF_FFMPEG`）正确，且该片段文件大小非 0。
+
+## 遥测面板（车速/油门/刹车）不显示
+
+1. **停车片段本来就没有**：SEI 只在行驶中录制时写入，哨兵片段大多没有 → 属正常
+2. 判断某片段有没有：`ffmpeg -loglevel trace -i 片段.mp4 -c copy -bsf:v trace_headers -frames:v 5 -f null - 2>&1 | grep -o 'nal_unit_type = [0-9]*' | sort | uniq -c`，出现 `6` 即有 SEI
+3. 有 SEI 但接口返回 `{ok:false}` → 删掉 `/opt/mu300/tel-cache` 对应缓存后重试
+
+## 手机上展开信息卡后被视频/面板遮挡
+
+旧版 iOS Safari 在 CSS Grid 的 `1fr` 行里计算 `aspect-ratio` 会塌陷，导致视频层溢出绘制。当前版本已改为 JS 显式计算像素行高，并把遥测面板移出 `overflow:hidden` 容器。若仍出现，请清 Safari 缓存后强刷（或换 Chrome 验证），并反馈 iOS 版本。
 
 ## 网页 U 盘管理模式点"连接"失败
 
