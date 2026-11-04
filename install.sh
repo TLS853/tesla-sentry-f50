@@ -60,6 +60,16 @@ FREE_MB=$(df -Pm "$(dirname "$TSF_DIR")" 2>/dev/null | awk 'NR==2{print $4}')
 [ -z "$FREE_MB" ] && FREE_MB="?"
 say "存储空闲: ${FREE_MB}MB, 计划镜像 ${SIZE_GB}G (稀疏文件, 按实际写入占用)"
 
+# 缓存目录 (缩略图/遥测/合成临时文件): F50 沿用 /opt/mu300, 其它设备放安装目录下
+if [ -d /opt/mu300 ]; then CACHE_DIR=/opt/mu300; else CACHE_DIR="$TSF_DIR/cache"; fi
+mkdir -p "$CACHE_DIR/thumbs" "$CACHE_DIR/tel-cache" 2>/dev/null || true
+
+# ffmpeg 探测: 缩略图与部分导出功能依赖, 缺了只是没有缩略图
+FFMPEG="$(command -v ffmpeg 2>/dev/null || echo /opt/mu300/ffmpeg/ffmpeg)"
+FFPROBE="$(command -v ffprobe 2>/dev/null || echo /opt/mu300/ffmpeg/ffprobe)"
+if [ -x "$FFMPEG" ]; then say "ffmpeg: $FFMPEG"
+else echo "  [提示] 未找到 ffmpeg, 列表缩略图会缺失 (装一个即可: opkg/apt install ffmpeg)"; fi
+
 # ---------------- 1. 目录与文件 ----------------
 say "安装到 $TSF_DIR ..."
 mkdir -p "$TSF_DIR"
@@ -69,12 +79,25 @@ cp "$SRC_DIR/scripts/tesla-gadget.sh" "$TSF_DIR/tesla-gadget.sh"
 cp "$SRC_DIR/scripts/tesla-sync.sh"   "$TSF_DIR/tesla-sync.sh"
 cp "$SRC_DIR/scripts/usb-selfheal.sh" "$TSF_DIR/usb-selfheal.sh"
 cp "$SRC_DIR/scripts/tesla-img.sh"    "$TSF_DIR/tesla-img.sh"
+cp "$SRC_DIR/scripts/tsf-check.sh"    "$TSF_DIR/tsf-check.sh"
 chmod +x "$TSF_DIR"/*.sh "$TSF_DIR"/*.py
 
 mkdir -p "$ARCHIVE"/SentryClips "$ARCHIVE"/SavedClips "$ARCHIVE"/RecentClips \
          "$ARCHIVE"/.skins "$ARCHIVE"/boombox-queue "$ARCHIVE"/boombox-done "$ARCHIVE"/files
 
 # ---------------- 2. 镜像 ----------------
+# 已经在跑的设备: 复用当前正在导出的镜像, 避免重装后车机看到一块空盘
+CUR_EXPORT=""
+for f in "$GADGET"/functions/mass_storage*/lun.0/file; do
+    [ -f "$f" ] || continue
+    CUR_EXPORT=$(cat "$f" 2>/dev/null)
+    [ -n "$CUR_EXPORT" ] && break
+done
+if [ -n "$CUR_EXPORT" ] && [ -f "$CUR_EXPORT" ]; then
+    IMG="$CUR_EXPORT"
+    say "检测到已在导出的镜像, 沿用它: $IMG"
+fi
+
 if [ -f "$IMG" ]; then
     say "镜像已存在, 跳过创建: $IMG"
 else
@@ -98,6 +121,9 @@ TSF_IDLE=600
 TSF_USB_TIMEOUT=300
 TSF_LOSETUP=
 TSF_GADGET=$GADGET
+TSF_CACHE=$CACHE_DIR
+TSF_FFMPEG=$FFMPEG
+TSF_FFPROBE=$FFPROBE
 EOF
 
 # ---------------- 4. 服务 ----------------
@@ -123,6 +149,7 @@ USE_PROCD=1
 start_service() {
     [ -f $CONF ] && . $CONF
     export TSF_DIR TSF_IMG TSF_ARCHIVE TSF_MNT TSF_LOOP TSF_PORT TSF_IDLE TSF_USB_TIMEOUT
+    export TSF_GADGET TSF_LOSETUP TSF_CACHE TSF_FFMPEG TSF_FFPROBE
     procd_open_instance
     procd_set_param command $PYTHON "\$TSF_DIR/sentry-viewer.py"
     procd_set_param respawn 3600 5 0
@@ -212,7 +239,53 @@ EOF
     systemctl daemon-reload
     systemctl enable tesla-gadget.service sentry-viewer.service tesla-live.service >/dev/null 2>&1
 else
-    die "未识别的 init 系统 (既没有 /etc/rc.common 也没有 systemd)"
+    # 通用分支: OpenRC / BusyBox init / runit / s6 等, 用 rc.local 拉起 + crontab 定时
+    say "未识别的 init 系统, 安装为通用启动脚本 (rc.local + crontab) ..."
+    cat > "$TSF_DIR/tsf-start.sh" <<EOF
+#!/bin/sh
+# 通用启动入口 (rc.local / 手动 / supervisor 均可调用)
+[ -f $CONF ] && . $CONF
+export TSF_DIR TSF_IMG TSF_ARCHIVE TSF_MNT TSF_LOOP TSF_PORT TSF_GADGET TSF_LOSETUP TSF_CACHE TSF_FFMPEG TSF_FFPROBE
+sh "\$TSF_DIR/tesla-gadget.sh" on >/dev/null 2>&1
+pgrep -f tesla-live-sync.py >/dev/null 2>&1 || setsid $PYTHON "\$TSF_DIR/tesla-live-sync.py" </dev/null >>"\$TSF_DIR/tesla-live.log" 2>&1 &
+sleep 1
+pgrep -f sentry-viewer.py >/dev/null 2>&1 || setsid $PYTHON "\$TSF_DIR/sentry-viewer.py" </dev/null >>"\$TSF_DIR/sentry-viewer.log" 2>&1 &
+EOF
+    chmod +x "$TSF_DIR/tsf-start.sh"
+
+    # rc.local
+    if [ -f /etc/rc.local ]; then
+        grep -q 'tsf-start.sh' /etc/rc.local || \
+            sed -i "/^exit 0/i $TSF_DIR/tsf-start.sh" /etc/rc.local
+    else
+        cat > /etc/rc.local <<EOF
+#!/bin/sh -e
+$TSF_DIR/tsf-start.sh
+exit 0
+EOF
+        chmod +x /etc/rc.local
+    fi
+
+    # 定时任务: BusyBox crontab (/etc/crontabs/root) 优先, 否则系统 /etc/crontab
+    if [ -d /etc/crontabs ]; then
+        CRONF=/etc/crontabs/root
+        touch "$CRONF"
+        sed -i '/tesla-sync.sh/d;/usb-selfheal.sh/d' "$CRONF" 2>/dev/null || true
+        echo "*/10 * * * * /bin/sh $TSF_DIR/tesla-sync.sh >/dev/null 2>&1" >> "$CRONF"
+        echo "*/2 * * * * /bin/sh $TSF_DIR/usb-selfheal.sh >/dev/null 2>&1" >> "$CRONF"
+        (rc-service cron restart || /etc/init.d/cron restart) >/dev/null 2>&1 || true
+    elif [ -f /etc/crontab ]; then
+        sed -i '/tesla-sync.sh/d;/usb-selfheal.sh/d' /etc/crontab 2>/dev/null || true
+        echo "*/10 * * * * root /bin/sh $TSF_DIR/tesla-sync.sh >/dev/null 2>&1" >> /etc/crontab
+        echo "*/2 * * * * root /bin/sh $TSF_DIR/usb-selfheal.sh >/dev/null 2>&1" >> /etc/crontab
+        (rc-service crond restart || service cron restart) >/dev/null 2>&1 || true
+    else
+        echo "  [提示] 没有找到 cron, 请自行把下面两行加到定时任务:"
+        echo "    */10 * * * * /bin/sh $TSF_DIR/tesla-sync.sh"
+        echo "    */2  * * * * /bin/sh $TSF_DIR/usb-selfheal.sh"
+    fi
+    echo "  [提示] 已写入 /etc/rc.local 与 crontab; 若系统用 OpenRC/runit," \
+         "可把 $TSF_DIR/tsf-start.sh 包一层 service 以获得开机自启与守护"
 fi
 
 # ---------------- 5. 启动 ----------------
@@ -222,15 +295,17 @@ sh "$TSF_DIR/tesla-gadget.sh" on || echo "  [警告] 虚拟U盘启动失败, 见
 say "启动查看器 ..."
 if [ -f /etc/rc.common ]; then
     /etc/init.d/sentry-viewer restart >/dev/null 2>&1 || true
-else
+elif [ -d /etc/systemd/system ]; then
     systemctl restart sentry-viewer.service || true
 fi
 
 say "启动实时同步 (车机无感读取) ..."
 if [ -f /etc/rc.common ]; then
     /etc/init.d/tesla-live restart >/dev/null 2>&1 || true
-else
+elif [ -d /etc/systemd/system ]; then
     systemctl restart tesla-live.service || true
+else
+    sh "$TSF_DIR/tsf-start.sh"    # 通用分支: 一次拉起全部
 fi
 sleep 2
 

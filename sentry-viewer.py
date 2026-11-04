@@ -16,12 +16,14 @@ import zipfile
 import tempfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-ARCHIVE = "/archive"
+# 路径/端口优先取环境变量 (install.sh 写入 /etc/tesla-sentry.conf, 服务单元以 EnvironmentFile 注入),
+# 便于装到非 F50 设备上时改归档区、端口、缩略图缓存位置
+ARCHIVE = os.environ.get("TSF_ARCHIVE", "/archive")
 SKIN_DIR = os.path.join(ARCHIVE, ".skins")
 AUDIO_Q = os.path.join(ARCHIVE, "boombox-queue")
 AUDIO_DONE = os.path.join(ARCHIVE, "boombox-done")
 FILES_DIR = os.path.join(ARCHIVE, "files")
-PORT = 8080
+PORT = int(os.environ.get("TSF_PORT", "8080"))
 CATS = ["SentryClips", "SavedClips", "RecentClips"]
 CAT_NAMES = {"SentryClips": "哨兵告警", "SavedClips": "手动保存", "RecentClips": "行车记录"}
 MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频有自己的更小限制)
@@ -1283,34 +1285,46 @@ def list_events():
     return out
 
 
+def _map_archive(p):
+    """前端与深链固定用 /archive/... 作为虚拟前缀; 归档区可配置时映射到实际目录"""
+    if ARCHIVE != "/archive" and (p == "/archive" or p.startswith("/archive/")):
+        return ARCHIVE + p[len("/archive"):]
+    return p
+
+
 def safe_archive_dir(p):
-    """校验目录必须落在 /archive 内 (防路径逃逸), 返回 realpath 或 None"""
-    p = (p or "").strip()
-    if not p.startswith("/archive"):
+    """校验目录必须落在归档区内 (防路径逃逸), 返回 realpath 或 None"""
+    p = _map_archive((p or "").strip())
+    if not p.startswith(ARCHIVE):
         return None
     rp = os.path.realpath(p)
-    if rp != "/archive" and not rp.startswith("/archive/"):
+    root = os.path.realpath(ARCHIVE)
+    if rp != root and not rp.startswith(root + "/"):
         return None
     return rp
 
 
 def safe_archive_path(p):
-    """校验文件路径必须落在 /archive 内且真实存在"""
-    p = (p or "").strip()
-    if not p.startswith("/archive"):
+    """校验文件路径必须落在归档区内且真实存在"""
+    p = _map_archive((p or "").strip())
+    if not p.startswith(ARCHIVE):
         return None
     rp = os.path.realpath(p)
-    if not rp.startswith("/archive/") or not os.path.isfile(rp):
+    if not rp.startswith(os.path.realpath(ARCHIVE) + "/") or not os.path.isfile(rp):
         return None
     return rp
 
 
 # ---------- 车机U盘(镜像)临时管理 ----------
-IMG = "/root/teslacam.img"
-MNT = "/tmp/teslamnt"
-LOOPDEV = "/dev/loop3"
-LOSETUP = "/opt/mu300/busybox-bin/losetup"
-GADGET_DIR = "/sys/kernel/config/usb_gadget/linux"
+IMG = os.environ.get("TSF_IMG", "/root/teslacam.img")
+MNT = os.environ.get("TSF_MNT", "/tmp/teslamnt")
+LOOPDEV = os.environ.get("TSF_LOOP", "/dev/loop3")
+LOSETUP = os.environ.get("TSF_LOSETUP") or (
+    "/opt/mu300/busybox-bin/losetup"
+    if os.path.exists("/opt/mu300/busybox-bin/losetup")
+    else "losetup"  # 通用发行版走 PATH (util-linux)
+)
+GADGET_DIR = os.environ.get("TSF_GADGET", "/sys/kernel/config/usb_gadget/linux")
 USB_AUTO_DETACH = 300  # 秒, 无操作自动恢复导出
 
 usb_lock = threading.Lock()
@@ -1500,14 +1514,16 @@ def active_skin():
 
 
 # ---------------- 多路合成导出 (ffmpeg) ----------------
-FFMPEG_BIN = os.environ.get("TSF_FFMPEG", "/opt/mu300/ffmpeg/ffmpeg")
-FFPROBE_BIN = os.environ.get("TSF_FFPROBE", "/opt/mu300/ffmpeg/ffprobe")
-STITCH_DIR = "/opt/mu300/stitch-tmp"  # 不用 /tmp: tmpfs 占内存, 大视频会挤爆 RAM
+FFMPEG_BIN = os.environ.get("TSF_FFMPEG") or (
+    "/opt/mu300/ffmpeg/ffmpeg" if os.path.exists("/opt/mu300/ffmpeg/ffmpeg") else "ffmpeg")
+FFPROBE_BIN = os.environ.get("TSF_FFPROBE") or (
+    "/opt/mu300/ffmpeg/ffprobe" if os.path.exists("/opt/mu300/ffmpeg/ffprobe") else "ffprobe")
+STITCH_DIR = os.environ.get("TSF_CACHE", "/opt/mu300") + "/stitch-tmp"  # 不用 /tmp: tmpfs 占内存, 大视频会挤爆 RAM
 STITCH_JOBS = {}
 STITCH_LOCK = threading.Lock()
 # 视频流并发上限: 事件多的时候浏览器会一口气请求上百个预览, 不限流会拖死设备
 MEDIA_SEM = threading.BoundedSemaphore(int(os.environ.get("TSF_MEDIA_CONN", "8")))
-THUMB_DIR = "/opt/mu300/thumbs"
+THUMB_DIR = os.environ.get("TSF_CACHE", "/opt/mu300") + "/thumbs"
 THUMB_SEM = threading.BoundedSemaphore(2)
 THUMB_W = 400
 CAM_ORDER6 = ["left_pillar", "front", "right_pillar", "left_repeater", "back", "right_repeater"]
@@ -1702,7 +1718,7 @@ def start_stitch(cat, name, cams):
 #   1 version, 2 gear(0P/1D/2R/3N), 3 frame_seq, 4 speed_mps, 5 油门%,
 #   6 方向盘角度, 7/8 左右转向灯, 9 刹车, 10 AP状态, 11/12 经纬度,
 #   13 航向, 14/15/16 三轴加速度
-TEL_DIR = "/opt/mu300/tel-cache"
+TEL_DIR = os.environ.get("TSF_CACHE", "/opt/mu300") + "/tel-cache"
 TEL_SEM = threading.BoundedSemaphore(int(os.environ.get("TSF_TEL_CONN", "1")))
 
 
