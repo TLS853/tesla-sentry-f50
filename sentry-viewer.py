@@ -51,7 +51,19 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .chip:hover { color:#e8eaed; border-color:#3a4653; }
 .chip.on { background:#2f6ee0; border-color:#2f6ee0; color:#fff; }
 .chip .n { opacity:.62; margin-left:4px; font-variant-numeric:tabular-nums; }
-@media (max-width:640px){ header .sub { display:none; } .tabs { order:10; width:100%; margin-left:0; } #gear { order:5; margin-left:0; } }
+@media (max-width:640px){
+  header .sub { display:none; } .tabs { order:10; width:100%; margin-left:0; } #gear { order:5; margin-left:0; }
+  /* 播放器手机端紧凑化: 面板/卡片占高更小, 视频尽量多露 */
+  .pscroll { padding:2px 8px 10px; gap:8px; }
+  .tpanel { padding:10px 12px 8px; }
+  .tp-spd { font-size:26px; }
+  .tp-date { font-size:12px; } .tp-loc { font-size:11.5px; }
+  .tp-gear { width:22px; height:22px; font-size:12px; }
+  .tp-c { width:28px; height:28px; } .tp-c.st svg { width:16px; height:16px; }
+  .tp-badge { height:25px; font-size:11px; padding:0 8px 0 6px; } .tp-badge svg { width:13px; height:13px; }
+  .infocard { padding:10px 12px 8px; }
+  .ptop { padding:6px 10px; }
+}
 #gear { background:#242c35; border:none; color:#9aa4af; font-size:18px; cursor:pointer; border-radius:10px; width:36px; height:32px; }
 #gear:hover { color:#fff; }
 .grid-wrap { padding:16px; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
@@ -66,16 +78,17 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .meta { padding:10px 13px; }
 .meta .t { font-size:13.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .meta .s { font-size:11.5px; color:#9aa4af; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.player { display:none; position:fixed; inset:0; background:#0d1117; z-index:100; flex-direction:column; }
+.player { display:none; position:fixed; inset:0; height:100vh; height:100dvh; background:#0d1117; z-index:100; flex-direction:column; }
 .player.open { display:flex; }
 .ptop { display:flex; align-items:center; gap:10px; padding:10px 14px; }
 .ptop .pdl { margin-left:auto; }
 .pback { background:none; border:none; color:#fff; font-size:16.5px; cursor:pointer; padding:4px 2px; white-space:nowrap; }
 .pdl { background:none; border:none; color:#fff; font-size:19px; cursor:pointer; padding:4px 6px; }
-.pscroll { flex:1; overflow-y:auto; padding:2px 14px 14px; display:flex; flex-direction:column; gap:12px; }
+.pscroll { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:2px 14px 14px; display:flex; flex-direction:column; gap:12px; }
+.pscroll > * { flex:0 0 auto; }
 .vwrap { position:relative; border-radius:14px; overflow:hidden; max-width:980px; width:100%; margin:0 auto; }
 /* 行车遥测面板 (视频上方, Tesla App 样式, 不遮挡画面) */
-.tpanel { display:none; background:#1c232c; border-radius:14px 14px 0 0; padding:14px 18px 10px; }
+.tpanel { display:none; background:#1c232c; border-radius:14px; padding:14px 18px 10px; max-width:980px; width:100%; margin:0 auto; }
 .tpanel.show { display:block; }
 .tpanel.folded .tp-rows { display:none; }
 .tp-top { display:flex; justify-content:space-between; align-items:center; }
@@ -191,9 +204,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
     <button class="pdl" onclick="openExport()" title="导出">⬇</button>
   </div>
   <div class="pscroll">
-    <div class="vwrap">
-      <div class="startmask" id="startmask">▶ 轻触开始同步播放</div>
-      <div class="tpanel" id="tpanel">
+    <div class="tpanel" id="tpanel">
         <div class="tp-top">
           <span class="tp-l"><span class="tp-date" id="tp-date">—</span><span class="tp-loc" id="tp-loc"></span></span>
           <span class="tp-tr"><span class="tp-sig" id="tp-bl">⬅</span><span class="tp-sig" id="tp-br">➡</span><span class="tp-gear" id="tp-gear">D</span></span>
@@ -209,7 +220,9 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
         </div>
         <button class="tp-fold" id="tp-fold" onclick="toggleTelRows()">收起详细数据 ⌃</button>
         <div class="tp-rows" id="tp-rows"></div>
-      </div>
+    </div>
+    <div class="vwrap">
+      <div class="startmask" id="startmask">▶ 轻触开始同步播放</div>
       <div class="vgrid" id="vgrid"></div>
     </div>
     <div class="infocard">
@@ -333,6 +346,7 @@ function toggleDetail() {
   const r = document.getElementById('ic-rows'), b = document.getElementById('ic-fold');
   const open = r.classList.toggle('open');
   b.textContent = open ? '收起详细数据 ⌃' : '展开详细数据 ⌄';
+  layoutPlayer();
 }
 function fmtName(n) {
   const m = (n || '').match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})/);
@@ -524,7 +538,13 @@ function layoutPlayer() {
   if (!n) return;
   const d = gridDims(n);
   vg.style.gridTemplateColumns = `repeat(${d[0]},1fr)`;
-  vg.style.gridTemplateRows = `repeat(${d[1]},1fr)`;
+  // 显式像素行高: 不依赖 CSS aspect-ratio (老版 iOS Safari 不支持时格子会塌陷/视频层溢出遮挡)
+  const w = vg.clientWidth || 0;
+  if (w > 0) {
+    const gap = 3;
+    const cw = (w - gap * (d[0] - 1)) / d[0];
+    vg.style.gridAutoRows = Math.round(cw * 9 / 16) + 'px';
+  }
 }
 /* 点击任意一路: 单路铺满; 再点一次(或 Esc)恢复多路 */
 function focusCell(cell) {
@@ -598,6 +618,7 @@ function renderClip() {
   document.getElementById('ic-fold').textContent = '展开详细数据 ⌄';
   layoutPlayer();
   document.getElementById('player').classList.add('open');
+  requestAnimationFrame(layoutPlayer);  // 可见后再算一次, 保证拿到真实宽度设置像素行高
   const sm = document.getElementById('startmask');
   if ('ontouchstart' in window) { sm.classList.add('show'); }
   playAll();
@@ -664,10 +685,6 @@ function renderHud(f) {
   const md = TEL_META || {};
   q('tp-rows').innerHTML =
     (md.est_lat && md.est_lon ? '<div><span class="k">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>' : '') +
-    '<div><span class="k">挡位</span>' + f[1] + '</div>' +
-    '<div><span class="k">车速</span>' + f[2].toFixed(1) + ' km/h</div>' +
-    '<div><span class="k">油门</span>' + f[3] + '%</div>' +
-    '<div><span class="k">刹车</span>' + (f[5] ? '100% (踩下)' : '0%') + '</div>' +
     '<div><span class="k">方向盘角度</span>' + f[4] + '°</div>' +
     '<div><span class="k">横向加速度 Ax</span>' + f[11].toFixed(2) + ' m/s²</div>' +
     '<div><span class="k">前后加速度 Ay</span>' + f[12].toFixed(2) + ' m/s²</div>' +
@@ -677,6 +694,7 @@ function toggleTelRows() {
   const p = document.getElementById('tpanel'), b = document.getElementById('tp-fold');
   p.classList.toggle('folded');
   b.textContent = p.classList.contains('folded') ? '展开详细数据 ⌄' : '收起详细数据 ⌃';
+  layoutPlayer();
 }
 
 /* ---------- 导出视频水印 (与遥测面板同款) ---------- */
