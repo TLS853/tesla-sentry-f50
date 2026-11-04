@@ -162,3 +162,16 @@ F50 的 OpenWrt 整个系统跑在一个 loop 镜像上，且内核开了 `softl
 Tesla 一个事件目录里包含事件前后约 10 分钟的片段（每分钟一组、每组 4-6 路）。
 播放器会按片段时间自动分组，默认只加载/播放最新一组，信息卡里可以切换其它片段；
 导出（合成/zip）也只针对当前片段组。
+
+## 改了代码但页面没变化
+
+排查顺序：
+
+1. **确认改的是服务实际在跑的那份文件**。查看器跑的是 `/etc/tesla-sentry.conf` 里
+   `TSF_DIR` 指向的路径（默认 `/opt/tesla-sentry/sentry-viewer.py`）。如果你手动更新的是
+   别的副本（比如 `/root/sentry-viewer.py`），改多少遍都不会生效。
+2. **确认进程真的重启了**：`ps w | grep sentry-viewer` 看 PID 是否变了。procd 的
+   `restart` 只管理它自己拉起的实例；如果进程是手动/其它脚本启动的，先 `kill <pid>` 再
+   `/etc/init.d/sentry-viewer start`。
+3. **用页面内容校验**：`wget -q -O- http://127.0.0.1:8080/ | grep -c <新代码里的特征串>`，
+   大于 0 才算部署成功，别只看页面 200。

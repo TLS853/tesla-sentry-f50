@@ -93,6 +93,14 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .tpanel { display:none; background:#1c232c; border-radius:14px; padding:14px 18px 10px; max-width:980px; width:100%; margin:0 auto; }
 .tpanel.show { display:block; }
 .tpanel.folded .tp-rows { display:none; }
+/* 无遥测事件(哨兵/停车): 顶部只保留 时间 + 城市·位置 一行, 不留空白块 */
+.tpanel.plain { padding:12px 18px; }
+.tpanel.plain .tp-mid,
+.tpanel.plain .tp-fold,
+.tpanel.plain .tp-rows,
+.tpanel.plain .tp-tr { display:none; }
+.infocard.plain .ic-time { display:none; }
+.infocard.plain .ic-badge { margin-left:0; }
 .tp-top { display:flex; justify-content:space-between; align-items:center; }
 .tp-l { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
 .tp-date { font-size:13.5px; color:#cfd6dd; font-variant-numeric:tabular-nums; }
@@ -227,7 +235,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
       <div class="startmask" id="startmask">▶ 轻触开始同步播放</div>
       <div class="vgrid" id="vgrid"></div>
     </div>
-    <div class="infocard">
+    <div class="infocard" id="infocard">
       <div class="ic-top"><span class="ic-time" id="ic-time">—</span><span class="ic-badge" id="ic-cat">—</span></div>
       <div class="ic-mid"><span class="ic-big" id="ic-big">—</span><span class="ic-sub" id="ic-sub"></span></div>
       <div class="clipbar" id="clipbar"></div>
@@ -635,8 +643,9 @@ let telT0 = null, TEL_META = {};
 function loadTelemetry(url, meta) {
   TEL = null;
   TEL_META = meta || {};
-  const p = document.getElementById('tpanel');
-  p.classList.remove('show');
+  const p = document.getElementById('tpanel'), card = document.getElementById('infocard');
+  p.classList.remove('show', 'plain');
+  if (card) card.classList.remove('plain');
   p.classList.add('folded');   // 详细数据默认折叠
   document.getElementById('tp-fold').textContent = '展开详细数据 ⌄';
   document.getElementById('tp-loc').textContent =
@@ -645,11 +654,14 @@ function loadTelemetry(url, meta) {
   if (!url) return;
   const m = url.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
   if (m) telT0 = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
+  // 顶部时间: 优先 event.json 的 timestamp, 否则退回片段文件名里的时间
+  const ts = String(TEL_META.timestamp || '').replace('T', ' ').replace(/\.\d+/, '').replace(/Z$/, '').slice(0, 19);
+  document.getElementById('tp-date').textContent = ts || (telT0 ? fmtTelDate(telT0) : '—');
   const fp = url.replace('/media/', '/archive/');
   fetch('/api/telemetry?path=' + encodeURIComponent(fp))
     .then(r => r.json())
     .then(d => {
-      if (!d.ok || !d.frames || !d.frames.length) return;
+      if (!d.ok || !d.frames || !d.frames.length) { showPlainPanel(); return; }
       TEL = d;
       p.classList.add('show');
       renderHud(d.frames[0]);
@@ -661,7 +673,18 @@ function loadTelemetry(url, meta) {
       document.getElementById('ic-rows').insertAdjacentHTML('beforeend',
         '<div><span class="ick">刹车占比</span>' + d.brake_ratio + '%</div>' +
         '<div><span class="ick">遥测</span>SEI 元数据 · ' + d.count + ' 帧 @ ' + d.fps + 'fps</div>');
-    }).catch(() => {});
+    }).catch(() => showPlainPanel());
+}
+/* 哨兵/停车片段没有 SEI 遥测: 顶部仍然显示 时间 + 城市·位置, 只是不带车速/挡位 */
+function showPlainPanel() {
+  const p = document.getElementById('tpanel'), card = document.getElementById('infocard');
+  p.classList.add('show', 'plain');
+  if (card) card.classList.add('plain');
+  ['time', 'city', 'street'].forEach(k => {
+    const el = document.querySelector('#ic-rows > div[data-k="' + k + '"]');
+    if (el) el.remove();
+  });
+  layoutPlayer();
 }
 function fmtTelDate(dt) {
   const z = n => (n < 10 ? '0' : '') + n;
