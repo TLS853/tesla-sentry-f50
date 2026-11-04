@@ -248,7 +248,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
   <div id="expchks"></div>
   <label class="expitem" id="expwm-row" style="border-top:1px solid #2a333e;margin-top:6px;align-items:flex-start">
     <input type="checkbox" id="expwm" style="margin-top:2px">
-    <span style="line-height:1.45">叠加行车信息水印<small style="display:block;color:#7d8894;font-size:11px;margin-top:2px">时间/位置/车速/挡位/油门/刹车, 烧录到画面顶部</small></span>
+    <span style="line-height:1.45">叠加行车信息水印<small style="display:block;color:#7d8894;font-size:11px;margin-top:2px">半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面</small></span>
   </label>
   <div class="expr">
     <button class="mini" onclick="expChk(true)">全选</button>
@@ -719,67 +719,70 @@ function rrPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 function wmPill(ctx, xRight, yMid, text, bg, fg, s) {
-  const fs = Math.round(15 * s);
+  const fs = Math.round(12 * s);
   ctx.font = '700 ' + fs + 'px system-ui,"Segoe UI",sans-serif';
-  const pw = ctx.measureText(text).width + Math.round(24 * s), ph = Math.round(27 * s);
+  const pw = ctx.measureText(text).width + Math.round(18 * s), ph = Math.round(24 * s);
   const x = xRight - pw;
   ctx.fillStyle = bg;
   rrPath(ctx, x, yMid - ph / 2, pw, ph, ph / 2); ctx.fill();
   ctx.fillStyle = fg;
-  ctx.fillText(text, x + Math.round(12 * s), yMid + Math.round(fs * 0.36));
+  ctx.fillText(text, x + Math.round(9 * s), yMid + Math.round(fs * 0.36));
   return x;
 }
 function drawWm(ctx, t, W) {
   if (!TEL || !TEL.frames || !TEL.frames.length) return;
   const f = telFrameAt(t);
-  const s = W / 1280, pad = Math.round(16 * s);
-  const h = Math.round(100 * s), yc1 = Math.round(34 * s), yMid2 = h - Math.round(30 * s);
+  const s = W / 1280, pad = Math.round(14 * s);
+  const h = Math.round(46 * s), yc = h / 2;   // 单行窄条: 1280 宽时约 46px, 仅占画面高度 ~5%
   ctx.save();
-  ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-  // 面板底
-  ctx.fillStyle = 'rgba(16,22,30,.92)';
+  ctx.textBaseline = 'middle';
+  // 半透明底: 路况仍隐约可见, 不再整块盖住画面顶部
+  ctx.fillStyle = 'rgba(13,18,26,.62)';
   ctx.fillRect(0, 0, W, h);
-  ctx.fillStyle = 'rgba(255,255,255,.08)';
-  ctx.fillRect(0, h, W, Math.max(1, Math.round(1 * s)));
-  // 行1: 日期时间 + 城市/位置
-  ctx.font = '600 ' + Math.round(19 * s) + 'px system-ui,"Segoe UI",sans-serif';
+  // 左: 日期时间 + 城市/位置
+  ctx.textAlign = 'left';
+  ctx.font = '600 ' + Math.round(14 * s) + 'px system-ui,"Segoe UI",sans-serif';
   ctx.fillStyle = '#fff';
   const dateStr = telT0 ? fmtTelDate(new Date(telT0.getTime() + f[0] * 1000)) : '';
-  ctx.fillText(dateStr, pad, yc1 + Math.round(7 * s));
+  ctx.fillText(dateStr, pad, yc + Math.round(1 * s));
   const dw = ctx.measureText(dateStr).width;
   const loc = [(TEL_META || {}).city, (TEL_META || {}).street].filter(Boolean).join(' · ');
   if (loc) {
-    ctx.fillStyle = '#93a0ac';
-    ctx.fillText(loc, pad + dw + Math.round(12 * s), yc1 + Math.round(7 * s));
+    ctx.font = '500 ' + Math.round(13 * s) + 'px system-ui,"Segoe UI",sans-serif';
+    ctx.fillStyle = '#a7b3bf';
+    ctx.fillText(loc, pad + dw + Math.round(10 * s), yc + Math.round(1 * s));
   }
-  // 行1 右: 转向灯三角 + 绿色挡位圆徽
-  const gr = Math.round(16 * s), gx = W - pad - gr;
-  const triS = Math.round(13 * s);
-  ctx.fillStyle = f[6] === 1 ? '#f59e0b' : '#39434f';
-  ctx.beginPath(); ctx.moveTo(gx - gr - Math.round(46*s), yc1 - triS*0.62); ctx.lineTo(gx - gr - Math.round(46*s), yc1 + triS*0.62); ctx.lineTo(gx - gr - Math.round(46*s) - triS, yc1); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = f[6] === 2 ? '#f59e0b' : '#39434f';
-  ctx.beginPath(); ctx.moveTo(gx - gr - Math.round(22*s), yc1 - triS*0.62); ctx.lineTo(gx - gr - Math.round(22*s), yc1 + triS*0.62); ctx.lineTo(gx - gr - Math.round(22*s) + triS, yc1); ctx.closePath(); ctx.fill();
+  // 右侧自右向左: 油门 / 刹车 / 挡位 / 转向灯 / 车速
+  let xr = W - pad;
+  xr = wmPill(ctx, xr, yc, f[3] + '%', '#1f7ae0', '#fff', s) - Math.round(8 * s);
+  xr = wmPill(ctx, xr, yc, '刹车 ' + (f[5] ? '100%' : '0%'),
+    f[5] ? '#ff453a' : '#333c46', f[5] ? '#fff' : '#98a3ae', s) - Math.round(12 * s);
+  // 挡位圆徽
+  const gr = Math.round(13 * s);
   ctx.fillStyle = '#34c759';
-  ctx.beginPath(); ctx.arc(gx, yc1, gr, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(xr - gr, yc, gr, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
-  ctx.font = '800 ' + Math.round(19 * s) + 'px system-ui,"Segoe UI",sans-serif';
-  ctx.fillText(f[1], gx, yc1 + Math.round(7 * s));
-  ctx.textAlign = 'left';
-  // 行2 左: 大字车速
-  ctx.font = '800 ' + Math.round(40 * s) + 'px system-ui,"Segoe UI",sans-serif';
+  ctx.font = '800 ' + Math.round(14 * s) + 'px system-ui,"Segoe UI",sans-serif';
+  ctx.fillText(f[1], xr - gr, yc + Math.round(1 * s));
+  xr -= gr * 2 + Math.round(10 * s);
+  // 转向灯三角 (右/左)
+  const triS = Math.round(9 * s);
+  ctx.fillStyle = f[6] === 2 ? '#f59e0b' : '#4a545f';
+  ctx.beginPath(); ctx.moveTo(xr - triS, yc - triS * 0.62); ctx.lineTo(xr - triS, yc + triS * 0.62); ctx.lineTo(xr, yc); ctx.closePath(); ctx.fill();
+  xr -= triS + Math.round(7 * s);
+  ctx.fillStyle = f[6] === 1 ? '#f59e0b' : '#4a545f';
+  ctx.beginPath(); ctx.moveTo(xr, yc - triS * 0.62); ctx.lineTo(xr, yc + triS * 0.62); ctx.lineTo(xr - triS, yc); ctx.closePath(); ctx.fill();
+  xr -= triS + Math.round(12 * s);
+  // 车速 (先画右侧单位, 再画数字, 保证 "数字 km/h" 顺序)
+  ctx.textAlign = 'right';
+  ctx.font = '500 ' + Math.round(11 * s) + 'px system-ui,"Segoe UI",sans-serif';
+  ctx.fillStyle = '#9aa4af';
+  ctx.fillText('km/h', xr, yc + Math.round(1 * s));
+  xr -= ctx.measureText('km/h').width + Math.round(6 * s);
+  ctx.font = '800 ' + Math.round(22 * s) + 'px system-ui,"Segoe UI",sans-serif';
   ctx.fillStyle = '#fff';
   const sp = String(Math.round(f[2]));
-  ctx.fillText(sp, pad, yMid2 + Math.round(12 * s));
-  const sw = ctx.measureText(sp).width;
-  ctx.font = '600 ' + Math.round(15 * s) + 'px system-ui,"Segoe UI",sans-serif';
-  ctx.fillStyle = '#9aa4af';
-  ctx.fillText('km/h', pad + sw + Math.round(8 * s), yMid2 + Math.round(13 * s));
-  // 行2 右: 油门/刹车 胶囊
-  let xr = W - pad;
-  xr = wmPill(ctx, xr, yMid2, f[3] + '%', '#1f7ae0', '#fff', s);
-  xr -= Math.round(10 * s);
-  wmPill(ctx, xr, yMid2, '刹车 ' + (f[5] ? '100%' : '0%'),
-    f[5] ? '#ff453a' : '#2a323d', f[5] ? '#fff' : '#8d99a5', s);
+  ctx.fillText(sp, xr, yc + Math.round(1 * s));
   ctx.restore();
 }
 function updateHud(t) {
