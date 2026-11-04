@@ -240,7 +240,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
         <div class="tp-mid">
           <span class="tp-spd" id="tp-spd">0</span><span class="tp-unit">km/h</span>
           <span class="tp-badges">
-            <span class="tp-badge brk" id="tp-brk" title="刹车"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="2.5"/><path d="M17.4 6.6l2.7-2.7"/></svg><b id="tp-brk-n">0%</b></span>
+            <span class="tp-badge brk" id="tp-brk" title="刹车 (数据源只有踩下/未踩, 无踏板开度)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="2.5"/><path d="M17.4 6.6l2.7-2.7"/></svg><b>刹车</b></span>
             <span class="tp-badge thr" id="tp-thr" title="油门"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M9.4 3.6h5.2a1.7 1.7 0 0 1 1.68 1.93l-1.35 12.3a1.8 1.8 0 0 1-1.79 1.6h-2.28a1.8 1.8 0 0 1-1.79-1.6L7.72 5.53A1.7 1.7 0 0 1 9.4 3.6z"/><path d="M8.6 15.1h6.8"/></svg><b id="tp-thr-n">0%</b></span>
             <span class="tp-c st" id="tp-st" title="方向盘角度"><svg viewBox="0 0 24 24" fill="none" stroke="#cfd6dd" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M3.2 10.5h6M14.8 10.5h6M12 14.6V21"/></svg></span>
             <span class="tp-c ap" id="tp-ap" style="display:none">AP</span>
@@ -776,8 +776,7 @@ function renderHud(f) {
   q('tp-spd').textContent = Math.round(f[2]);
   q('tp-date').textContent = telT0 ? fmtTelDate(new Date(telT0.getTime() + f[0]*1000)) : '—';
   q('tp-thr-n').textContent = f[3] + '%';
-  q('tp-brk-n').textContent = (f[5] ? 100 : 0) + '%';
-  q('tp-brk').classList.toggle('on', !!f[5]);
+  q('tp-brk').classList.toggle('on', !!f[5]);   // 刹车只有布尔量, 不给百分比
   q('tp-bl').classList.toggle('on', f[6] === 1);
   q('tp-br').classList.toggle('on', f[6] === 2);
   const apNames = { 1: 'FSD', 2: 'AP', 3: 'TACC' };
@@ -864,7 +863,7 @@ function drawWm(ctx, t, W) {
   // 右侧自右向左: 油门 / 刹车 / 挡位 / 转向灯 / 车速
   let xr = W - pad;
   xr = wmPill(ctx, xr, yc, f[3] + '%', '#1f7ae0', '#fff', s) - Math.round(8 * s);
-  xr = wmPill(ctx, xr, yc, '刹车 ' + (f[5] ? '100%' : '0%'),
+  xr = wmPill(ctx, xr, yc, '刹车',
     f[5] ? '#ff453a' : 'rgba(32,40,50,.5)', f[5] ? '#fff' : '#eef3f8', s) - Math.round(12 * s);
   // 挡位圆徽
   ctx.shadowBlur = 0;
