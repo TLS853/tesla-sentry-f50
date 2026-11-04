@@ -45,9 +45,12 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .tab { padding:6px 13px; border-radius:18px; background:#232b35; color:#9aa4af; cursor:pointer; font-size:12.5px; border:1px solid #ffffff08; white-space:nowrap; flex:0 0 auto; transition:background .15s,color .15s; }
 .tab:hover { color:#e8eaed; }
 .tab.active { background:#e8443f; color:#fff; box-shadow:0 2px 10px #e8443f55; }
-.filters { display:none; gap:6px; overflow-x:auto; padding:10px 16px 0; scrollbar-width:none; }
+.filters { display:none; gap:6px; overflow-x:auto; padding:10px 16px 0; scrollbar-width:none; align-items:center; }
 .filters.show { display:flex; }
+.filters + .filters { padding-top:8px; }
 .filters::-webkit-scrollbar { display:none; }
+.flab { font-size:11.5px; color:#6f7a85; flex:0 0 auto; letter-spacing:.5px; }
+.chip.d.on { background:#b4761c; border-color:#b4761c; }
 .chip { padding:5px 12px; border-radius:14px; background:#1e252e; color:#98a3ae; border:1px solid #2a333d;
   font-size:12px; cursor:pointer; white-space:nowrap; flex:0 0 auto; transition:background .15s,color .15s; }
 .chip:hover { color:#e8eaed; border-color:#3a4653; }
@@ -55,11 +58,13 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .chip .n { opacity:.62; margin-left:4px; font-variant-numeric:tabular-nums; }
 @media (max-width:640px){
   header .sub { display:none; } .tabs { order:10; width:100%; margin-left:0; } #gear { order:5; margin-left:0; }
+  .filters { padding-left:12px; padding-right:12px; }
   /* 播放器手机端紧凑化: 面板/卡片占高更小, 视频尽量多露 */
   .pscroll { padding:2px 8px 10px; gap:8px; }
   .tpanel { padding:10px 12px 8px; }
   .tp-spd { font-size:26px; }
   .tp-date { font-size:12px; } .tp-loc { font-size:11.5px; }
+  .tp-tag { height:20px; font-size:11px; padding:0 8px; }
   .tp-gear { width:22px; height:22px; font-size:12px; }
   .tp-c { width:28px; height:28px; } .tp-c.st svg { width:16px; height:16px; }
   .tp-badge { height:25px; font-size:11px; padding:0 8px 0 6px; } .tp-badge svg { width:13px; height:13px; }
@@ -105,6 +110,12 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .tp-l { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
 .tp-date { font-size:13.5px; color:#cfd6dd; font-variant-numeric:tabular-nums; }
 .tp-loc { font-size:12.5px; color:#8d99a5; }
+/* 哨兵/纪念事件: 触发画面摄像头 (来自 event.json 的 camera 字段) */
+.tp-tag { display:none; align-items:center; gap:4px; height:22px; padding:0 9px; border-radius:11px;
+  background:rgba(245,158,11,.14); color:#eab063; font-size:11.5px; font-weight:600;
+  border:1px solid rgba(245,158,11,.22); white-space:nowrap; align-self:center; }
+.tp-tag.show { display:inline-flex; }
+.tp-tag b { color:#f7c67e; font-weight:800; font-variant-numeric:tabular-nums; }
 .tp-tr { display:flex; align-items:center; gap:9px; }
 .tp-sig { font-size:16px; color:#3a4450; line-height:1; }
 .tp-sig.on { color:#f59e0b; }
@@ -204,6 +215,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 <span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#7d8894;background:#1a2027;border:1px solid #232b34;border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
 <nav class="tabs" id="tabs"></nav><button id="gear" title="皮肤与锁车音">⚙</button></header>
 <nav class="filters" id="filters"></nav>
+<nav class="filters" id="dfilters"></nav>
 <div class="grid-wrap" id="grid"></div>
 <div class="empty" id="empty" style="display:none"><div class="big">📹</div>
 <div>暂无归档视频<br><small style="font-size:12px">车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)</small></div></div>
@@ -216,7 +228,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
   <div class="pscroll">
     <div class="tpanel" id="tpanel">
         <div class="tp-top">
-          <span class="tp-l"><span class="tp-date" id="tp-date">—</span><span class="tp-loc" id="tp-loc"></span></span>
+          <span class="tp-l"><span class="tp-date" id="tp-date">—</span><span class="tp-loc" id="tp-loc"></span><span class="tp-tag" id="tp-tag"></span></span>
           <span class="tp-tr"><span class="tp-sig" id="tp-bl">⬅</span><span class="tp-sig" id="tp-br">➡</span><span class="tp-gear" id="tp-gear">D</span></span>
         </div>
         <div class="tp-mid">
@@ -319,7 +331,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 </div>
 
 <script>
-let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '', reasonFilter = 'all';
+let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '', reasonFilter = 'all', dateFilter = 'all';
 let curClips = [], curClipIx = 0, TEL = null;
 const CATS_NAME = __CAT_NAMES__;
 /* event.json 里的 reason → 中文名 */
@@ -418,6 +430,9 @@ async function load() {
 /* 支持 ?ev=SentryClips/2026-11-04_12-30-00 直接打开某个事件 */
 function openDeepLink() {
   const q = new URLSearchParams(location.search);
+  /* ?date=2026-11-03 只看某一天 */
+  const qd = q.get('date');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(qd || '')) { dateFilter = qd; render(currentCat); }
   /* ?cat=SavedClips 直接切到某个分类 */
   const qc = q.get('cat');
   if (qc && Object.keys(data).includes(qc)) {
@@ -489,24 +504,53 @@ setInterval(refreshLive, 10000);
 function reasonOf(ev) {
   return (ev.meta && ev.meta.reason) || 'unknown';
 }
-/* 按触发原因生成筛选按钮 (只在当前分类有 2 种以上原因时出现) */
+/* 事件目录名以 YYYY-MM-DD_HH-MM-SS 开头, 取前 10 位作为日期 */
+function dateOf(ev) {
+  const m = String(ev.name || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[1] + '-' + m[2] + '-' + m[3] : '';
+}
+/* 两行筛选: 触发原因 / 日期, 互为主次 (计数按对方的筛选结果算) */
 function renderFilters(cat) {
-  const box = document.getElementById('filters');
   const evs = data[cat] || [];
-  const cnt = {};
-  evs.forEach(ev => { const r = reasonOf(ev); cnt[r] = (cnt[r] || 0) + 1; });
-  const keys = Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]);
-  if (reasonFilter !== 'all' && !cnt[reasonFilter]) reasonFilter = 'all';
-  if (keys.length < 2) { box.className = 'filters'; box.innerHTML = ''; return; }
-  box.className = 'filters show';
-  const items = [['all', '全部', evs.length]].concat(keys.map(k => [k, REASON_LABEL[k] || '未标注原因', cnt[k]]));
-  box.innerHTML = items.map(([k, label, n]) =>
-    `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${label}<span class="n">${n}</span></button>`
+  const rbox = document.getElementById('filters'), dbox = document.getElementById('dfilters');
+  const byDate = dateFilter === 'all' ? evs : evs.filter(ev => dateOf(ev) === dateFilter);
+  const byReason = reasonFilter === 'all' ? evs : evs.filter(ev => reasonOf(ev) === reasonFilter);
+
+  // 选中的筛选条件在新分类里可能不存在, 自动回落避免"空列表卡死"
+  if (reasonFilter !== 'all' && !evs.some(ev => reasonOf(ev) === reasonFilter)) reasonFilter = 'all';
+  if (dateFilter !== 'all' && !evs.some(ev => dateOf(ev) === dateFilter)) dateFilter = 'all';
+
+  const rcnt = {};
+  byDate.forEach(ev => { const r = reasonOf(ev); rcnt[r] = (rcnt[r] || 0) + 1; });
+  const rkeys = Object.keys(rcnt).sort((a, b) => rcnt[b] - rcnt[a]);
+  if (rkeys.length < 2) { rbox.className = 'filters'; rbox.innerHTML = ''; }
+  else {
+    rbox.className = 'filters show';
+    const items = [['all', '全部', byDate.length]].concat(
+      rkeys.map(k => [k, REASON_LABEL[k] || '未标注原因', rcnt[k]]));
+    rbox.innerHTML = '<span class="flab">原因</span>' + items.map(([k, label, n]) =>
+      `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${label}<span class="n">${n}</span></button>`
+    ).join('');
+  }
+
+  const dcnt = {};
+  byReason.forEach(ev => { const d = dateOf(ev); if (d) dcnt[d] = (dcnt[d] || 0) + 1; });
+  const alldays = [...new Set(evs.map(dateOf).filter(Boolean))].sort().reverse();
+  const days = alldays.filter(d => dcnt[d] > 0 || d === dateFilter);
+  if (days.length < 2 && dateFilter === 'all') { dbox.className = 'filters'; dbox.innerHTML = ''; return; }
+  dbox.className = 'filters show';
+  const items = [['all', '全部日期', byReason.length]].concat(
+    days.map(d => [d, d.slice(5).replace('-', '/'), dcnt[d] || 0]));
+  dbox.innerHTML = '<span class="flab">日期</span>' + items.map(([k, label, n]) =>
+    `<button class="chip d${k === dateFilter ? ' on' : ''}" onclick="setDate('${k}')">${label}<span class="n">${n}</span></button>`
   ).join('');
 }
 function setReason(k) {
   reasonFilter = k;
-  renderFilters(currentCat);
+  render(currentCat);
+}
+function setDate(k) {
+  dateFilter = k;
   render(currentCat);
 }
 function render(cat) {
@@ -515,10 +559,11 @@ function render(cat) {
   renderFilters(cat);
   let evs = data[cat] || [];
   if (reasonFilter !== 'all') evs = evs.filter(ev => reasonOf(ev) === reasonFilter);
+  if (dateFilter !== 'all') evs = evs.filter(ev => dateOf(ev) === dateFilter);
   e.style.display = evs.length ? 'none' : 'block';
   if (!evs.length) {
-    e.innerHTML = reasonFilter !== 'all'
-      ? '<div class="big">🔍</div><div>该筛选下暂无事件<br><small style="font-size:12px">点「全部」查看本分类所有事件</small></div>'
+    e.innerHTML = (reasonFilter !== 'all' || dateFilter !== 'all')
+      ? '<div class="big">🔍</div><div>该筛选下暂无事件<br><small style="font-size:12px">换个日期或点「全部」查看本分类所有事件</small></div>'
       : EMPTY_HTML;
   }
   for (const ev of evs) {
@@ -616,7 +661,7 @@ function renderClip() {
   if (md.street) rh += '<div data-k="street"><span class="ick">位置</span>' + md.street + '</div>';
   if (md.est_lat && md.est_lon) rh += '<div data-k="coord"><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
   if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASON_LABEL[md.reason] || md.reason) + '</div>';
-  if (md.camera) rh += '<div><span class="ick">触发画面</span>摄像头 #' + md.camera + '</div>';
+  if (md.camera) rh += '<div data-k="camera"><span class="ick">触发画面</span>摄像头 #' + md.camera + '</div>';
   if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + md.campaign_id + '</div>';
   rh += '<div><span class="ick">画面</span>' + clip.vids.length + ' 路</div>';
   if (curClips.length > 1) rh += '<div><span class="ick">片段</span>共 ' + curClips.length + ' 段, 当前第 ' + (curClipIx + 1) + ' 段</div>';
@@ -650,6 +695,15 @@ function loadTelemetry(url, meta) {
   document.getElementById('tp-fold').textContent = '展开详细数据 ⌄';
   document.getElementById('tp-loc').textContent =
     [TEL_META.city, TEL_META.street].filter(Boolean).join(' · ');
+  // 触发画面摄像头: 有 event.json 的 camera 字段才显示 (哨兵事件基本都有)
+  const camTag = document.getElementById('tp-tag');
+  if (TEL_META.camera) {
+    camTag.innerHTML = '触发画面 <b>摄像头 #' + TEL_META.camera + '</b>';
+    camTag.classList.add('show');
+  } else {
+    camTag.classList.remove('show');
+    camTag.innerHTML = '';
+  }
   telT0 = null;
   if (!url) return;
   const m = url.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
@@ -666,7 +720,7 @@ function loadTelemetry(url, meta) {
       p.classList.add('show');
       renderHud(d.frames[0]);
       // 事件信息已搬到上方遥测面板, 下方卡片去掉重复项
-      ['time', 'city', 'street', 'coord'].forEach(k => {
+      ['time', 'city', 'street', 'coord', 'camera'].forEach(k => {
         const el = document.querySelector('#ic-rows > div[data-k="' + k + '"]');
         if (el) el.remove();
       });
@@ -680,7 +734,7 @@ function showPlainPanel() {
   const p = document.getElementById('tpanel'), card = document.getElementById('infocard');
   p.classList.add('show', 'plain');
   if (card) card.classList.add('plain');
-  ['time', 'city', 'street'].forEach(k => {
+  ['time', 'city', 'street', 'camera'].forEach(k => {
     const el = document.querySelector('#ic-rows > div[data-k="' + k + '"]');
     if (el) el.remove();
   });
