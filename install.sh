@@ -64,10 +64,11 @@ say "存储空闲: ${FREE_MB}MB, 计划镜像 ${SIZE_GB}G (稀疏文件, 按实�
 say "安装到 $TSF_DIR ..."
 mkdir -p "$TSF_DIR"
 cp "$SRC_DIR/sentry-viewer.py"      "$TSF_DIR/sentry-viewer.py"
+cp "$SRC_DIR/tesla-live-sync.py"    "$TSF_DIR/tesla-live-sync.py"
 cp "$SRC_DIR/scripts/tesla-gadget.sh" "$TSF_DIR/tesla-gadget.sh"
 cp "$SRC_DIR/scripts/tesla-sync.sh"   "$TSF_DIR/tesla-sync.sh"
 cp "$SRC_DIR/scripts/usb-selfheal.sh" "$TSF_DIR/usb-selfheal.sh"
-chmod +x "$TSF_DIR"/*.sh "$TSF_DIR/sentry-viewer.py"
+chmod +x "$TSF_DIR"/*.sh "$TSF_DIR"/*.py
 
 mkdir -p "$ARCHIVE"/SentryClips "$ARCHIVE"/SavedClips "$ARCHIVE"/RecentClips \
          "$ARCHIVE"/.skins "$ARCHIVE"/boombox-queue "$ARCHIVE"/boombox-done "$ARCHIVE"/files
@@ -133,6 +134,25 @@ EOF
     /etc/init.d/tesla-gadget enable
     /etc/init.d/sentry-viewer enable
 
+    # 车机在线只读同步 (不挂载镜像, 车机无感, 新片段秒级进网页)
+    cat > /etc/init.d/tesla-live <<EOF
+#!/bin/sh /etc/rc.common
+START=99
+USE_PROCD=1
+start_service() {
+    [ -f $CONF ] && . $CONF
+    export TSF_DIR TSF_IMG TSF_ARCHIVE TSF_MNT TSF_LIVE_INTERVAL
+    procd_open_instance
+    procd_set_param command $PYTHON "\$TSF_DIR/tesla-live-sync.py"
+    procd_set_param respawn 3600 5 0
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+}
+EOF
+    chmod +x /etc/init.d/tesla-live
+    /etc/init.d/tesla-live enable
+
     # 归档定时任务 + U盘自愈(主机 eject 后自动重新导出)
     mkdir -p /etc/crontabs
     touch /etc/crontabs/root
@@ -170,13 +190,26 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+    cat > /etc/systemd/system/tesla-live.service <<EOF
+[Unit]
+Description=Tesla Sentry live read-only sync (no mount)
+After=tesla-gadget.service
+[Service]
+Type=simple
+EnvironmentFile=-$CONF
+ExecStart=$PYTHON $TSF_DIR/tesla-live-sync.py
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
     mkdir -p /etc/cron.d
     cat > /etc/cron.d/tesla-sentry <<EOF
 */10 * * * * root /bin/sh $TSF_DIR/tesla-sync.sh >/dev/null 2>&1
 */2 * * * * root /bin/sh $TSF_DIR/usb-selfheal.sh >/dev/null 2>&1
 EOF
     systemctl daemon-reload
-    systemctl enable tesla-gadget.service sentry-viewer.service >/dev/null 2>&1
+    systemctl enable tesla-gadget.service sentry-viewer.service tesla-live.service >/dev/null 2>&1
 else
     die "未识别的 init 系统 (既没有 /etc/rc.common 也没有 systemd)"
 fi
@@ -190,6 +223,13 @@ if [ -f /etc/rc.common ]; then
     /etc/init.d/sentry-viewer restart >/dev/null 2>&1 || true
 else
     systemctl restart sentry-viewer.service || true
+fi
+
+say "启动实时同步 (车机无感读取) ..."
+if [ -f /etc/rc.common ]; then
+    /etc/init.d/tesla-live restart >/dev/null 2>&1 || true
+else
+    systemctl restart tesla-live.service || true
 fi
 sleep 2
 

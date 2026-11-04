@@ -146,6 +146,7 @@ header .sub { font-size:12px; color:#9aa4af; }
 @media (max-width:600px){ .player .vgrid { grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr 1fr; } }
 </style></head><body>
 <header><h1>🚗 特斯拉哨兵查看器</h1><span class="sub" id="stat"></span>
+<span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#7d8894;background:#1a2027;border:1px solid #232b34;border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
 <nav class="tabs" id="tabs"></nav><button id="gear" title="皮肤与锁车音">⚙</button></header>
 <div class="grid-wrap" id="grid"></div>
 <div class="empty" id="empty" style="display:none"><div class="big">📹</div>
@@ -208,7 +209,7 @@ header .sub { font-size:12px; color:#9aa4af; }
 <div class="toast" id="toast"></div>
 
 <script>
-let data = {}, cur = null, syncTimer = null;
+let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '';
 const CATS_NAME = __CAT_NAMES__;
 
 async function load() {
@@ -219,12 +220,50 @@ async function load() {
     const b = document.createElement('button');
     b.className = 'tab' + (c === 'SentryClips' ? ' active' : '');
     b.textContent = `${CATS_NAME[c] || c} (${data[c].length})`;
-    b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); render(c); };
+    b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; render(c); };
     tabs.appendChild(b);
   }
   document.getElementById('stat').textContent = `归档 ${Object.values(data).reduce((a, v) => a + v.length, 0)} 个事件`;
-  render('SentryClips');
+  lastSig = sigOf(data);
+  render(currentCat);
 }
+
+function sigOf(d) {
+  return Object.keys(d).map(c => c + ':' + d[c].map(e => e.name + '/' + e.videos.length).join(',')).join('|');
+}
+
+/* 实时同步状态 + 新片段自动出现 */
+async function refreshLive() {
+  let live = null;
+  try { live = await (await fetch('/api/live')).json(); } catch (e) { return; }
+  const dot = document.getElementById('livedot'), txt = document.getElementById('livetxt');
+  if (live.running) {
+    dot.style.background = '#4cc38a';
+    if (live.pending > 0) txt.textContent = `实时同步 · ${live.pending} 个待确认`;
+    else if (live.ago !== null && live.ago !== undefined) txt.textContent = `实时同步 · ${live.ago}s 前`;
+    else txt.textContent = '实时同步中';
+  } else {
+    dot.style.background = '#e8443f';
+    txt.textContent = '同步服务未运行';
+  }
+  // 事件有变化时无缝重绘 (不打断播放器)
+  try {
+    const d = await (await fetch('/api/events')).json();
+    const s = sigOf(d);
+    if (s !== lastSig) {
+      lastSig = s; data = d;
+      const tabs = document.getElementById('tabs');
+      [...tabs.children].forEach((b, i) => {
+        const c = Object.keys(d)[i];
+        if (c) b.textContent = `${CATS_NAME[c] || c} (${d[c].length})`;
+      });
+      document.getElementById('stat').textContent = `归档 ${Object.values(d).reduce((a, v) => a + v.length, 0)} 个事件`;
+      if (!document.getElementById('player').classList.contains('open')) render(currentCat);
+    }
+  } catch (e) {}
+}
+refreshLive();
+setInterval(refreshLive, 10000);
 
 function render(cat) {
   const g = document.getElementById('grid'), e = document.getElementById('empty');
@@ -702,6 +741,54 @@ def serve_file(self, fp):
             remain -= len(chunk)
 
 
+LIVE_SCRIPT = "tesla-live-sync.py"
+LIVE_LOG = cfg("TSF_LIVE_LOG", os.path.join(BASE_DIR, "tesla-live.log"))
+LIVE_STATE = cfg("TSF_LIVE_STATE", os.path.join(BASE_DIR, ".tesla-live-state.json"))
+
+
+def _proc_running(needle):
+    try:
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                with open("/proc/%s/cmdline" % pid, "rb") as f:
+                    if needle.encode() in f.read():
+                        return True
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return False
+
+
+def live_status():
+    """车机在线只读同步的健康状态 (给页面显示心跳)"""
+    running = _proc_running(LIVE_SCRIPT)
+    pending = 0
+    try:
+        with open(LIVE_STATE) as f:
+            pending = len(json.load(f).get("__pending__", {}))
+    except Exception:
+        pass
+    ago, last = None, ""
+    try:
+        st = os.stat(LIVE_LOG)
+        ago = int(time.time() - st.st_mtime)
+        with open(LIVE_LOG, "rb") as f:
+            f.seek(max(0, st.st_size - 2048))
+            lines = [l for l in f.read().decode("utf-8", "replace").splitlines() if l.strip()]
+        for line in reversed(lines):
+            if "已同步" in line:
+                last = line.split("] ", 1)[-1]
+                break
+        if not last and lines:
+            last = lines[-1].split("] ", 1)[-1]
+    except Exception:
+        pass
+    return {"running": running, "pending": pending, "ago": ago, "last": last}
+
+
 def active_skin():
     ap = os.path.join(SKIN_DIR, "active.json")
     try:
@@ -763,6 +850,8 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, html.encode())
         elif path == "/api/events":
             self._json(list_events())
+        elif path == "/api/live":
+            self._json(live_status())
         elif path == "/api/skins":
             skins = sorted(f for f in os.listdir(SKIN_DIR)
                            if f != "active.json" and os.path.isfile(os.path.join(SKIN_DIR, f)))
