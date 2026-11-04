@@ -346,10 +346,10 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '', reasonFilter = 'all', dateFilter = 'all';
 let curClips = [], curClipIx = 0, TEL = null;
 /* ---------- 清晰度选择 ----------
-   内网(100.96.x/192.168.x)默认原画; 走公网/穿透访问时默认 480p 省 5G 上行带宽 */
+   内网(100.96.x/192.168.x)默认原画; 走公网/穿透访问时默认 360p 省 5G 上行带宽 */
 const Q_LIST = [['orig', '原画'], ['720p', '720p'], ['480p', '480p'], ['360p', '360p']];
 const isLanNet = /^(100\.96\.|192\.168\.|10\.|127\.)/.test(location.hostname);
-let curQ = localStorage.getItem('tsfq') || (isLanNet ? 'orig' : '480p');
+let curQ = localStorage.getItem('tsfq') || (isLanNet ? 'orig' : '360p');
 if (!Q_LIST.some(x => x[0] === curQ)) curQ = 'orig';
 function qUrl(u) { return curQ === 'orig' ? u : u + '?q=' + curQ; }
 function renderQSel() {
