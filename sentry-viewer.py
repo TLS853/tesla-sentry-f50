@@ -1699,6 +1699,7 @@ THUMB_SEM = threading.BoundedSemaphore(2)
 THUMB_W = 400
 # ---------- 在线清晰度: 按需转码 + eMMC 缓存 (设备端单任务串行, 防止重转码打崩内核) ----------
 # 源 1280x960 (4:3); 用固定目标码率: 公网 5G 上行只有 ~120KB/s, CRF 模式码率不可控会传不完
+# 8 核 T760 实测: -threads 8 + superfast 比 2 线程快一倍 (20s->10s/分钟片段), 内存峰值充足 (720p 后仍余 ~980MB)
 RES_SCALE = {"360p": (480, 360, 500), "480p": (640, 480, 800), "720p": (960, 720, 1500)}  # 宽,高,kbps
 RES_DIR = os.environ.get("TSF_CACHE", "/opt/mu300") + "/res-cache"
 try:
@@ -1767,7 +1768,7 @@ def get_variant(fp, qv):
         cmd = ["sh", "-c",
                'echo 300 > /proc/self/oom_score_adj 2>/dev/null; exec "$0" "$@"',
                FFMPEG_BIN, "-nostdin", "-hide_banner", "-loglevel", "error",
-               "-threads", "2", "-i", fp,
+               "-threads", "8", "-i", fp,
                "-vf", "scale=%d:%d" % (w, h),
                "-c:v", "libx264", "-preset", "superfast",
                "-b:v", "%dk" % kbps, "-maxrate", "%dk" % (kbps * 3 // 2),
