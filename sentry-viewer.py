@@ -176,6 +176,10 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .pbar input[type=range] { flex:1; accent-color:#3b82f6; min-width:80px; }
 .pbar .t { font-size:13.5px; color:#c6cdd4; min-width:44px; text-align:center; }
 .spd { background:#3b82f6; color:#fff; border:none; border-radius:10px; padding:9px 15px; font-size:14px; font-weight:600; cursor:pointer; flex:0 0 auto; }
+.qsel { display:flex; gap:6px; flex:0 0 auto; }
+.qsel button { background:#2a323d; color:#9aa4af; border:1px solid #3a4450; border-radius:10px; padding:8px 11px; font-size:13px; font-weight:600; cursor:pointer; }
+.qsel button.on { background:#10b981; border-color:#10b981; color:#fff; }
+.qhint { font-size:12px; color:#f59e0b; flex:0 0 100%; text-align:left; display:none; }
 .empty { text-align:center; padding:80px 20px; color:#5c6873; }
 .empty .big { font-size:44px; margin-bottom:14px; }
 /* 设置面板 */
@@ -266,6 +270,8 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
     <input type="range" id="seek" min="0" max="1000" value="0">
     <span class="t" id="ptime">00:00</span>
     <button class="spd" id="spdbtn" onclick="cycleSpeed()">1x</button>
+    <div class="qsel" id="qsel"></div>
+    <div class="qhint" id="qhint"></div>
   </div>
 </div>
 
@@ -339,6 +345,47 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 <script>
 let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '', reasonFilter = 'all', dateFilter = 'all';
 let curClips = [], curClipIx = 0, TEL = null;
+/* ---------- 清晰度选择 ----------
+   内网(100.96.x/192.168.x)默认原画; 走公网/穿透访问时默认 480p 省 5G 上行带宽 */
+const Q_LIST = [['orig', '原画'], ['720p', '720p'], ['480p', '480p'], ['360p', '360p']];
+const isLanNet = /^(100\.96\.|192\.168\.|10\.|127\.)/.test(location.hostname);
+let curQ = localStorage.getItem('tsfq') || (isLanNet ? 'orig' : '480p');
+if (!Q_LIST.some(x => x[0] === curQ)) curQ = 'orig';
+function qUrl(u) { return curQ === 'orig' ? u : u + '?q=' + curQ; }
+function renderQSel() {
+  document.getElementById('qsel').innerHTML = Q_LIST.map(([k, label]) =>
+    `<button class="${k === curQ ? 'on' : ''}" onclick="setQuality('${k}')">${label}</button>`).join('');
+}
+function setQuality(q) {
+  if (q === curQ) return;
+  curQ = q; localStorage.setItem('tsfq', q);
+  renderQSel();
+  if (!cur) return;
+  // 记住各路播放进度与播放状态, 换源后续播
+  const v0el = document.querySelector('#vgrid video');
+  const wasPlaying = v0el ? !v0el.paused : false;
+  const times = [...document.querySelectorAll('#vgrid video')].map(v => v.currentTime || 0);
+  const hint = document.getElementById('qhint');
+  if (q !== 'orig') {
+    hint.textContent = '正在按 ' + q + ' 转码所选片段 (首次约需 20~60 秒/路, 转好一次后秒开)…';
+    hint.style.display = 'block';
+    clearTimeout(setQuality._ht);
+    setQuality._ht = setTimeout(() => { hint.style.display = 'none'; }, 90000);
+  } else {
+    hint.style.display = 'none';
+  }
+  renderClip();
+  const vids = [...document.querySelectorAll('#vgrid video')];
+  vids.forEach((v, i) => {
+    const seek = () => { try { if (times[i]) v.currentTime = times[i]; } catch (e) {} };
+    if (v.readyState >= 1) seek();
+    else v.addEventListener('loadedmetadata', seek, { once: true });
+  });
+  if (wasPlaying) tryPlay();
+  // 第一路能播就撤提示
+  const v0 = vids[0];
+  if (v0) v0.addEventListener('canplay', () => { hint.style.display = 'none'; }, { once: true });
+}
 const CATS_NAME = __CAT_NAMES__;
 /* event.json 里的 reason → 中文名 */
 const REASON_LABEL = {
@@ -429,6 +476,7 @@ async function load() {
   }
   document.getElementById('stat').textContent = `归档 ${Object.values(data).reduce((a, v) => a + v.length, 0)} 个事件`;
   lastSig = sigOf(data);
+  renderQSel();
   render(currentCat);
   openDeepLink();
 }
@@ -650,7 +698,16 @@ function renderClip() {
     const cell = document.createElement('div'); cell.className = 'vcell';
     cell.dataset.cam = v.cam || '';
     const vid = document.createElement('video');
-    vid.src = v.url; vid.muted = true; vid.defaultMuted = true; vid.preload = 'auto';
+    vid.src = qUrl(v.url); vid.muted = true; vid.defaultMuted = true; vid.preload = 'auto';
+    /* 低清晰度首次播放需要后台转码, 缓冲时给出提示 */
+    vid.addEventListener('waiting', () => {
+      if (curQ !== 'orig') {
+        const h = document.getElementById('qhint');
+        h.textContent = '正在缓冲 (首次播放新片段需后台转码十几秒, 转好一次后秒开)…';
+        h.style.display = 'block';
+      }
+    });
+    vid.addEventListener('canplay', () => { document.getElementById('qhint').style.display = 'none'; });
     vid.setAttribute('muted', ''); vid.setAttribute('playsinline', '');
     vid.setAttribute('webkit-playsinline', ''); vid.setAttribute('x5-playsinline', '');
     const lb = document.createElement('span'); lb.className = 'clabel'; lb.textContent = camShort(v.cam);
@@ -1640,6 +1697,98 @@ MEDIA_SEM = threading.BoundedSemaphore(int(os.environ.get("TSF_MEDIA_CONN", "8")
 THUMB_DIR = os.environ.get("TSF_CACHE", "/opt/mu300") + "/thumbs"
 THUMB_SEM = threading.BoundedSemaphore(2)
 THUMB_W = 400
+# ---------- 在线清晰度: 按需转码 + eMMC 缓存 (设备端单任务串行, 防止重转码打崩内核) ----------
+# 源 1280x960 (4:3); 用固定目标码率: 公网 5G 上行只有 ~120KB/s, CRF 模式码率不可控会传不完
+RES_SCALE = {"360p": (480, 360, 500), "480p": (640, 480, 800), "720p": (960, 720, 1500)}  # 宽,高,kbps
+RES_DIR = os.environ.get("TSF_CACHE", "/opt/mu300") + "/res-cache"
+try:
+    os.makedirs(RES_DIR, exist_ok=True)
+except OSError:
+    pass
+Q_LOCK = threading.Lock()   # 全局同一时刻只跑一个转码任务
+RES_MAX = 2 * 1024 * 1024 * 1024  # 清晰度缓存总量上限 2GB, 超了从最旧开始删
+
+
+def res_cleanup():
+    try:
+        now = time.time()
+        for f in os.listdir(RES_DIR):  # 清理残留转码临时文件 (进程被杀会留下 0 字节 tmp)
+            if f.endswith(".tmp") and now - os.path.getmtime(os.path.join(RES_DIR, f)) > 1800:
+                try:
+                    os.unlink(os.path.join(RES_DIR, f))
+                except OSError:
+                    pass
+        files = [os.path.join(RES_DIR, f) for f in os.listdir(RES_DIR)
+                 if f.endswith(".mp4")]
+        total = sum(os.path.getsize(f) for f in files if os.path.isfile(f))
+        if total <= RES_MAX:
+            return
+        files.sort(key=lambda f: os.path.getmtime(f))
+        for f in files:
+            if total <= RES_MAX:
+                break
+            sz = os.path.getsize(f)
+            os.unlink(f)
+            total -= sz
+    except Exception:
+        pass
+
+
+def get_variant(fp, qv):
+    """返回 qv 清晰度的缓存文件路径; 没有就串行转码一份, 失败回退原文件"""
+    try:
+        st = os.stat(fp)
+    except OSError:
+        return fp
+    key = hashlib.md5(("%s|%d|%d|%s" % (fp, st.st_size, st.st_mtime, qv)).encode()).hexdigest()
+    out = os.path.join(RES_DIR, key + ".mp4")
+    if os.path.isfile(out) and os.path.getsize(out) > 0:
+        return out
+    if not os.path.isfile(FFMPEG_BIN):
+        return fp
+    # 排队等正在跑的转码 (最多 10 分钟, 超时回退原文件)
+    if not Q_LOCK.acquire(timeout=600):
+        return fp
+    try:
+        if os.path.isfile(out) and os.path.getsize(out) > 0:  # 别人刚转完
+            return out
+        try:  # 内存保护: 可用 <180MB 不转, 回退原文件
+            with open("/proc/meminfo") as mf:
+                for line in mf:
+                    if line.startswith("MemAvailable"):
+                        if int(line.split()[1]) < 180000:
+                            return fp
+                        break
+        except Exception:
+            pass
+        w, h, kbps = RES_SCALE[qv]
+        tmp = out + ".%d.tmp" % os.getpid()
+        # 子进程把 oom_score_adj 调回正数 (父进程是 -300 会被继承), OOM 时优先杀转码而不是主服务
+        cmd = ["sh", "-c",
+               'echo 300 > /proc/self/oom_score_adj 2>/dev/null; exec "$0" "$@"',
+               FFMPEG_BIN, "-nostdin", "-hide_banner", "-loglevel", "error",
+               "-threads", "2", "-i", fp,
+               "-vf", "scale=%d:%d" % (w, h),
+               "-c:v", "libx264", "-preset", "superfast",
+               "-b:v", "%dk" % kbps, "-maxrate", "%dk" % (kbps * 3 // 2),
+               "-bufsize", "%dk" % (kbps * 3),
+               "-c:a", "copy", "-movflags", "+faststart", "-f", "mp4", "-y", tmp]
+        try:
+            r = subprocess.run(cmd, capture_output=True, timeout=900)
+            if r.returncode == 0 and os.path.isfile(tmp) and os.path.getsize(tmp) > 0:
+                os.replace(tmp, out)
+                res_cleanup()
+                return out
+        except Exception:
+            pass
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        return fp
+    finally:
+        Q_LOCK.release()
 CAM_ORDER6 = ["left_pillar", "front", "right_pillar", "left_repeater", "back", "right_repeater"]
 CAM_ORDER4 = ["front", "back", "left_repeater", "right_repeater"]
 
@@ -2346,6 +2495,10 @@ class Handler(BaseHTTPRequestHandler):
             if not fp.startswith(ARCHIVE) or not os.path.isfile(fp):
                 self._send(404, b"not found")
                 return
+            # 清晰度: ?q=360p/480p/720p 时返回按需转码的缓存副本 (失败回退原文件)
+            qv = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("q", ["orig"])[0]
+            if qv in RES_SCALE and qv != "orig":
+                fp = get_variant(fp, qv)
             size = os.path.getsize(fp)
             rng = self.headers.get("Range")
             if rng:
