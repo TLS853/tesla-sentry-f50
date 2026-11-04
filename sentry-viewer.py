@@ -51,6 +51,11 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .filters::-webkit-scrollbar { display:none; }
 .flab { font-size:11.5px; color:#6f7a85; flex:0 0 auto; letter-spacing:.5px; }
 .chip.d.on { background:#b4761c; border-color:#b4761c; }
+.chip.pick { border-style:dashed; background:transparent; color:#8d99a5; }
+.chip.pick:hover { color:#e8eaed; }
+/* 原生日期选择器本体: 藏起来只用来唤起系统日历 */
+.dpick { position:absolute; left:0; top:0; width:1px; height:1px; opacity:0; border:0; padding:0;
+  pointer-events:none; }
 .chip { padding:5px 12px; border-radius:14px; background:#1e252e; color:#98a3ae; border:1px solid #2a333d;
   font-size:12px; cursor:pointer; white-space:nowrap; flex:0 0 auto; transition:background .15s,color .15s; }
 .chip:hover { color:#e8eaed; border-color:#3a4653; }
@@ -216,6 +221,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 <nav class="tabs" id="tabs"></nav><button id="gear" title="皮肤与锁车音">⚙</button></header>
 <nav class="filters" id="filters"></nav>
 <nav class="filters" id="dfilters"></nav>
+<input type="date" id="dpick" class="dpick" onchange="if(this.value) setDate(this.value)">
 <div class="grid-wrap" id="grid"></div>
 <div class="empty" id="empty" style="display:none"><div class="big">📹</div>
 <div>暂无归档视频<br><small style="font-size:12px">车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)</small></div></div>
@@ -418,7 +424,7 @@ async function load() {
     const b = document.createElement('button');
     b.className = 'tab' + (c === 'SentryClips' ? ' active' : '');
     b.textContent = `${CATS_NAME[c] || c} (${data[c].length})`;
-    b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; reasonFilter = 'all'; render(c); };
+    b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; reasonFilter = 'all'; dateFilter = 'all'; render(c); };
     tabs.appendChild(b);
   }
   document.getElementById('stat').textContent = `归档 ${Object.values(data).reduce((a, v) => a + v.length, 0)} 个事件`;
@@ -516,9 +522,8 @@ function renderFilters(cat) {
   const byDate = dateFilter === 'all' ? evs : evs.filter(ev => dateOf(ev) === dateFilter);
   const byReason = reasonFilter === 'all' ? evs : evs.filter(ev => reasonOf(ev) === reasonFilter);
 
-  // 选中的筛选条件在新分类里可能不存在, 自动回落避免"空列表卡死"
+  // 原因筛选在新分类里可能不存在, 自动回落避免"空列表卡死"; 日期允许选到没有事件的那天(会显示空态提示)
   if (reasonFilter !== 'all' && !evs.some(ev => reasonOf(ev) === reasonFilter)) reasonFilter = 'all';
-  if (dateFilter !== 'all' && !evs.some(ev => dateOf(ev) === dateFilter)) dateFilter = 'all';
 
   const rcnt = {};
   byDate.forEach(ev => { const r = reasonOf(ev); rcnt[r] = (rcnt[r] || 0) + 1; });
@@ -535,15 +540,29 @@ function renderFilters(cat) {
 
   const dcnt = {};
   byReason.forEach(ev => { const d = dateOf(ev); if (d) dcnt[d] = (dcnt[d] || 0) + 1; });
+  if (dateFilter !== 'all' && !/^\d{4}-\d{2}-\d{2}$/.test(dateFilter)) dateFilter = 'all';
   const alldays = [...new Set(evs.map(dateOf).filter(Boolean))].sort().reverse();
-  const days = alldays.filter(d => dcnt[d] > 0 || d === dateFilter);
-  if (days.length < 2 && dateFilter === 'all') { dbox.className = 'filters'; dbox.innerHTML = ''; return; }
+  let days = alldays.filter(d => dcnt[d] > 0 || d === dateFilter);
+  // 自选日期可能当天没有事件, 仍然把选中的那天显示出来, 方便点回「全部日期」
+  if (dateFilter !== 'all' && !days.includes(dateFilter)) days = [dateFilter].concat(days);
+  if (!alldays.length && dateFilter === 'all') { dbox.className = 'filters'; dbox.innerHTML = ''; return; }
   dbox.className = 'filters show';
   const items = [['all', '全部日期', byReason.length]].concat(
     days.map(d => [d, d.slice(5).replace('-', '/'), dcnt[d] || 0]));
   dbox.innerHTML = '<span class="flab">日期</span>' + items.map(([k, label, n]) =>
     `<button class="chip d${k === dateFilter ? ' on' : ''}" onclick="setDate('${k}')">${label}<span class="n">${n}</span></button>`
-  ).join('');
+  ).join('') + '<button class="chip pick" onclick="pickDate()" title="选择任意日期">选择日期…</button>';
+}
+/* 原生日期选择器: 分类里只有一天时也能翻到别的日期 */
+function pickDate() {
+  const inp = document.getElementById('dpick');
+  if (!inp) return;
+  const t = new Date();
+  inp.max = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' +
+    String(t.getDate()).padStart(2, '0');
+  inp.value = dateFilter !== 'all' ? dateFilter : '';
+  try { if (inp.showPicker) { inp.showPicker(); return; } } catch (e) {}
+  inp.click();
 }
 function setReason(k) {
   reasonFilter = k;
