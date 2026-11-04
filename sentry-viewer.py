@@ -392,7 +392,9 @@ function render(cat) {
     } else {
       th = `<div class="thumb"><div class="ph">🎞</div></div>`;
     }
-    card.innerHTML = th + `<div class="meta"><div class="t" title="${ev.name}">${fmtName(ev.name)}</div><div class="s">${CATS_NAME[cat] || cat} · ${vids.length} 路画面 · 点击放大播放</div></div>`;
+    const mm = ev.meta || {};
+    const extra = (mm.city ? ' · ' + mm.city : '') + (mm.street ? ' ' + mm.street : '');
+    card.innerHTML = th + `<div class="meta"><div class="t" title="${ev.name}">${fmtName(ev.name)}</div><div class="s">${CATS_NAME[cat] || cat} · ${vids.length} 路画面${extra}</div></div>`;
     card.onclick = () => openPlayer(ev);
     g.appendChild(card);
   }
@@ -449,6 +451,7 @@ function renderClip() {
     sentry_trigger: '哨兵模式触发',
     user_interaction_dashcam_saved: '手动保存',
     user_interaction_honk: '按喇叭保存',
+    user_interaction_dashcam_launcher_action_tapped: '点击行车记录仪图标',
     user_interaction_dashcam_menu: '行车记录仪菜单保存'
   };
   document.getElementById('ic-big').textContent =
@@ -469,12 +472,17 @@ function renderClip() {
   }
   const md = ev.meta || {};
   let rh = '';
+  rh += '<div><span class="ick">时间</span>' + (md.timestamp ? md.timestamp.replace('T', ' ') : fmtFull(ev.name)) + '</div>';
   if (md.city) rh += '<div><span class="ick">城市</span>' + md.city + '</div>';
+  if (md.street) rh += '<div><span class="ick">位置</span>' + md.street + '</div>';
   if (md.est_lat && md.est_lon) rh += '<div><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
-  if (md.reason) rh += '<div><span class="ick">触发码</span>' + md.reason + '</div>';
+  if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASONS[md.reason] || md.reason) + '</div>';
+  if (md.camera) rh += '<div><span class="ick">触发画面</span>摄像头 #' + md.camera + '</div>';
+  if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + md.campaign_id + '</div>';
   rh += '<div><span class="ick">画面</span>' + clip.vids.length + ' 路</div>';
   if (curClips.length > 1) rh += '<div><span class="ick">片段</span>共 ' + curClips.length + ' 段, 当前第 ' + (curClipIx + 1) + ' 段</div>';
   rh += camSort(clip.vids).map(v => '<div><span class="ick">' + camLabel(v.cam) + '</span>' + v.url.split('/').pop() + '</div>').join('');
+  if (!md.timestamp) rh += '<div><span class="ick">元数据</span>无 event.json（该事件未写入元数据）</div>';
   const rows = document.getElementById('ic-rows');
   rows.innerHTML = rh;
   rows.classList.add('open');

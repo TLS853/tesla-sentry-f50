@@ -30,29 +30,12 @@ import struct
 import sys
 import time
 
-_CONF = {}
-try:
-    with open("/etc/tesla-sentry.conf") as _f:
-        for _line in _f:
-            _line = _line.strip()
-            if _line and not _line.startswith("#") and "=" in _line:
-                _k, _v = _line.split("=", 1)
-                _CONF[_k.strip()] = _v.strip().strip('"').strip("'")
-except Exception:
-    pass
-
-
-def cfg(key, default=""):
-    return os.environ.get(key) or _CONF.get(key) or default
-
-
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-IMG = cfg("TSF_IMG", os.path.join(BASE_DIR, "teslacam.img"))
-ARCHIVE = cfg("TSF_ARCHIVE", "/archive")
-MNT = cfg("TSF_MNT", "/tmp/teslamnt")
-LOG = cfg("TSF_LIVE_LOG", os.path.join(BASE_DIR, "tesla-live.log"))
-STATE = cfg("TSF_LIVE_STATE", os.path.join(BASE_DIR, ".tesla-live-state.json"))
-INTERVAL = int(cfg("TSF_LIVE_INTERVAL", "15"))
+IMG = os.environ.get("TSF_IMG", "/root/teslacam.img")
+ARCHIVE = os.environ.get("TSF_ARCHIVE", "/archive")
+MNT = os.environ.get("TSF_MNT", "/tmp/teslamnt")
+LOG = os.environ.get("TSF_LIVE_LOG", "/root/tesla-live.log")
+STATE = os.environ.get("TSF_LIVE_STATE", "/root/.tesla-live-state.json")
+INTERVAL = int(os.environ.get("TSF_LIVE_INTERVAL", "15"))
 CATS = ("SentryClips", "SavedClips", "RecentClips")
 TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})-")
 
@@ -305,7 +288,7 @@ def iter_media(exfat, dir_entry, prefix=()):
             continue
         if e.is_dir:
             yield from iter_media(exfat, e, prefix + (e.name,))
-        elif e.name.lower().endswith(".mp4") and e.size > 0:
+        elif (e.name.lower().endswith(".mp4") or e.name.lower() == "event.json") and e.size > 0:
             yield prefix, e
 
 
