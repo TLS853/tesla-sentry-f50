@@ -56,7 +56,8 @@ if [ -r /proc/config.gz ]; then
         || echo "  [警告] 内核配置未见 CONFIG_USB_F_MASS_STORAGE, 仍会尝试 (见 README 硬件要求)"
 fi
 
-FREE_MB=$(df -Pm "$(dirname "$TSF_DIR")" | awk 'NR==2{print $4}')
+FREE_MB=$(df -Pm "$(dirname "$TSF_DIR")" 2>/dev/null | awk 'NR==2{print $4}')
+[ -z "$FREE_MB" ] && FREE_MB="?"
 say "存储空闲: ${FREE_MB}MB, 计划镜像 ${SIZE_GB}G (稀疏文件, 按实际写入占用)"
 
 # ---------------- 1. 目录与文件 ----------------
