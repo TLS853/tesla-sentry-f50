@@ -723,8 +723,11 @@ function wmPill(ctx, xRight, yMid, text, bg, fg, s) {
   ctx.font = '700 ' + fs + 'px system-ui,"Segoe UI",sans-serif';
   const pw = ctx.measureText(text).width + Math.round(18 * s), ph = Math.round(24 * s);
   const x = xRight - pw;
+  const sh = ctx.shadowBlur;
+  ctx.shadowBlur = 0;               // 胶囊是实心色块, 不需要投影
   ctx.fillStyle = bg;
   rrPath(ctx, x, yMid - ph / 2, pw, ph, ph / 2); ctx.fill();
+  ctx.shadowBlur = sh;
   ctx.fillStyle = fg;
   ctx.fillText(text, x + Math.round(9 * s), yMid + Math.round(fs * 0.36));
   return x;
@@ -736,9 +739,14 @@ function drawWm(ctx, t, W) {
   const h = Math.round(46 * s), yc = h / 2;   // 单行窄条: 1280 宽时约 46px, 仅占画面高度 ~5%
   ctx.save();
   ctx.textBaseline = 'middle';
-  // 半透明底: 路况仍隐约可见, 不再整块盖住画面顶部
-  ctx.fillStyle = 'rgba(13,18,26,.62)';
+  // 极淡底 (15% 不透明): 只做一块轻微压暗, 天空/路面几乎不受影响
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = 'rgba(13,18,26,.15)';
   ctx.fillRect(0, 0, W, h);
+  // 文字加深色投影, 保证在明亮天空上也能看清
+  ctx.shadowColor = 'rgba(0,0,0,.8)';
+  ctx.shadowBlur = Math.round(5 * s);
+  ctx.shadowOffsetY = Math.round(1.2 * s);
   // 左: 日期时间 + 城市/位置
   ctx.textAlign = 'left';
   ctx.font = '600 ' + Math.round(14 * s) + 'px system-ui,"Segoe UI",sans-serif';
@@ -749,15 +757,17 @@ function drawWm(ctx, t, W) {
   const loc = [(TEL_META || {}).city, (TEL_META || {}).street].filter(Boolean).join(' · ');
   if (loc) {
     ctx.font = '500 ' + Math.round(13 * s) + 'px system-ui,"Segoe UI",sans-serif';
-    ctx.fillStyle = '#a7b3bf';
+    ctx.fillStyle = '#eef3f8';
     ctx.fillText(loc, pad + dw + Math.round(10 * s), yc + Math.round(1 * s));
   }
   // 右侧自右向左: 油门 / 刹车 / 挡位 / 转向灯 / 车速
   let xr = W - pad;
   xr = wmPill(ctx, xr, yc, f[3] + '%', '#1f7ae0', '#fff', s) - Math.round(8 * s);
   xr = wmPill(ctx, xr, yc, '刹车 ' + (f[5] ? '100%' : '0%'),
-    f[5] ? '#ff453a' : '#333c46', f[5] ? '#fff' : '#98a3ae', s) - Math.round(12 * s);
+    f[5] ? '#ff453a' : 'rgba(32,40,50,.5)', f[5] ? '#fff' : '#eef3f8', s) - Math.round(12 * s);
   // 挡位圆徽
+  ctx.shadowBlur = 0;
+
   const gr = Math.round(13 * s);
   ctx.fillStyle = '#34c759';
   ctx.beginPath(); ctx.arc(xr - gr, yc, gr, 0, Math.PI * 2); ctx.fill();
@@ -774,9 +784,10 @@ function drawWm(ctx, t, W) {
   ctx.beginPath(); ctx.moveTo(xr, yc - triS * 0.62); ctx.lineTo(xr, yc + triS * 0.62); ctx.lineTo(xr - triS, yc); ctx.closePath(); ctx.fill();
   xr -= triS + Math.round(12 * s);
   // 车速 (先画右侧单位, 再画数字, 保证 "数字 km/h" 顺序)
+  ctx.shadowBlur = Math.round(4 * s);   // 文字恢复投影
   ctx.textAlign = 'right';
   ctx.font = '500 ' + Math.round(11 * s) + 'px system-ui,"Segoe UI",sans-serif';
-  ctx.fillStyle = '#9aa4af';
+  ctx.fillStyle = '#eef3f8';
   ctx.fillText('km/h', xr, yc + Math.round(1 * s));
   xr -= ctx.measureText('km/h').width + Math.round(6 * s);
   ctx.font = '800 ' + Math.round(22 * s) + 'px system-ui,"Segoe UI",sans-serif';
