@@ -79,7 +79,9 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .tpanel.show { display:block; }
 .tpanel.folded .tp-rows { display:none; }
 .tp-top { display:flex; justify-content:space-between; align-items:center; }
+.tp-l { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
 .tp-date { font-size:13.5px; color:#cfd6dd; font-variant-numeric:tabular-nums; }
+.tp-loc { font-size:12.5px; color:#8d99a5; }
 .tp-tr { display:flex; align-items:center; gap:9px; }
 .tp-sig { font-size:16px; color:#3a4450; line-height:1; }
 .tp-sig.on { color:#f59e0b; }
@@ -193,7 +195,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
       <div class="startmask" id="startmask">▶ 轻触开始同步播放</div>
       <div class="tpanel" id="tpanel">
         <div class="tp-top">
-          <span class="tp-date" id="tp-date">—</span>
+          <span class="tp-l"><span class="tp-date" id="tp-date">—</span><span class="tp-loc" id="tp-loc"></span></span>
           <span class="tp-tr"><span class="tp-sig" id="tp-bl">⬅</span><span class="tp-sig" id="tp-br">➡</span><span class="tp-gear" id="tp-gear">D</span></span>
         </div>
         <div class="tp-mid">
@@ -607,8 +609,10 @@ function loadTelemetry(url, meta) {
   TEL_META = meta || {};
   const p = document.getElementById('tpanel');
   p.classList.remove('show');
-  p.classList.remove('folded');   // 面板详细数据默认展开
-  document.getElementById('tp-fold').textContent = '收起详细数据 ⌃';
+  p.classList.add('folded');   // 详细数据默认折叠
+  document.getElementById('tp-fold').textContent = '展开详细数据 ⌄';
+  document.getElementById('tp-loc').textContent =
+    [TEL_META.city, TEL_META.street].filter(Boolean).join(' · ');
   telT0 = null;
   if (!url) return;
   const m = url.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
@@ -654,8 +658,6 @@ function renderHud(f) {
   q('tp-st').title = '方向盘角度 ' + f[4] + '°';
   const md = TEL_META || {};
   q('tp-rows').innerHTML =
-    (md.city ? '<div><span class="k">城市</span>' + md.city + '</div>' : '') +
-    (md.street ? '<div><span class="k">位置</span>' + md.street + '</div>' : '') +
     (md.est_lat && md.est_lon ? '<div><span class="k">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>' : '') +
     '<div><span class="k">挡位</span>' + f[1] + '</div>' +
     '<div><span class="k">车速</span>' + f[2].toFixed(1) + ' km/h</div>' +
