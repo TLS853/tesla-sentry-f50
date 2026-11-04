@@ -155,6 +155,10 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .startmask { position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.55); color:#fff; font-size:16px; display:none; align-items:center; justify-content:center; cursor:pointer; letter-spacing:1px; }
 .startmask.show { display:flex; }
 .vcell .clabel { position:absolute; right:7px; bottom:7px; font-size:11px; color:#e8eef4; background:rgba(20,24,29,.72); border-radius:6px; padding:2px 7px; pointer-events:none; }
+.vcell .cload { position:absolute; left:0; top:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; color:#9aa4af; background:rgba(10,13,18,.6); pointer-events:none; }
+.vcell .cload.err { color:#e8443f; }
+.vcell .cload .spin { width:14px; height:14px; border:2px solid #3a4450; border-top-color:#10b981; border-radius:50%; animation:cspin .8s linear infinite; }
+@keyframes cspin { to { transform:rotate(360deg); } }
 .infocard { background:#1d242e; border-radius:16px; padding:14px 16px 10px; max-width:980px; width:100%; margin:0 auto; box-shadow:0 6px 20px #0008; }
 .ic-top { display:flex; align-items:center; gap:10px; }
 .ic-time { font-size:14px; color:#c6cdd4; }
@@ -703,6 +707,17 @@ function renderClip() {
     cell.dataset.cam = v.cam || '';
     const vid = document.createElement('video');
     vid.src = qUrl(v.url); vid.muted = true; vid.defaultMuted = true; vid.preload = 'auto';
+    /* 每格加载状态: 转码/缓冲时显示提示, 避免黑屏让人以为坏了 */
+    const cl = document.createElement('div'); cl.className = 'cload';
+    cl.innerHTML = '<span class="spin"></span><span>缓冲中…</span>';
+    const clDone = () => { cl.style.display = 'none'; };
+    vid.addEventListener('loadeddata', clDone);
+    vid.addEventListener('playing', clDone);
+    vid.addEventListener('error', () => {
+      cl.className = 'cload err';
+      cl.innerHTML = '<span>加载失败, 点其他片段再试</span>';
+    });
+    vid.addEventListener('waiting', () => { cl.style.display = ''; });
     /* 低清晰度首次播放需要后台转码, 缓冲时给出提示 */
     vid.addEventListener('waiting', () => {
       if (curQ !== 'orig') {
@@ -715,7 +730,7 @@ function renderClip() {
     vid.setAttribute('muted', ''); vid.setAttribute('playsinline', '');
     vid.setAttribute('webkit-playsinline', ''); vid.setAttribute('x5-playsinline', '');
     const lb = document.createElement('span'); lb.className = 'clabel'; lb.textContent = camShort(v.cam);
-    cell.appendChild(vid); cell.appendChild(lb);
+    cell.appendChild(vid); cell.appendChild(cl); cell.appendChild(lb);
     cell.onclick = () => focusCell(cell);
     vg.appendChild(cell);
   });
