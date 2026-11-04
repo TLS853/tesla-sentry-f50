@@ -68,6 +68,7 @@ cp "$SRC_DIR/tesla-live-sync.py"    "$TSF_DIR/tesla-live-sync.py"
 cp "$SRC_DIR/scripts/tesla-gadget.sh" "$TSF_DIR/tesla-gadget.sh"
 cp "$SRC_DIR/scripts/tesla-sync.sh"   "$TSF_DIR/tesla-sync.sh"
 cp "$SRC_DIR/scripts/usb-selfheal.sh" "$TSF_DIR/usb-selfheal.sh"
+cp "$SRC_DIR/scripts/tesla-img.sh"    "$TSF_DIR/tesla-img.sh"
 chmod +x "$TSF_DIR"/*.sh "$TSF_DIR"/*.py
 
 mkdir -p "$ARCHIVE"/SentryClips "$ARCHIVE"/SavedClips "$ARCHIVE"/RecentClips \
