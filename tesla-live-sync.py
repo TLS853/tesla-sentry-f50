@@ -23,6 +23,7 @@ exFAT 目录项里 DataLength 在文件关闭时才落最终值, 因此必须:
   tesla-live-sync.py                   常驻轮询 (默认 15 秒)
 """
 import argparse
+import datetime
 import json
 import os
 import re
@@ -36,6 +37,10 @@ MNT = os.environ.get("TSF_MNT", "/tmp/teslamnt")
 LOG = os.environ.get("TSF_LIVE_LOG", "/root/tesla-live.log")
 STATE = os.environ.get("TSF_LIVE_STATE", "/root/.tesla-live-state.json")
 INTERVAL = int(os.environ.get("TSF_LIVE_INTERVAL", "15"))
+# 归档滚动窗口(分钟), 与 sentry-viewer.py 的 TSF_RECENT_ROLL_MIN 保持一致;
+# 窗口外的 RecentClips 根本不再抄进归档 —— 否则清掉的片段会被当成"新片段"重抄一遍,
+# 形成 删除→重抄 的死循环, 既拖慢新片段落地又白写 eMMC
+ROLL_MIN = int(os.environ.get("TSF_RECENT_ROLL_MIN", "60"))
 CATS = ("SentryClips", "SavedClips", "RecentClips")
 TS_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})-")
 
@@ -345,15 +350,38 @@ def scan(exfat):
     return found
 
 
+def ev_dt(ev):
+    """事件目录名即片段起始时间 (2026-11-05_16-30-39)"""
+    try:
+        return datetime.datetime.strptime(ev[:19], "%Y-%m-%d_%H-%M-%S")
+    except (ValueError, TypeError):
+        return None
+
+
 def do_sync(exfat, state, quiet=False):
     """跑一轮; 返回 (新增文件数, 字节数)"""
     cur = scan(exfat)
+    # 只收滚动窗口内的 RecentClips: 以车机 U 盘上最新的片段为锚点
+    cut = None
+    if ROLL_MIN > 0:
+        newest = None
+        for (cat, ev, name) in cur:
+            if cat == "RecentClips":
+                d = ev_dt(ev)
+                if d and (newest is None or d > newest):
+                    newest = d
+        if newest:
+            cut = newest - datetime.timedelta(minutes=ROLL_MIN)
     pending_key = "__pending__"
     pending = state.get(pending_key, {})
     new_pending = {}
     copied = 0
     bytes_ = 0
     for (cat, ev, name), e in cur.items():
+        if cut is not None and cat == "RecentClips":
+            d = ev_dt(ev)
+            if d and d < cut:
+                continue          # 超出归档窗口, 留在车机里, 不再抄
         key = "%s/%s/%s" % (cat, ev, name)
         sig = [e.size, e.vdl, e.mtime]
         dest = safe_dest(cat, ev, name)
