@@ -3,6 +3,7 @@
 功能: 多路播放器(4路/6路自适应) / 时间线 / 皮肤上传 / 锁车语音上传(经归档同步写入车机U盘)
 访问: http://<f50-ip>:8080
 """
+import datetime
 import json
 import os
 import re
@@ -1826,12 +1827,17 @@ def res_cleanup():
         pass
 
 
-# ---------- 磁盘空间守护 ----------
-# RecentClips 只是滚动缓冲 (车机自己也就留 1 小时), 空间紧张时淘汰最旧事件腾地方;
-# 哨兵/手动保存的录像永不自动删除。触发条件只看剩余空间, 不看时间。
-FREE_MIN_MB = int(os.environ.get("TSF_FREE_MIN_MB", "4096"))          # 剩余低于此值开始清理
-FREE_TARGET_MB = int(os.environ.get("TSF_FREE_TARGET_MB", "10240"))   # 清理到恢复到该值为止
-RECENT_KEEP_MIN = int(os.environ.get("TSF_RECENT_KEEP_MIN", "60"))    # 最近 N 分钟内的片段始终保留
+# ---------- 归档滚动窗口 + 磁盘空间兜底 ----------
+# 车机 U 盘里的 RecentClips 本身就是"滚动缓冲": 只留最近约 1 小时, 更旧的由车机自己覆盖。
+# 但盒子这边过去是每来一段就抄一份、永久留着, 而哨兵开着时车整夜不睡, 4 路约 140MB/分钟
+# (8.4GB/小时), 一晚上就能吃掉几十 GB —— 这才是盒子镜像被撑爆的真正原因。
+# 现在让盒子副本按同样窗口滚动: 只留最近 ROLL_MIN 分钟, 更旧的从盒子归档里删掉。
+# 车机 U 盘那份完全不碰 (同步脚本只读 U 盘, 靠 exFAT 解析器读, 从不删源文件);
+# SentryClips / SavedClips 属于用户主动保存的录像, 永不自动删。
+RECENT_ROLL_MIN = int(os.environ.get("TSF_RECENT_ROLL_MIN", "60"))    # 归档滚动窗口(分钟), 0=关闭滚动
+FREE_MIN_MB = int(os.environ.get("TSF_FREE_MIN_MB", "4096"))          # 剩余低于此值开始兜底清理
+FREE_TARGET_MB = int(os.environ.get("TSF_FREE_TARGET_MB", "10240"))   # 兜底清理到恢复到该值为止
+RECENT_KEEP_MIN = int(os.environ.get("TSF_RECENT_KEEP_MIN", "60"))    # 兜底清理时最近 N 分钟必留
 
 
 def free_mb(p):
@@ -1842,10 +1848,46 @@ def free_mb(p):
         return -1
 
 
+def _ev_dt(name):
+    """事件目录名就是片段起始时间 (2026-11-05_08-00-23)。
+    用文件名里的车机时间来比较, 不受盒子时区设错的影响"""
+    try:
+        return datetime.datetime.strptime(name[:19], "%Y-%m-%d_%H-%M-%S")
+    except ValueError:
+        return None
+
+
+def roll_recent():
+    """盒子侧 RecentClips 按滚动窗口自动淘汰 (只删盒子归档, 不碰车机 U 盘)"""
+    rd = os.path.join(ARCHIVE, "RecentClips")
+    if RECENT_ROLL_MIN <= 0 or not os.path.isdir(rd):
+        return 0
+    evs = []
+    for e in os.listdir(rd):
+        dt = _ev_dt(e)
+        if dt:                       # 非时间戳命名的目录一律不动
+            evs.append((dt, e))
+    if len(evs) < 2:
+        return 0
+    evs.sort()
+    # 以"最新片段"为锚点而不是当前时间: 车休眠/哨兵关闭期间没有新片段, 就不会被误清空
+    cutoff = evs[-1][0] - datetime.timedelta(minutes=RECENT_ROLL_MIN)
+    n = 0
+    for dt, e in evs:
+        if dt < cutoff:
+            shutil.rmtree(os.path.join(rd, e), ignore_errors=True)
+            n += 1
+    return n
+
+
 def disk_guard():
     rd = os.path.join(ARCHIVE, "RecentClips")
     while True:
         try:
+            roll_recent()
+        except Exception:
+            pass
+        try:   # 兜底: 万一别的数据 (哨兵/手动保存) 把盘吃满, 再按空间淘汰最旧的
             if free_mb(ARCHIVE) < FREE_MIN_MB and os.path.isdir(rd):
                 cutoff = time.time() - RECENT_KEEP_MIN * 60
                 for e in sorted(os.listdir(rd)):   # 目录名即时间戳, 天然按时间排序
