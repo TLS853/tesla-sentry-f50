@@ -172,6 +172,12 @@ TSF_LOOP=/dev/loop3              # 挂载用 loop 设备
 TSF_PORT=8080                    # 网页端口
 TSF_IDLE=600                     # 镜像空闲多少秒才归档
 TSF_LIVE_INTERVAL=15             # 在线只读同步轮询间隔 (秒)
+
+# 空间守护: 剩余空间低于 FREE_MIN 时自动淘汰最旧的 RecentClips(行车滚动缓冲),
+# 清到 FREE_TARGET 为止; 哨兵/手动保存的录像永不自动删除
+TSF_FREE_MIN_MB=4096             # 触发阈值 (MB)
+TSF_FREE_TARGET_MB=10240         # 清理目标 (MB)
+TSF_RECENT_KEEP_MIN=60           # 最近 N 分钟的片段无论如何保留
 ```
 
 改完重启服务生效：

@@ -7,6 +7,7 @@ import json
 import os
 import re
 import hashlib
+import shutil
 import struct
 import subprocess
 import threading
@@ -654,6 +655,16 @@ function setDate(k) {
   dateFilter = k;
   render(currentCat);
 }
+/* 缩略图失败多半是临时的 (磁盘满/片段刚同步完还没落稳), 自动重试两次再显示占位图 */
+function thumbErr(img) {
+  const n = +(img.dataset.r || 0);
+  if (n < 2) {
+    img.dataset.r = n + 1;
+    setTimeout(() => { img.src = img.src.split('?')[0] + '?r=' + (n + 1); }, n ? 8000 : 2500);
+    return;
+  }
+  img.parentNode.innerHTML = '<div class="ph">🎞</div>';
+}
 function render(cat) {
   const g = document.getElementById('grid'), e = document.getElementById('empty');
   g.innerHTML = '';
@@ -668,14 +679,13 @@ function render(cat) {
       : EMPTY_HTML;
   }
   for (const ev of evs) {
-    const card = document.createElement('div'); card.className = 'card';
-    const groups = groupVideos(ev.videos);
+    const card = document.createElement('div'); card.className = 'card';    const groups = groupVideos(ev.videos);
     const vids = camSort(groups.length ? groups[groups.length - 1].vids : []);
     let th;
     if (vids.length) {
       const fr = vids.find(v => v.cam === 'front') || vids[0];
       const src = fr.url.replace('/media/', '/thumb/');
-      th = `<div class="thumb one"><img loading="lazy" decoding="async" src="${src}" alt="" onerror="this.parentNode.innerHTML='<div class=&quot;ph&quot;>🎞</div>'"><span class="cnum">${vids.length} 路</span></div>`;
+      th = `<div class="thumb one"><img loading="lazy" decoding="async" src="${src}" alt="" onerror="thumbErr(this)"><span class="cnum">${vids.length} 路</span></div>`;
     } else {
       th = `<div class="thumb"><div class="ph">🎞</div></div>`;
     }
@@ -1816,6 +1826,43 @@ def res_cleanup():
         pass
 
 
+# ---------- 磁盘空间守护 ----------
+# RecentClips 只是滚动缓冲 (车机自己也就留 1 小时), 空间紧张时淘汰最旧事件腾地方;
+# 哨兵/手动保存的录像永不自动删除。触发条件只看剩余空间, 不看时间。
+FREE_MIN_MB = int(os.environ.get("TSF_FREE_MIN_MB", "4096"))          # 剩余低于此值开始清理
+FREE_TARGET_MB = int(os.environ.get("TSF_FREE_TARGET_MB", "10240"))   # 清理到恢复到该值为止
+RECENT_KEEP_MIN = int(os.environ.get("TSF_RECENT_KEEP_MIN", "60"))    # 最近 N 分钟内的片段始终保留
+
+
+def free_mb(p):
+    try:
+        st = os.statvfs(p)
+        return st.f_bavail * st.f_frsize // 1048576
+    except OSError:
+        return -1
+
+
+def disk_guard():
+    rd = os.path.join(ARCHIVE, "RecentClips")
+    while True:
+        try:
+            if free_mb(ARCHIVE) < FREE_MIN_MB and os.path.isdir(rd):
+                cutoff = time.time() - RECENT_KEEP_MIN * 60
+                for e in sorted(os.listdir(rd)):   # 目录名即时间戳, 天然按时间排序
+                    if free_mb(ARCHIVE) >= FREE_TARGET_MB:
+                        break
+                    p = os.path.join(rd, e)
+                    try:
+                        if not os.path.isdir(p) or os.path.getmtime(p) > cutoff:
+                            continue
+                    except OSError:
+                        continue
+                    shutil.rmtree(p, ignore_errors=True)
+        except Exception:
+            pass
+        time.sleep(300)
+
+
 def get_variant(fp, qv):
     """返回 qv 清晰度的缓存文件路径; 没有就排队转码一份 (最多2个并发), 失败回退原文件"""
     try:
@@ -2886,6 +2933,7 @@ if __name__ == "__main__":
         subprocess.run(["umount", MNT], capture_output=True)
     subprocess.run([LOSETUP, "-d", LOOPDEV], capture_output=True)
     _gadget_rebind(True)
+    threading.Thread(target=disk_guard, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"Sentry viewer on 0.0.0.0:{PORT}")
     srv.serve_forever()
