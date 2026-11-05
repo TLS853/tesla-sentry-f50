@@ -3,10 +3,12 @@
 功能: 多路播放器(4路/6路自适应) / 时间线 / 皮肤上传 / 锁车语音上传(经归档同步写入车机U盘)
 访问: http://<f50-ip>:8080
 """
+import base64
 import datetime
 import json
 import os
 import re
+import hmac
 import hashlib
 import shutil
 import struct
@@ -64,7 +66,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .chip.on { background:#2f6ee0; border-color:#2f6ee0; color:#fff; }
 .chip .n { opacity:.62; margin-left:4px; font-variant-numeric:tabular-nums; }
 @media (max-width:640px){
-  header .sub { display:none; } .tabs { order:10; width:100%; margin-left:0; } #gear { order:5; margin-left:0; }
+  header .sub { display:none; } .tabs { order:10; width:100%; margin-left:0; } #gear { order:5; margin-left:0; } #out { order:6; margin-left:0; }
   .filters { padding-left:12px; padding-right:12px; }
   /* 播放器手机端紧凑化: 面板/卡片占高更小, 视频尽量多露 */
   .pscroll { padding:2px 8px 10px; gap:8px; }
@@ -86,6 +88,8 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 }
 #gear { background:#242c35; border:none; color:#9aa4af; font-size:18px; cursor:pointer; border-radius:10px; width:36px; height:32px; }
 #gear:hover { color:#fff; }
+#out { background:#242c35; border:none; color:#9aa4af; font-size:15px; cursor:pointer; border-radius:10px; width:36px; height:32px; }
+#out:hover { color:#fff; }
 .grid-wrap { padding:16px; display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
 .card { background:linear-gradient(180deg,#1c232c,#181e26); border-radius:14px; overflow:hidden; cursor:pointer; transition:transform .15s,border-color .15s; border:1px solid #232b34; box-shadow:0 4px 14px #00000066; }
 .card:hover { transform:translateY(-2px); border-color:#e8443f66; }
@@ -238,7 +242,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 </style></head><body>
 <header><h1>🚗 特斯拉哨兵查看器</h1><span class="sub" id="stat"></span>
 <span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#7d8894;background:#1a2027;border:1px solid #232b34;border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
-<nav class="tabs" id="tabs"></nav><button id="gear" title="皮肤与锁车音">⚙</button></header>
+<nav class="tabs" id="tabs"></nav><button id="gear" title="皮肤与锁车音">⚙</button><button id="out" title="退出登录" onclick="location.href='/logout'">⏏</button></header>
 <nav class="filters" id="filters"></nav>
 <nav class="filters" id="dfilters"></nav>
 <input type="date" id="dpick" class="dpick" onchange="if(this.value) setDate(this.value)">
@@ -2432,9 +2436,193 @@ def telemetry_cached(fp):
     return result
 
 
+# ---------- 访问认证 ----------
+# 默认关闭; 只要配了密码 (auth.conf 里的 pass= 或 sha256=) 就全站开启。
+# 除登录页外, 页面/媒体流/下载/接口全部要过认证; 用 HMAC 签名 cookie (默认 30 天) 记住登录,
+# 这样 <video>、缩略图、zip 下载这些子请求不会反复弹窗; 同时兼容 HTTP Basic 方便 curl。
+# 配置文件: /opt/tesla-sentry/auth.conf  (user= / pass= / sha256= / secret= / ttl=)
+AUTH_FILE = os.environ.get("TSF_AUTH_FILE", "/opt/tesla-sentry/auth.conf")
+
+
+def _auth_conf():
+    d = {}
+    try:
+        with open(AUTH_FILE, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                d[k.strip().lower()] = v.strip()
+    except OSError:
+        pass
+    return d
+
+
+_AC = _auth_conf()
+AUTH_USER = os.environ.get("TSF_AUTH_USER") or _AC.get("user") or "admin"
+AUTH_PASS = os.environ.get("TSF_AUTH_PASS") or _AC.get("pass") or ""
+AUTH_SHA = (os.environ.get("TSF_AUTH_SHA256") or _AC.get("sha256") or "").strip().lower()
+AUTH_SECRET = (os.environ.get("TSF_AUTH_SECRET") or _AC.get("secret") or "") or ("tsf-v1|" + (AUTH_SHA or AUTH_PASS))
+AUTH_TTL = int(os.environ.get("TSF_AUTH_TTL") or _AC.get("ttl") or 30 * 86400)
+AUTH_ON = bool(AUTH_SHA or AUTH_PASS)
+FAILS = {}                       # ip -> [失败次数, 首次失败时间]
+FAIL_LOCK = threading.Lock()
+
+
+def pw_ok(pw):
+    if AUTH_SHA:
+        return hmac.compare_digest(hashlib.sha256(pw.encode()).hexdigest(), AUTH_SHA)
+    return hmac.compare_digest((pw or "").encode(), AUTH_PASS.encode())
+
+
+def sess_token(exp):
+    raw = "%s|%d" % (AUTH_USER, exp)
+    sig = hmac.new(AUTH_SECRET.encode(), raw.encode(), hashlib.sha256).hexdigest()[:32]
+    return "%d.%s" % (exp, sig)
+
+
+def sess_ok(tok):
+    try:
+        exp = int(tok.split(".", 1)[0])
+    except (ValueError, AttributeError):
+        return False
+    if exp < time.time():
+        return False
+    return hmac.compare_digest(tok, sess_token(exp))
+
+
+def fail_check(ip, inc):
+    """同一 IP 10 分钟内连错 8 次就锁 5 分钟, 防爆破"""
+    now = time.time()
+    with FAIL_LOCK:
+        cnt, t0 = FAILS.get(ip, [0, now])
+        if now - t0 > 600:
+            cnt, t0 = 0, now
+        if inc:
+            cnt += 1
+        FAILS[ip] = [cnt, t0]
+        return cnt >= 8
+
+
+LOGIN_HTML = """<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>登录 · 特斯拉哨兵云盘</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+ background:#0d1219;color:#e8eef4;font:15px/1.5 -apple-system,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif;
+ padding:24px}
+.card{width:100%;max-width:340px;background:#161d26;border:1px solid #232c36;border-radius:18px;
+ padding:26px 22px 22px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.dot{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#10b981,#059669);
+ display:flex;align-items:center;justify-content:center;font-size:17px}
+h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
+p.sub{margin:2px 0 0;font-size:12px;color:#7d8894}
+label{display:block;font-size:12px;color:#97a3af;margin:12px 0 6px}
+input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid #2b3540;background:#0f151d;
+ color:#e8eef4;font-size:15px;outline:none}
+input:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.15)}
+button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:11px;cursor:pointer;
+ background:#10b981;color:#fff;font-size:15px;font-weight:600}
+button:active{background:#0ea472}
+.err{margin-top:12px;font-size:13px;color:#f87171;min-height:18px}
+.foot{margin-top:16px;font-size:11px;color:#5f6b78;text-align:center}
+</style></head><body>
+<form class="card" method="post" action="/login">
+  <div class="logo"><div class="dot">🚗</div>
+    <div><h1>特斯拉哨兵云盘</h1><p class="sub">Tesla Sentry Drive</p></div></div>
+  <label>用户名</label>
+  <input name="u" autocomplete="username" autocapitalize="none" autocorrect="off" value="__USER__">
+  <label>密码</label>
+  <input name="p" type="password" autocomplete="current-password" autofocus>
+  <input type="hidden" name="next" value="__NEXT__">
+  <button type="submit">登录</button>
+  <div class="err">__MSG__</div>
+  <div class="foot">仅限本人访问 · 登录状态保留 __DAYS__ 天</div>
+</form></body></html>"""
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         pass
+
+    # ---- 认证 ----
+    def _cookie(self, name):
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == name:
+                return v
+        return ""
+
+    def _authed(self):
+        if not AUTH_ON:
+            return True
+        if sess_ok(self._cookie("tsf_sess")):
+            return True
+        h = self.headers.get("Authorization", "")
+        if h.startswith("Basic "):
+            try:
+                u, _, p = base64.b64decode(h[6:]).decode("utf-8", "replace").partition(":")
+            except Exception:
+                return False
+            return u == AUTH_USER and pw_ok(p)
+        return False
+
+    def _login_page(self, msg="", nxt="/", code=200):
+        html = (LOGIN_HTML.replace("__USER__", AUTH_USER)
+                .replace("__NEXT__", nxt.replace('"', "&quot;"))
+                .replace("__MSG__", msg)
+                .replace("__DAYS__", str(max(1, AUTH_TTL // 86400))))
+        self._send(code, html.encode())
+
+    def _do_login(self):
+        n = min(int(self.headers.get("Content-Length") or 0), 4096)
+        try:
+            f = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "ignore"))
+        except Exception:
+            f = {}
+        nxt = (f.get("next", ["/"])[0] or "/")
+        if not nxt.startswith("/") or nxt.startswith("//"):
+            nxt = "/"
+        ip = self.client_address[0] if self.client_address else "?"
+        if fail_check(ip, False):
+            self._login_page("尝试次数过多，请 5 分钟后再试", nxt, 429)
+            return
+        if f.get("u", [""])[0] == AUTH_USER and pw_ok(f.get("p", [""])[0]):
+            fail_check(ip, False)
+            with FAIL_LOCK:
+                FAILS.pop(ip, None)
+            exp = int(time.time()) + AUTH_TTL
+            self.send_response(302)
+            self.send_header("Location", nxt)
+            self.send_header("Set-Cookie",
+                             "tsf_sess=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Lax" % (sess_token(exp), AUTH_TTL))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        fail_check(ip, True)
+        time.sleep(0.4)          # 轻微延迟, 拖慢暴力破解
+        self._login_page("用户名或密码不对", nxt, 401)
+
+    def _gate(self):
+        """未登录: 页面跳登录页, 媒体/接口直接 401。返回 True 表示可继续"""
+        if not AUTH_ON:
+            return True
+        p = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        if p in ("/login", "/logout"):
+            return True
+        if self._authed():
+            return True
+        if p in ("/", "/index.html") or "text/html" in (self.headers.get("Accept") or ""):
+            self.send_response(302)
+            self.send_header("Location", "/login?next=" + urllib.parse.quote(self.path or "/"))
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        else:
+            self._send(401, "unauthorized".encode(), "text/plain; charset=utf-8")
+        return False
 
     def _send(self, code, body, ctype="text/html; charset=utf-8"):
         self.send_response(code)
@@ -2479,6 +2667,25 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        if path == "/login":
+            if not AUTH_ON:
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            self._login_page("", q.get("next", ["/"])[0])
+            return
+        if path == "/logout":
+            self.send_response(302)
+            self.send_header("Location", "/login")
+            self.send_header("Set-Cookie", "tsf_sess=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if not self._gate():
+            return
         if path in ("/", "/index.html"):
             html = HTML.replace("__CAT_NAMES__", json.dumps(CAT_NAMES, ensure_ascii=False))
             self._send(200, html.encode())
@@ -2791,6 +2998,12 @@ class Handler(BaseHTTPRequestHandler):
             pass
 
     def do_POST(self):
+        p = urllib.parse.unquote(urllib.parse.urlsplit(self.path).path)
+        if p == "/login" and AUTH_ON:
+            self._do_login()
+            return
+        if not self._gate():
+            return
         path = urllib.parse.unquote(self.path)
         if path == "/api/stitch":
             try:
@@ -2978,4 +3191,5 @@ if __name__ == "__main__":
     threading.Thread(target=disk_guard, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"Sentry viewer on 0.0.0.0:{PORT}")
+    print("auth: %s (%s)" % ("ON, user=" + AUTH_USER if AUTH_ON else "OFF - 公网可直接访问!", AUTH_FILE))
     srv.serve_forever()

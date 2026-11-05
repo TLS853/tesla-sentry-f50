@@ -126,6 +126,23 @@ TSF_FFMPEG=$FFMPEG
 TSF_FFPROBE=$FFPROBE
 EOF
 
+# ---------------- 3.5 访问认证 ----------------
+AUTH_CONF="$TSF_DIR/auth.conf"
+if [ -f "$AUTH_CONF" ]; then
+    say "认证配置已存在, 保持不动: $AUTH_CONF"
+else
+    AUTH_PASS=$(head -c 96 /dev/urandom | tr -dc 'a-z2-9' | head -c 10)
+    cat > "$AUTH_CONF" <<EOF
+# 网页登录凭据 (改完执行 /etc/init.d/sentry-viewer restart 生效)
+# 删掉本文件 = 关闭认证, 只有内网使用时才建议这么干
+user=admin
+pass=$AUTH_PASS
+ttl=2592000
+EOF
+    chmod 600 "$AUTH_CONF"
+    say "已生成网页登录账号 -> admin / $AUTH_PASS   (已写入 $AUTH_CONF, 请记好)"
+fi
+
 # ---------------- 4. 服务 ----------------
 if [ -f /etc/rc.common ]; then
     say "安装 OpenWrt procd 服务 ..."
