@@ -75,6 +75,12 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
   .tp-badge { height:25px; font-size:11px; padding:0 8px 0 6px; } .tp-badge svg { width:13px; height:13px; }
   .infocard { padding:10px 12px 8px; }
   .ptop { padding:6px 10px; }
+  /* 底部控制栏: 手机宽度紧张, 全面紧凑化 */
+  .pbar { gap:8px; padding-left:10px; padding-right:10px; }
+  .pp { width:38px; height:38px; font-size:14px; }
+  .pbar .t { min-width:38px; font-size:12.5px; }
+  .spd { padding:8px 11px; font-size:13px; }
+  .qbtn { padding:8px 10px; font-size:12.5px; }
 }
 #gear { background:#242c35; border:none; color:#9aa4af; font-size:18px; cursor:pointer; border-radius:10px; width:36px; height:32px; }
 #gear:hover { color:#fff; }
@@ -180,9 +186,13 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .pbar input[type=range] { flex:1; accent-color:#3b82f6; min-width:80px; }
 .pbar .t { font-size:13.5px; color:#c6cdd4; min-width:44px; text-align:center; }
 .spd { background:#3b82f6; color:#fff; border:none; border-radius:10px; padding:9px 15px; font-size:14px; font-weight:600; cursor:pointer; flex:0 0 auto; }
-.qsel { display:flex; gap:6px; flex:0 0 auto; }
-.qsel button { background:#2a323d; color:#9aa4af; border:1px solid #3a4450; border-radius:10px; padding:8px 11px; font-size:13px; font-weight:600; cursor:pointer; }
-.qsel button.on { background:#10b981; border-color:#10b981; color:#fff; }
+.qsel { position:relative; flex:0 0 auto; }
+.qbtn { background:#2a323d; color:#9aa4af; border:1px solid #3a4450; border-radius:10px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.qbtn.on { background:#10b981; border-color:#10b981; color:#fff; }
+.qmenu { display:none; position:absolute; right:0; bottom:calc(100% + 6px); background:#222a34; border:1px solid #3a4450; border-radius:10px; padding:4px; min-width:96px; box-shadow:0 8px 22px #000000aa; z-index:30; }
+.qsel.open .qmenu { display:block; }
+.qmenu button { display:block; width:100%; text-align:left; background:none; border:none; color:#c6cdd4; font-size:13px; padding:9px 12px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+.qmenu button.on { background:#10b981; color:#fff; }
 .qhint { font-size:12px; color:#f59e0b; flex:0 0 100%; text-align:left; display:none; }
 .empty { text-align:center; padding:80px 20px; color:#5c6873; }
 .empty .big { font-size:44px; margin-bottom:14px; }
@@ -288,7 +298,7 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
   </label>
   <div class="expitem" id="expq-row" style="border-top:1px solid #2a333e;margin-top:6px">
     <span style="flex:0 0 auto;color:#c6cdd4;cursor:default">下载清晰度</span>
-    <div class="qsel" id="expq" style="flex:1;justify-content:flex-end;flex-wrap:wrap"></div>
+    <div class="qsel" id="expq" style="flex:1;display:flex;justify-content:flex-end"></div>
   </div>
   <div class="expr">
     <button class="mini" onclick="expChk(true)">全选</button>
@@ -361,10 +371,22 @@ let curQ = localStorage.getItem('tsfq') || (isLanNet ? 'orig' : '360p');
 if (!Q_LIST.some(x => x[0] === curQ)) curQ = 'orig';
 function qUrl(u) { return curQ === 'orig' ? u : u + '?q=' + curQ; }
 function renderQSel() {
-  document.getElementById('qsel').innerHTML = Q_LIST.map(([k, label]) =>
-    `<button class="${k === curQ ? 'on' : ''}" onclick="setQuality('${k}')">${label}</button>`).join('');
+  const curLabel = (Q_LIST.find(x => x[0] === curQ) || Q_LIST[0])[1];
+  document.getElementById('qsel').innerHTML =
+    `<button class="qbtn ${curQ !== 'orig' ? 'on' : ''}" onclick="toggleQ(event)">${curLabel} ⌃</button>` +
+    '<div class="qmenu">' + Q_LIST.map(([k, label]) =>
+      `<button class="${k === curQ ? 'on' : ''}" onclick="setQuality('${k}')">${label}</button>`).join('') + '</div>';
 }
+function toggleQ(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('qsel').classList.toggle('open');
+}
+function closeQ() {
+  ['qsel', 'expq'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.remove('open'); });
+}
+document.addEventListener('click', closeQ);
 function setQuality(q) {
+  closeQ();
   if (q === curQ) return;
   curQ = q; localStorage.setItem('tsfq', q);
   renderQSel();
@@ -987,8 +1009,15 @@ window.addEventListener('resize', () => { if (document.getElementById('player').
 /* ---------- 导出 ---------- */
 let expQ = 'orig';
 function renderExpQ() {
-  document.getElementById('expq').innerHTML = Q_LIST.map(([k, label]) =>
-    `<button class="${k === expQ ? 'on' : ''}" onclick="expQ='${k}';renderExpQ()">${label}</button>`).join('');
+  const curLabel = (Q_LIST.find(x => x[0] === expQ) || Q_LIST[0])[1];
+  document.getElementById('expq').innerHTML =
+    `<button class="qbtn ${expQ !== 'orig' ? 'on' : ''}" onclick="toggleExpQ(event)">${curLabel} ⌃</button>` +
+    '<div class="qmenu">' + Q_LIST.map(([k, label]) =>
+      `<button class="${k === expQ ? 'on' : ''}" onclick="expQ='${k}';renderExpQ();closeQ()">${label}</button>`).join('') + '</div>';
+}
+function toggleExpQ(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('expq').classList.toggle('open');
 }
 function openExport() {
   if (!cur) return;
