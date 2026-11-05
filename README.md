@@ -330,7 +330,7 @@ sudo ./uninstall.sh --purge      # 连镜像和归档一起删（不可恢复）
 <table>
   <tr>
     <td align="center"><img src="docs/sponsor/qq_group.jpg" width="320" alt="QQ群二维码"><br><sub><b>QQ 群：831426822</b></sub></td>
-    <td align="center"><img src="docs/sponsor/wechat_group.jpg" width="320" alt="微信群二维码"><br><sub><b>微信群</b>（7 天内有效）</sub></td>
+    <td align="center"><img src="docs/sponsor/wechat_group.png" width="320" alt="微信群二维码"><br><sub><b>微信群</b>（二维码 11月12日前有效，过期进群请联系作者或QQ群）</sub></td>
   </tr>
 </table>
 
