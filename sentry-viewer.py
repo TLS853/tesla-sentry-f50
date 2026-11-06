@@ -3034,6 +3034,10 @@ def _make_push_video(fp, off, quality="480p", dur=30):
             pass
         raise RuntimeError("转码失败: %s" % (r.stderr or b"")[:100].decode("utf-8", "ignore"))
     os.replace(tmp, out)
+    try:
+        res_cleanup()          # 推送视频也走同一个缓存目录, 超 2GB 从最旧删
+    except Exception:
+        pass
     return out
 
 
