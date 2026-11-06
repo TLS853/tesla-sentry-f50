@@ -599,6 +599,30 @@ function reasonOf(ev) {
 function isSentryEv(md) {
   return String((md || {}).reason || '').indexOf('sentry_') === 0;
 }
+/* event.json 的 camera 编号 -> 片段文件后缀 (社区公认映射: 0前 3左前 4右前 5左B 6右B 7后) */
+const CAM_IDX = {0:'front', 3:'left_pillar', 4:'right_pillar', 5:'left_repeater', 6:'right_repeater', 7:'back'};
+/* 片段组 key (YYYY-MM-DD_HH-MM-SS) -> 墙钟毫秒; 车机片段名与 event.json timestamp 同一时基, 直接比较 */
+function clipEpoch(k) {
+  const m = String(k || '').match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : 0;
+}
+/* 哨兵封面: 触发摄像头 + 触发那一帧; 找不到对应片段/摄像头返回 null 回落默认封面 */
+function sentryThumbSrc(ev, groups) {
+  const md = ev.meta || {};
+  const camKey = CAM_IDX[+md.camera];
+  const m = String(md.timestamp || '').match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})/);
+  if (!camKey || !m) return null;
+  const tg = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  if (!tg) return null;
+  for (const g of groups) {                       // groups 已按片段开始时间升序
+    const s = clipEpoch(g.key);
+    if (!s || tg < s || tg > s + 70e3) continue;  // 触发时刻落在这 1 分钟片段内
+    const v = g.vids.find(x => x.cam === camKey);
+    if (!v) return null;                          // 触发摄像头该分钟没录到, 回落
+    return v.url.replace('/media/', '/thumb/') + '?t=' + Math.max(0, Math.round((tg - s) / 1000));
+  }
+  return null;
+}
 function dateOf(ev) {
   const m = String(ev.name || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? m[1] + '-' + m[2] + '-' + m[3] : '';
@@ -688,8 +712,9 @@ function render(cat) {
     const vids = camSort(groups.length ? groups[groups.length - 1].vids : []);
     let th;
     if (vids.length) {
-      const fr = vids.find(v => v.cam === 'front') || vids[0];
-      const src = fr.url.replace('/media/', '/thumb/');
+      /* 哨兵事件: 用触发摄像头在触发那一帧当封面; 其他/回落: 前摄像头第1秒 */
+      const src = sentryThumbSrc(ev, groups) ||
+        (vids.find(v => v.cam === 'front') || vids[0]).url.replace('/media/', '/thumb/');
       th = `<div class="thumb one"><img loading="lazy" decoding="async" src="${src}" alt="" onerror="thumbErr(this)"><span class="cnum">${vids.length} 路</span></div>`;
     } else {
       th = `<div class="thumb"><div class="ph">🎞</div></div>`;
@@ -798,7 +823,7 @@ function renderClip() {
   if (md.est_lat && md.est_lon) rh += '<div data-k="coord"><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
   if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASON_LABEL[md.reason] || md.reason) + '</div>';
   /* camera 字段只有哨兵事件有意义; 手动保存等也会带 camera:"0" */
-  if (md.camera && isSentryEv(md)) rh += '<div data-k="camera"><span class="ick">触发画面</span>摄像头 #' + md.camera + '</div>';
+  if (md.camera && isSentryEv(md)) { const cn = CAM_IDX[+md.camera]; rh += '<div data-k="camera"><span class="ick">触发画面</span>' + (cn ? camLabel(cn) : '摄像头') + ' #' + md.camera + '</div>'; }
   if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + md.campaign_id + '</div>';
   rh += '<div><span class="ick">画面</span>' + clip.vids.length + ' 路</div>';
   if (curClips.length > 1) rh += '<div><span class="ick">片段</span>共 ' + curClips.length + ' 段, 当前第 ' + (curClipIx + 1) + ' 段</div>';
@@ -835,7 +860,8 @@ function loadTelemetry(url, meta) {
   // 触发画面摄像头: 只有哨兵事件显示 (手动保存等也会带无意义的 camera:"0")
   const camTag = document.getElementById('tp-tag');
   if (TEL_META.camera && isSentryEv(TEL_META)) {
-    camTag.innerHTML = '触发画面 <b>摄像头 #' + TEL_META.camera + '</b>';
+    const cn = CAM_IDX[+TEL_META.camera];
+    camTag.innerHTML = '触发画面 <b>' + (cn ? camLabel(cn) : '摄像头') + ' #' + TEL_META.camera + '</b>';
     camTag.classList.add('show');
   } else {
     camTag.classList.remove('show');
@@ -2923,7 +2949,7 @@ class Handler(BaseHTTPRequestHandler):
                 MEDIA_SEM.release()
 
     def _serve_thumb(self, path):
-        """列表缩略图: 用 ffmpeg 抽第 1 秒一帧, 结果按 (路径+大小+mtime) 哈希缓存在 eMMC"""
+        """列表缩略图: 用 ffmpeg 抽指定秒数一帧 (?t=秒, 默认 1), 结果按 (路径+大小+mtime+t) 哈希缓存在 eMMC"""
         parts = path[len("/thumb/"):].split("/")
         if len(parts) != 3:
             self._send(404, b"not found")
@@ -2943,7 +2969,11 @@ class Handler(BaseHTTPRequestHandler):
         except OSError:
             self._send(404, b"not found")
             return
-        key = hashlib.md5(("%s|%d|%d" % (fp, st.st_size, int(st.st_mtime))).encode()).hexdigest()
+        try:
+            ss_t = max(0.0, min(float(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("t", ["1"])[0]), 3600.0))
+        except ValueError:
+            ss_t = 1.0
+        key = hashlib.md5(("%s|%d|%d|%g" % (fp, st.st_size, int(st.st_mtime), ss_t)).encode()).hexdigest()
         out = os.path.join(THUMB_DIR, key + ".jpg")
         # 0 字节文件是上次 ffmpeg 失败留下的残骸 (片段当时还没同步完), 视为无效缓存
         try:
@@ -2957,8 +2987,12 @@ class Handler(BaseHTTPRequestHandler):
             if THUMB_SEM.acquire(timeout=12):
                 try:
                     if not os.path.isfile(out):
-                        # -ss 1 可能落在片段末尾之外(极短片段), 失败则退回第一帧
-                        for ss in ("1", "0"):
+                        # 指定秒数可能落在片段末尾之外(触发帧偏移略超时长), 逐级回落
+                        cands = []
+                        for s in (("%.1f" % ss_t), "1", "0"):
+                            if s not in cands:
+                                cands.append(s)
+                        for ss in cands:
                             try:
                                 if os.path.exists(tmp):
                                     os.remove(tmp)
