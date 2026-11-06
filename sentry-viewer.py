@@ -42,12 +42,16 @@ HTML = r"""<!DOCTYPE html>
   --bg:#0e1216; --headbg:#171d24; --panel:#1c232c; --panel2:#232b35; --chipbg:#1e252e;
   --line:#232b34; --line2:#2a333d; --text:#e8eaed; --muted:#8d99a5; --muted2:#6f7a85;
   --accent:#e8443f; --blue:#2f6ee0; --shadow:0 4px 14px #00000055; --headline:#ffffff0d;
+  /* 播放器子页面专用 */
+  --stage:#0d1117;                        /* 视频区域始终深色, 两种主题都不变 */
+  --amberbg:rgba(245,158,11,.14); --amber:#eab063; --amberb:#f7c67e; --amberline:rgba(245,158,11,.22);
 }
 html[data-theme="light"] {
   color-scheme: light;
   --bg:#f2f4f7; --headbg:#ffffff; --panel:#ffffff; --panel2:#eef1f5; --chipbg:#ffffff;
   --line:#e4e8ee; --line2:#d9dfe6; --text:#17191c; --muted:#6b7683; --muted2:#9aa4af;
   --accent:#e8443f; --blue:#2f6ee0; --shadow:0 2px 10px #0f172a14; --headline:#0f172a0d;
+  --amberbg:rgba(245,158,11,.16); --amber:#9a5b00; --amberb:#875000; --amberline:rgba(245,158,11,.34);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { background:var(--bg); color:var(--text); font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
@@ -133,19 +137,18 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .dhead { grid-column:1/-1; display:flex; align-items:baseline; gap:8px; padding:8px 2px 0; }
 .dhead b { font-size:13px; font-weight:700; }
 .dhead .n { font-size:11.5px; color:var(--muted2); }
-.player { display:none; position:fixed; inset:0; height:100vh; height:100dvh; background:#0d1117; color:#e8eaed; z-index:100; flex-direction:column; }
-/* 播放器是独立"纯黑舞台", 不跟随全局主题: 内部所有文字固定浅色,
-   防止浅色主题下 body 的深色文字继承进来落在深色背景上看不见 */
+.player { display:none; position:fixed; inset:0; height:100vh; height:100dvh; background:var(--bg); color:var(--text); z-index:100; flex-direction:column; }
+/* 播放器子页面跟随全局主题: 卡片/头部/控制栏用变量, 只有视频画面区域保持恒定深色 (--stage), 看片更沉浸 */
 .player.open { display:flex; }
 .ptop { display:flex; align-items:center; gap:10px; padding:10px 14px; }
 .ptop .pdl { margin-left:auto; }
-.pback { background:none; border:none; color:#fff; font-size:16.5px; cursor:pointer; padding:4px 2px; white-space:nowrap; }
-.pdl { background:none; border:none; color:#fff; font-size:19px; cursor:pointer; padding:4px 6px; }
+.pback { background:none; border:none; color:var(--text); font-size:16.5px; cursor:pointer; padding:4px 2px; white-space:nowrap; }
+.pdl { background:none; border:none; color:var(--text); font-size:19px; cursor:pointer; padding:4px 6px; }
 .pscroll { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:2px 14px 14px; display:flex; flex-direction:column; gap:12px; }
 .pscroll > * { flex:0 0 auto; }
-.vwrap { position:relative; border-radius:14px; overflow:hidden; max-width:980px; width:100%; margin:0 auto; }
+.vwrap { position:relative; border-radius:14px; overflow:hidden; max-width:980px; width:100%; margin:0 auto; background:var(--stage); }
 /* 行车遥测面板 (视频上方, Tesla App 样式, 不遮挡画面) */
-.tpanel { display:none; background:#1c232c; border-radius:14px; padding:14px 18px 10px; max-width:980px; width:100%; margin:0 auto; }
+.tpanel { display:none; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 18px 10px; max-width:980px; width:100%; margin:0 auto; }
 .tpanel.show { display:block; }
 .tpanel.folded .tp-rows { display:none; }
 /* 无遥测事件(哨兵/停车): 顶部只保留 时间 + 城市·位置 一行, 不留空白块 */
@@ -158,81 +161,82 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .infocard.plain .ic-badge { margin-left:0; }
 .tp-top { display:flex; justify-content:space-between; align-items:center; }
 .tp-l { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
-.tp-date { font-size:13.5px; color:#cfd6dd; font-variant-numeric:tabular-nums; }
-.tp-loc { font-size:12.5px; color:#8d99a5; }
+.tp-date { font-size:13.5px; color:var(--text); font-variant-numeric:tabular-nums; }
+.tp-loc { font-size:12.5px; color:var(--muted); }
 /* 哨兵/纪念事件: 触发画面摄像头 (来自 event.json 的 camera 字段) */
 .tp-tag { display:none; align-items:center; gap:4px; height:22px; padding:0 9px; border-radius:11px;
-  background:rgba(245,158,11,.14); color:#eab063; font-size:11.5px; font-weight:600;
-  border:1px solid rgba(245,158,11,.22); white-space:nowrap; align-self:center; }
+  background:var(--amberbg); color:var(--amber); font-size:11.5px; font-weight:600;
+  border:1px solid var(--amberline); white-space:nowrap; align-self:center; }
 .tp-tag.show { display:inline-flex; }
-.tp-tag b { color:#f7c67e; font-weight:800; font-variant-numeric:tabular-nums; }
+.tp-tag b { color:var(--amberb); font-weight:800; font-variant-numeric:tabular-nums; }
 .tp-tr { display:flex; align-items:center; gap:9px; }
-.tp-sig { font-size:16px; color:#3a4450; line-height:1; }
+.tp-sig { font-size:16px; color:var(--muted2); line-height:1; }
 .tp-sig.on { color:#f59e0b; }
 .tp-gear { background:#34c759; color:#fff; font-weight:800; font-size:14px; width:26px; height:26px;
   border-radius:50%; display:inline-flex; align-items:center; justify-content:center; }
 .tp-mid { display:flex; align-items:center; margin-top:8px; }
-.tp-spd { font-size:34px; font-weight:800; color:#fff; line-height:1.1; font-variant-numeric:tabular-nums; }
-.tp-unit { font-size:13px; color:#9aa4af; font-weight:600; margin-left:6px; }
+.tp-spd { font-size:34px; font-weight:800; color:var(--text); line-height:1.1; font-variant-numeric:tabular-nums; }
+.tp-unit { font-size:13px; color:var(--muted); font-weight:600; margin-left:6px; }
 .tp-badges { display:flex; align-items:center; gap:10px; margin-left:auto; }
 .tp-c { width:34px; height:34px; border-radius:50%; display:inline-flex; align-items:center;
   justify-content:center; font-size:11.5px; font-weight:700; flex:none; }
-.tp-c.t { background:#3a4450; color:#e8edf2; font-size:15px; }
+.tp-c.t { background:var(--panel2); color:var(--text); font-size:15px; }
 .tp-badge { display:inline-flex; align-items:center; gap:5px; height:30px; padding:0 11px 0 8px;
   border-radius:15px; font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums; flex:none; }
 .tp-badge svg { width:16px; height:16px; flex:none; }
 .tp-badge.thr { background:#1f7ae0; color:#fff; }
-.tp-badge.brk { background:#2a323d; color:#8d99a5; }
+.tp-badge.brk { background:var(--panel2); color:var(--muted); }
 .tp-badge.brk.on { background:#ff453a; color:#fff; box-shadow:0 0 9px #ff453a66; }
 .tp-c.ap { background:linear-gradient(135deg,#f59e0b,#ef4444); color:#fff; font-size:10.5px; }
-.tp-c.st { background:#2a323d; }
+.tp-c.st { background:var(--panel2); color:var(--muted); }
 .tp-c.st svg { width:20px; height:20px; }
-.tp-fold { display:block; margin:8px 0 0 auto; background:none; border:none; color:#8d99a5;
+.tp-fold { display:block; margin:8px 0 0 auto; background:none; border:none; color:var(--muted);
   font-size:12px; cursor:pointer; padding:4px 2px; }
-.tp-rows { border-top:1px solid #2a323d; margin-top:2px; padding-top:8px; display:grid;
+.tp-rows { border-top:1px solid var(--line); margin-top:2px; padding-top:8px; display:grid;
   grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1px 20px; }
-.tp-rows div { color:#e8edf2; font-size:13px; padding:3px 0; font-variant-numeric:tabular-nums; }
-.tp-rows .k { color:#8d99a5; margin-right:9px; }
-.vgrid { display:grid; gap:3px; background:#000; }
-.vcell { position:relative; overflow:hidden; background:#000; cursor:zoom-in; aspect-ratio:16/9; }
+.tp-rows div { color:var(--text); font-size:13px; padding:3px 0; font-variant-numeric:tabular-nums; }
+.tp-rows .k { color:var(--muted); margin-right:9px; }
+.vgrid { display:grid; gap:3px; background:var(--stage); }
+.vcell { position:relative; overflow:hidden; background:var(--stage); cursor:zoom-in; aspect-ratio:16/9; }
 .vcell.focused { grid-column:1/-1; grid-row:1/-1; cursor:zoom-out; }
-.vcell video { width:100%; height:100%; background:#000; object-fit:cover; display:block; }
+.vcell video { width:100%; height:100%; background:var(--stage); object-fit:cover; display:block; }
+/* 以下是叠在视频画面上的浮层, 永远在深色画面上, 用固定颜色 */
 .startmask { position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.55); color:#fff; font-size:16px; display:none; align-items:center; justify-content:center; cursor:pointer; letter-spacing:1px; }
 .startmask.show { display:flex; }
 .vcell .clabel { position:absolute; right:7px; bottom:7px; font-size:11px; color:#e8eef4; background:rgba(20,24,29,.72); border-radius:6px; padding:2px 7px; pointer-events:none; }
-.vcell .cload { position:absolute; left:0; top:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; color:#9aa4af; background:rgba(10,13,18,.6); pointer-events:none; }
-.vcell .cload.err { color:#e8443f; }
+.vcell .cload { position:absolute; left:0; top:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; color:#c6cdd4; background:rgba(10,13,18,.6); pointer-events:none; }
+.vcell .cload.err { color:#ff6b66; }
 .vcell .cload .spin { width:14px; height:14px; border:2px solid #3a4450; border-top-color:#10b981; border-radius:50%; animation:cspin .8s linear infinite; }
 @keyframes cspin { to { transform:rotate(360deg); } }
-.infocard { background:#1d242e; border-radius:16px; padding:14px 16px 10px; max-width:980px; width:100%; margin:0 auto; box-shadow:0 6px 20px #0008; }
+.infocard { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:14px 16px 10px; max-width:980px; width:100%; margin:0 auto; box-shadow:var(--shadow); }
 .ic-top { display:flex; align-items:center; gap:10px; }
-.ic-time { font-size:14px; color:#c6cdd4; }
+.ic-time { font-size:14px; color:var(--text); }
 .ic-badge { margin-left:auto; background:#3b82f6; color:#fff; font-size:12px; font-weight:600; border-radius:14px; padding:3px 12px; }
 .ic-mid { display:flex; align-items:baseline; gap:12px; margin:10px 0 2px; flex-wrap:wrap; }
-.ic-big { font-size:30px; font-weight:700; letter-spacing:.5px; }
-.ic-sub { font-size:12.5px; color:#8d99a5; }
+.ic-big { font-size:30px; font-weight:700; letter-spacing:.5px; color:var(--text); }
+.ic-sub { font-size:12.5px; color:var(--muted); }
 .clipbar { display:none; gap:6px; flex-wrap:wrap; margin-top:9px; }
 .clipbar.show { display:flex; }
-.clipbar button { background:#232b36; color:#9aa6b2; border:1px solid #2d3843; border-radius:8px;
+.clipbar button { background:var(--panel2); color:var(--muted); border:1px solid var(--line2); border-radius:8px;
   font-size:12px; padding:4px 9px; cursor:pointer; font-variant-numeric:tabular-nums; }
-.clipbar button.on { background:#2f6ee0; border-color:#2f6ee0; color:#fff; }
-.ic-rows { display:none; font-size:12.5px; line-height:1.9; color:#aeb7c0; word-break:break-all; border-top:1px solid #ffffff10; margin-top:8px; padding-top:8px; }
+.clipbar button.on { background:var(--blue); border-color:var(--blue); color:#fff; }
+.ic-rows { display:none; font-size:12.5px; line-height:1.9; color:var(--muted); word-break:break-all; border-top:1px solid var(--line); margin-top:8px; padding-top:8px; }
 .ic-rows.open { display:block; }
-.ick { display:inline-block; min-width:64px; color:#8d99a5; }
-.ic-fold { background:none; border:none; color:#8d99a5; font-size:12px; cursor:pointer; padding:4px 0 2px; margin-left:auto; display:block; }
+.ick { display:inline-block; min-width:64px; color:var(--muted); }
+.ic-fold { background:none; border:none; color:var(--muted); font-size:12px; cursor:pointer; padding:4px 0 2px; margin-left:auto; display:block; }
 .pbar { display:flex; align-items:center; gap:12px; padding:10px 16px calc(12px + env(safe-area-inset-bottom,0px)); max-width:1008px; margin:0 auto; width:100%; box-sizing:border-box; }
-.pp { width:44px; height:44px; border-radius:50%; background:#fff; color:#14181d; border:none; font-size:16px; cursor:pointer; flex:0 0 auto; }
+.pp { width:44px; height:44px; border-radius:50%; background:var(--text); color:var(--panel); border:none; font-size:16px; cursor:pointer; flex:0 0 auto; }
 .pbar input[type=range] { flex:1; accent-color:#3b82f6; min-width:80px; }
-.pbar .t { font-size:13.5px; color:#c6cdd4; min-width:44px; text-align:center; }
+.pbar .t { font-size:13.5px; color:var(--text); min-width:44px; text-align:center; }
 .spd { background:#3b82f6; color:#fff; border:none; border-radius:10px; padding:9px 15px; font-size:14px; font-weight:600; cursor:pointer; flex:0 0 auto; }
 .qsel { position:relative; flex:0 0 auto; }
-.qbtn { background:#2a323d; color:#9aa4af; border:1px solid #3a4450; border-radius:10px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
+.qbtn { background:var(--panel2); color:var(--muted); border:1px solid var(--line2); border-radius:10px; padding:9px 12px; font-size:13px; font-weight:600; cursor:pointer; white-space:nowrap; }
 .qbtn.on { background:#10b981; border-color:#10b981; color:#fff; }
-.qmenu { display:none; position:absolute; right:0; bottom:calc(100% + 6px); background:#222a34; border:1px solid #3a4450; border-radius:10px; padding:4px; min-width:96px; box-shadow:0 8px 22px #000000aa; z-index:30; }
+.qmenu { display:none; position:absolute; right:0; bottom:calc(100% + 6px); background:var(--panel); border:1px solid var(--line2); border-radius:10px; padding:4px; min-width:96px; box-shadow:0 8px 22px #00000040; z-index:30; }
 .qsel.open .qmenu { display:block; }
-.qmenu button { display:block; width:100%; text-align:left; background:none; border:none; color:#c6cdd4; font-size:13px; padding:9px 12px; border-radius:7px; cursor:pointer; white-space:nowrap; }
+.qmenu button { display:block; width:100%; text-align:left; background:none; border:none; color:var(--text); font-size:13px; padding:9px 12px; border-radius:7px; cursor:pointer; white-space:nowrap; }
 .qmenu button.on { background:#10b981; color:#fff; }
-.qhint { font-size:12px; color:#f59e0b; flex:0 0 100%; text-align:left; display:none; }
+.qhint { font-size:12px; color:var(--amber); flex:0 0 100%; text-align:left; display:none; }
 .empty { text-align:center; padding:80px 20px; color:var(--muted2); }
 .empty .big { font-size:44px; margin-bottom:14px; }
 /* 设置面板 */
@@ -270,11 +274,11 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .stt { font-size:14.5px; font-weight:600; margin-bottom:14px; }
 .stbar { height:8px; border-radius:5px; background:var(--line2); overflow:hidden; }
 .stfill { height:100%; width:0; background:linear-gradient(90deg,#3b82f6,#60a5fa); border-radius:5px; transition:width .4s; }
-.stpct { font-size:13px; color:#8d99a5; margin-top:8px; }
-.sthint { font-size:11.5px; color:#7d8894; margin-top:4px; line-height:1.5; }
+.stpct { font-size:13px; color:var(--muted); margin-top:8px; }
+.sthint { font-size:11.5px; color:var(--muted2); margin-top:4px; line-height:1.5; }
 </style></head><body>
 <header><h1>🚗 特斯拉哨兵查看器</h1><span class="sub" id="stat"></span>
-<span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#7d8894;background:#1a2027;border:1px solid #232b34;border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
+<span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
 <nav class="tabs" id="tabs"></nav><button id="theme" title="主题: 自动/浅色/深色" onclick="cycleTheme()">🌗</button><button id="gear" title="皮肤与锁车音">⚙</button><button id="out" title="退出登录" onclick="location.href='/logout'">⏏</button></header>
 <nav class="storwrap" id="storwrap" style="display:none">
   <div class="storcard">
@@ -305,7 +309,7 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
           <span class="tp-badges">
             <span class="tp-badge brk" id="tp-brk" title="刹车 (数据源只有踩下/未踩, 无踏板开度)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="2.5"/><path d="M17.4 6.6l2.7-2.7"/></svg><b>刹车</b></span>
             <span class="tp-badge thr" id="tp-thr" title="油门"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M9.4 3.6h5.2a1.7 1.7 0 0 1 1.68 1.93l-1.35 12.3a1.8 1.8 0 0 1-1.79 1.6h-2.28a1.8 1.8 0 0 1-1.79-1.6L7.72 5.53A1.7 1.7 0 0 1 9.4 3.6z"/><path d="M8.6 15.1h6.8"/></svg><b id="tp-thr-n">0%</b></span>
-            <span class="tp-c st" id="tp-st" title="方向盘角度"><svg viewBox="0 0 24 24" fill="none" stroke="#cfd6dd" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M3.2 10.5h6M14.8 10.5h6M12 14.6V21"/></svg></span>
+            <span class="tp-c st" id="tp-st" title="方向盘角度"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M3.2 10.5h6M14.8 10.5h6M12 14.6V21"/></svg></span>
             <span class="tp-c ap" id="tp-ap" style="display:none">AP</span>
           </span>
         </div>
@@ -337,11 +341,11 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 <div class="expp" id="expp">
   <div class="expt">选择要导出的画面<button class="x" onclick="closeExport()">✕</button></div>
   <div id="expchks"></div>
-  <label class="expitem" id="expwm-row" style="border-top:1px solid #2a333e;margin-top:6px;align-items:flex-start">
+  <label class="expitem" id="expwm-row" style="border-top:1px solid var(--line2);margin-top:6px;align-items:flex-start">
     <input type="checkbox" id="expwm" style="margin-top:2px">
     <span style="line-height:1.45">叠加行车信息水印<small style="display:block;color:#7d8894;font-size:11px;margin-top:2px">半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面</small></span>
   </label>
-  <div class="expitem" id="expq-row" style="border-top:1px solid #2a333e;margin-top:6px">
+  <div class="expitem" id="expq-row" style="border-top:1px solid var(--line2);margin-top:6px">
     <span style="flex:0 0 auto;color:#c6cdd4;cursor:default">下载清晰度</span>
     <div class="qsel" id="expq" style="flex:1;display:flex;justify-content:flex-end"></div>
   </div>
