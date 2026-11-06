@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.4.0"
+APP_VERSION = "2.4.1"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -3404,6 +3404,14 @@ def notify_push(cat, name, test=False):
     return True, "已推送到飞书群" + warn
 
 
+def _ev_ts(name):
+    """从事件目录名 YYYY-MM-DD_HH-MM-SS 解析事件真实发生时间; 失败返回 0"""
+    try:
+        return time.mktime(time.strptime(name, "%Y-%m-%d_%H-%M-%S"))
+    except Exception:
+        return 0
+
+
 def notify_scan():
     """扫一遍归档, 把新出现的哨兵事件推给飞书; 返回本轮推送条数"""
     conf = notify_conf()
@@ -3417,6 +3425,8 @@ def notify_scan():
     cats = ["SentryClips"] + (["SavedClips"] if conf.get("saved") else [])
     sent = 0
     for cat in cats:
+        if sent >= 3:
+            break
         base = os.path.join(ARCHIVE, cat)
         if not os.path.isdir(base):
             continue
@@ -3436,6 +3446,16 @@ def notify_scan():
             now = time.time()
             if now - newest < delay:
                 continue                     # 还在同步写入, 下一轮再看
+            # 两道判定:
+            # (1) 目录名里的日期 = 事件真实发生时间(车机时钟)。车机U盘循环覆盖后
+            #     tesla-sync 会把旧片段重新归档, 复制出来的文件 mtime 是"复制时刻",
+            #     只看 mtime 会把几天前的事件当新事件推出去。所以超过 24h 的直接记账不推
+            #     (留 24h 余量足以吸收车机与盒子的时区偏差)。
+            # (2) 新鲜度仍按 mtime: 保留"还在写入就不推""超过 6h 不补"的原语义。
+            ev_ts = _ev_ts(name)
+            if ev_ts and now - ev_ts > 24 * 3600:
+                seen[key] = int(now)         # 历史回灌(一天以前的片段), 不推
+                continue
             if first or now - newest > 6 * 3600:
                 seen[key] = int(now)         # 首次启用不补历史; 太旧的(>6h)也不补
                 continue
@@ -3454,6 +3474,9 @@ def notify_scan():
                 break
     if first:
         st["init"] = 1
+    if len(seen) > 3000:                       # 防止状态文件无限膨胀
+        for k in sorted(seen, key=lambda x: seen.get(x) or 0)[:len(seen) - 2000]:
+            seen.pop(k, None)
     _nstate_save(st)
     return sent
 
