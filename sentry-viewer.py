@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.4.6"
+APP_VERSION = "2.4.7"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -591,8 +591,8 @@ select.ninput { cursor:pointer; }
 .expp .expt .x { margin-left:auto; background:none; border:none; color:var(--muted); font-size:17px; cursor:pointer; }
 .expitem { display:flex; align-items:center; gap:8px; padding:7px 4px; font-size:13px; color:var(--text); cursor:pointer; }
 .expitem input { accent-color:var(--accent); width:16px; height:16px; }
-.expr { display:flex; gap:8px; margin-top:10px; }
-.expr .mini { flex:1; padding:7px 0; border-radius:9px; background:var(--panel2); border:none; color:var(--text); font-size:12.5px; cursor:pointer; }
+.expr { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+.expr .mini { flex:1 1 30%; padding:7px 0; border-radius:9px; background:var(--panel2); border:none; color:var(--text); font-size:12.5px; cursor:pointer; }
 .expr .mini.primary { background:var(--accent); color:#fff; }
 .stitch { display:none; position:fixed; inset:0; background:rgba(0,0,0,.72); z-index:260; align-items:center; justify-content:center; }
 .stitch.open { display:flex; }
@@ -679,9 +679,10 @@ select.ninput { cursor:pointer; }
     <button class="mini" onclick="expChk(true)">全选</button>
     <button class="mini" onclick="expChk(false)">清空</button>
     <button class="mini" onclick="doExportZip()">打包zip</button>
+    <button class="mini" onclick="doPushFeishu()">推送飞书</button>
     <button class="mini primary" onclick="doExport()">合成视频</button>
   </div>
-  <div class="hint" style="margin-top:8px;margin-bottom:0">单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。</div>
+  <div class="hint" style="margin-top:8px;margin-bottom:0">单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。「推送飞书」按所选画面+水印合成后发到你的飞书私聊 (需已配置推送, 首次合成约1-3分钟)。</div>
 </div>
 
 <div class="mask" id="mask" onclick="closePanel()"></div>
@@ -1723,9 +1724,38 @@ function doExport() {
   }
   startLocalStitch(sel, document.getElementById('stitch'), wm);
 }
+function doPushFeishu() {
+  if (!cur) return;
+  const sel = [...document.querySelectorAll('#expchks input:checked')].map(c => c.value);
+  if (!sel.length) { toast('请至少选择一路'); return; }
+  const telOk = !!(TEL && TEL.frames && TEL.frames.length);
+  const wm = document.getElementById('expwm').checked && telOk;
+  closeExport();
+  const parts = ((curVids()[0] || {}).url || '').replace(/^\/media\//, '').split('/');
+  const cat = parts[0] || '', name = parts[1] || '';
+  if (!name) { toast('取不到当前事件信息, 请刷新重试'); return; }
+  startLocalStitch(sel, document.getElementById('stitch'), wm, { cat: cat, name: name, q: expQ });
+}
+function uploadPushVideo(blob, push) {
+  const fill = document.getElementById('stfill'), pct = document.getElementById('stpct'),
+        hint = document.getElementById('sthint');
+  fill.style.width = '60%'; pct.textContent = '';
+  hint.textContent = '已上传到设备, 正在转码并推送飞书 (约1-3分钟, 请保持页面打开)…';
+  fetch('/api/push/upload?cat=' + encodeURIComponent(push.cat) + '&name=' + encodeURIComponent(push.name) +
+        '&q=' + encodeURIComponent(push.q),
+        { method: 'POST', body: blob, headers: { 'Content-Type': blob.type || 'video/webm' } })
+    .then(r => r.json()).then(d => {
+      if (d.ok) {
+        fill.style.width = '100%'; pct.textContent = '100%';
+        hint.textContent = '✅ ' + d.msg;
+        setTimeout(() => document.getElementById('stitch').classList.remove('open'), 6000);
+      } else stitchFail(d.msg || d.error || '推送失败');
+    })
+    .catch(e => stitchFail('推送失败: ' + e));
+}
 /* 浏览器本机合成: 设备端 ffmpeg 多路 1080p 会触发内核重启, 改由电脑实时录制合成 */
 let recBusy = false;
-function startLocalStitch(sel, st, wm) {
+function startLocalStitch(sel, st, wm, push) {
   if (recBusy) { toast('已有合成在进行'); return; }
   const vids = camSort(curVids()).filter(v => sel.includes(v.cam));
   if (!vids.length) { toast('请至少选择一路'); return; }
@@ -1778,6 +1808,7 @@ function startLocalStitch(sel, st, wm) {
     rec.onstop = () => {
       cleanup();
       const blob = new Blob(chunks, { type: mime.split(';')[0] });
+      if (push) { uploadPushVideo(blob, push); return; }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
       a.download = (cur ? cur.name : 'teslacam') + '_' + sel.length + '路.' + ext;
@@ -3444,6 +3475,67 @@ def _make_push_video(fp, off, quality="480p", dur=30):
     return out
 
 
+def _transcode_push_upload(src, quality="480p"):
+    """把浏览器本机合成上传来的片段 (webm/mp4) 整段转成体积可控的 mp4, 供推飞书;
+    返回 (mp4路径, 时长秒)。单路输入, 负载与推送转码同级, 设备可承受。"""
+    h, kbps = VID_Q.get(quality) or VID_Q["480p"]
+    try:
+        st = os.stat(src)
+    except OSError:
+        raise RuntimeError("上传的片段不存在")
+    key = hashlib.md5(("%d|%d|%s" % (st.st_size, int(st.st_mtime), quality)).encode()).hexdigest()[:16]
+    out = os.path.join(RES_DIR, "push-manual-%s.mp4" % key)
+    if os.path.isfile(out) and os.path.getsize(out) > 0:
+        return out, probe_duration(out) or 0.0
+    if not os.path.isfile(FFMPEG_BIN):
+        raise RuntimeError("设备上没有 ffmpeg")
+    tmp = out + ".%d.tmp" % os.getpid()
+    cmd = ["sh", "-c", 'echo 300 > /proc/self/oom_score_adj 2>/dev/null; exec "$0" "$@"',
+           FFMPEG_BIN, "-nostdin", "-hide_banner", "-loglevel", "error",
+           "-i", src, "-vf", "scale=-2:%d" % h,
+           "-c:v", "libx264", "-preset", "superfast",
+           "-b:v", "%dk" % kbps, "-maxrate", "%dk" % (kbps * 3 // 2), "-bufsize", "%dk" % (kbps * 3),
+           "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", "-f", "mp4", "-y", tmp]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=900)
+    except subprocess.TimeoutExpired:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("转码超时 (>15 分钟)")
+    if r.returncode != 0 or not os.path.isfile(tmp) or os.path.getsize(tmp) == 0:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("转码失败: %s" % (r.stderr or b"")[:120].decode("utf-8", "ignore"))
+    os.replace(tmp, out)
+    try:
+        res_cleanup()
+    except Exception:
+        pass
+    return out, probe_duration(out) or 0.0
+
+
+def manual_push(conf, src, cat, name, quality="480p"):
+    """把一个现成的视频文件 (浏览器合成的多路画面) 推到飞书私聊; 返回 (成功?, 提示)。
+    src 会被整段转码后上传, 推完发送事件卡片 (带查看按钮)。"""
+    if not _dm_ready(conf):
+        return False, "飞书私聊未就绪: 需要在「推送」里配好 App ID/Secret + 接收人 (群机器人 webhook 发不了视频)"
+    vid, dur = _transcode_push_upload(src, quality)
+    mb = os.path.getsize(vid) / 1048576.0
+    if mb > 28:
+        return False, "转码后仍有 %.0fMB, 超过飞书 30MB 上限; 请选更短片段或更低清晰度" % mb
+    fk = _feishu_upload_file(conf, vid, dur)
+    _feishu_send_media(conf, fk)
+    try:
+        _feishu_send_dm(conf, _feishu_card(conf, cat, name, img_key=None))
+    except Exception:
+        pass
+    return True, "已推送 %.0f 秒视频 (%.1fMB) 到飞书私聊" % (dur, mb)
+
+
 def _feishu_upload_file(conf, path, dur=30):
     """上传视频文件到飞书, 返回 file_key"""
     with open(path, "rb") as f:
@@ -4931,6 +5023,45 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "msg": "归档里还没有哨兵事件, 无法生成测试卡片"}, 400)
                 return
             ok, msg = notify_push(cat, name, test=True)
+            self._json({"ok": ok, "msg": msg})
+            return
+        if urllib.parse.urlsplit(self.path).path == "/api/push/upload":
+            # 手动推送: 浏览器本机合成的片段 (webm/mp4 裸流) 上传到设备, 转码后推飞书私聊
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            cat = q.get("cat", [""])[0]
+            name = q.get("name", [""])[0]
+            quality = q.get("q", ["480p"])[0]
+            if quality not in ("360p", "480p", "720p", "orig"):
+                quality = "480p"
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            if not name or not re.match(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", name):
+                self._json({"ok": False, "msg": "参数错误"}, 400)
+                return
+            if length <= 0 or length > 300 * 1048576:
+                self._json({"ok": False, "msg": "片段为空或超过 300MB"}, 400)
+                return
+            evdir = safe_archive_dir(os.path.join(ARCHIVE, cat, name))
+            if not evdir or not os.path.isdir(evdir):
+                self._json({"ok": False, "msg": "事件不存在"}, 400)
+                return
+            tmp = "/tmp/tsf-push-upload.%d" % os.getpid()
+            try:
+                with open(tmp, "wb") as f:
+                    rem = length
+                    while rem > 0:
+                        chunk = self.rfile.read(min(1 << 20, rem))
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        rem -= len(chunk)
+                ok, msg = manual_push(notify_conf(), tmp, cat, name, quality)
+            except Exception as ex:
+                ok, msg = False, "推送失败: %s" % str(ex)[:160]
+            finally:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
             self._json({"ok": ok, "msg": msg})
             return
         if path == "/api/ota/apply":
