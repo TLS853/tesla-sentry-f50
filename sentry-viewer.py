@@ -37,7 +37,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.1.0"
+APP_VERSION = "2.1.1"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -47,6 +47,7 @@ _OTA_DEFAULT = ",".join([
 OTA_SOURCES = [s.strip().rstrip("/") for s in os.environ.get("TSF_OTA_SOURCES", _OTA_DEFAULT).split(",") if s.strip()]
 OTA_BACKUP = os.environ.get("TSF_OTA_BACKUP", "/opt/tesla-sentry/sentry-viewer.bak.py")
 OTA_STATE = os.environ.get("TSF_OTA_STATE", "/opt/tesla-sentry/ota-state.json")
+OTA_SRC_PREF = os.path.join(os.path.dirname(OTA_STATE) or ".", "ota-src.json")  # 记住上次最快的源
 _OTA_CACHE = {"t": 0.0, "data": None}
 
 
@@ -54,6 +55,55 @@ def _http_get(url, timeout=10, limit=8 << 20):
     req = urllib.request.Request(url, headers={"User-Agent": "tsf-ota/" + APP_VERSION, "Cache-Control": "no-cache"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read(limit)
+
+
+def _src_order():
+    """上次成功的源排最前 (竞速同时成功时优先选它)"""
+    order = list(OTA_SOURCES)
+    try:
+        with open(OTA_SRC_PREF, encoding="utf-8") as f:
+            good = json.load(f).get("last_good")
+        if good in order:
+            order.remove(good)
+            order.insert(0, good)
+    except Exception:
+        pass
+    return order
+
+
+def _race_get(path, timeout, limit, validate=None):
+    """并发竞速所有下载源, 谁先返回【通过校验】的数据就用谁 (DashPlay 式自动切换源)。
+    单个源被墙/超时不影响其它源; 返回 (data, base)。"""
+    lock = threading.Lock()
+    got = []
+
+    def worker(base):
+        try:
+            data = _http_get(base + path, timeout=timeout, limit=limit)
+            if data and (validate is None or validate(data)):
+                with lock:
+                    got.append((base, data))
+        except Exception:
+            pass
+
+    order = _src_order()
+    for base in order:
+        threading.Thread(target=worker, args=(base,), daemon=True).start()
+    deadline = time.time() + timeout + 1.5
+    while time.time() < deadline and not got:
+        time.sleep(0.05)
+    if not got:
+        raise RuntimeError("所有下载源均不可用 (%s)" % ", ".join(
+            urllib.parse.urlsplit(b).netloc for b in order))
+    # 多个源同时成功时, 按源优先级取第一个
+    got.sort(key=lambda x: order.index(x[0]))
+    base, data = got[0]
+    try:   # 记住本次最快的源
+        with open(OTA_SRC_PREF, "w", encoding="utf-8") as f:
+            json.dump({"last_good": base, "at": int(time.time())}, f)
+    except OSError:
+        pass
+    return data, base
 
 
 def _vtuple(v):
@@ -64,25 +114,23 @@ def _vtuple(v):
 
 
 def ota_latest(force=False):
-    """读仓库 version.json (含版本号/日期/更新说明), 依次尝试多个源, 结果缓存 10 分钟"""
+    """读仓库 version.json (含版本号/日期/更新说明), 并发竞速多个源, 结果缓存 10 分钟"""
     now = time.time()
     if not force and _OTA_CACHE["data"] and now - _OTA_CACHE["t"] < 600:
         return _OTA_CACHE["data"]
-    errs = []
-    for base in OTA_SOURCES:
+
+    def ok(raw):
         try:
-            raw = _http_get(base + "/version.json?ts=%d" % int(now), timeout=8, limit=256 << 10)
             j = json.loads(raw.decode("utf-8", "replace"))
-            ver = str(j.get("version") or "").strip()
-            if not ver:
-                raise ValueError("version.json 缺少 version 字段")
-            j["_base"] = base
-            _OTA_CACHE.update({"t": now, "data": j})
-            return j
-        except Exception as ex:
-            errs.append("%s: %s" % (urllib.parse.urlsplit(base).netloc, ex))
-    _OTA_CACHE.update({"t": now, "data": None})
-    raise RuntimeError("; ".join(errs[:2]) or "无可用下载源")
+            return bool(str(j.get("version") or "").strip())
+        except Exception:
+            return False
+
+    raw, base = _race_get("/version.json?ts=%d" % int(now), timeout=6, limit=256 << 10, validate=ok)
+    j = json.loads(raw.decode("utf-8", "replace"))
+    j["_base"] = base
+    _OTA_CACHE.update({"t": now, "data": j})
+    return j
 
 
 def ota_check(force=False):
@@ -171,9 +219,10 @@ def ota_apply():
     latest = str(j.get("version"))
     if not _vtuple(latest) > _vtuple(APP_VERSION):
         return False, "当前已是最新版本 (%s)" % APP_VERSION
-    base = j["_base"]
+    # 下载也走多源竞速: 清单来源的镜像突然挂了, 其它源照样能补位
     try:
-        data = _http_get(base + "/sentry-viewer.py?ts=%d" % int(time.time()), timeout=60)
+        data, base = _race_get("/sentry-viewer.py?ts=%d" % int(time.time()), timeout=60, limit=8 << 20,
+                               validate=lambda d: len(d) > 50000 and b"APP_VERSION" in d)
     except Exception as ex:
         return False, "下载失败: %s" % ex
     # 1) 完整性校验: 大小 + 特征串 + 内嵌版本号必须与清单一致
@@ -628,7 +677,7 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
       <button class="mini" id="upd-check" onclick="otaCheck(true)">检查更新</button>
       <button class="mini primary" id="upd-go" onclick="otaApply()" disabled>立即升级</button>
     </div>
-    <div class="hint" id="upd-msg">升级会从 GitHub 拉取最新程序, 覆盖本机文件并自动重启服务 (约 5 秒); 配置、录像、登录信息不受影响。</div>
+    <div class="hint" id="upd-msg">升级会从 GitHub 及多个镜像<b>并发竞速</b>拉取最新程序 (哪个源快用哪个, 被墙自动切换), 覆盖本机文件并自动重启服务 (约 5 秒); 配置、录像、登录信息不受影响。</div>
     <div class="updbtns"><button class="mini" id="upd-rb" onclick="otaRollback()" style="display:none">↩ 回滚到上一版本</button></div>
   </div>
 </div>
