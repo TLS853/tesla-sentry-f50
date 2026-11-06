@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.4.1"
+APP_VERSION = "2.4.2"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -2364,9 +2364,19 @@ async function refreshFiles(dir) {
     const n = document.createElement('span'); n.className = 'n'; n.textContent = f.name;
     const tag = document.createElement('span'); tag.className = 'tag'; tag.textContent = fmtSize(f.size);
     const btnDl = document.createElement('button'); btnDl.className = 'primary'; btnDl.textContent = '下载';
-    btnDl.onclick = () => {
+    btnDl.onclick = async () => {
       const full = area === 'usb' ? (curDir ? curDir + '/' + f.name : f.name) : curDir + '/' + f.name;
-      location.href = (area === 'usb' ? '/usbdl?path=' : '/dl?path=') + encodeURIComponent(full);
+      const url = (area === 'usb' ? '/usbdl?path=' : '/dl?path=') + encodeURIComponent(full);
+      if (area !== 'usb') { location.href = url; return; }   // 归档区可能是大视频, 走浏览器流式下载
+      try {   // U盘文件多为小件: fetch 成 blob, 失败只弹提示, 不再整页跳走
+        const r = await fetch(url);
+        if (!r.ok) { toast('❌ ' + t('文件读不到, U盘可能已自动恢复车机导出, 请重新连接')); return; }
+        const b = await r.blob();
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(b); a.download = f.name;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+      } catch (e) { toast('❌ ' + t('下载失败')); }
     };
     const btnDel = document.createElement('button'); btnDel.className = 'danger'; btnDel.textContent = '删除';
     btnDel.onclick = () => delFile(area === 'usb' ? (curDir ? curDir + '/' + f.name : f.name) : curDir + '/' + f.name);
@@ -4906,6 +4916,15 @@ if __name__ == "__main__":
             f.write("-300")
     except OSError:
         pass
+    # 先绑定端口: 若已有实例在跑, 重复实例会在这里直接退出,
+    # 不会执行下面的"启动自愈"而误拆别人正在管理的挂载点
+    try:
+        srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    except OSError:
+        print("port %d in use, another instance running? exit." % PORT)
+        sys.exit(0)
+    print(f"Sentry viewer on 0.0.0.0:{PORT}")
+    print("auth: %s (%s)" % ("ON, user=" + AUTH_USER if AUTH_ON else "OFF - 公网可直接访问!", AUTH_FILE))
     # 启动自愈: 若上次退出时镜像仍处于管理挂载状态, 恢复导出
     if os.path.ismount(MNT):
         subprocess.run(["umount", MNT], capture_output=True)
@@ -4913,7 +4932,4 @@ if __name__ == "__main__":
     _gadget_rebind(True)
     threading.Thread(target=disk_guard, daemon=True).start()
     threading.Thread(target=notify_loop, daemon=True).start()
-    srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"Sentry viewer on 0.0.0.0:{PORT}")
-    print("auth: %s (%s)" % ("ON, user=" + AUTH_USER if AUTH_ON else "OFF - 公网可直接访问!", AUTH_FILE))
     srv.serve_forever()
