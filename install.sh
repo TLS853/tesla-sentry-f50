@@ -1,14 +1,14 @@
 #!/bin/sh
 # Tesla Sentry F50 - 一键安装脚本
 # 用法: sudo ./install.sh [选项]
-#   --size GB        虚拟U盘容量, 默认 170
+#   --size GB        虚拟U盘容量, 默认 64
 #   --port PORT      网页端口, 默认 8080
 #   --archive DIR    归档区路径, 默认 /archive
 #   --dir DIR        安装目录, 默认 /opt/tesla-sentry
 #   -h, --help       显示帮助
 set -e
 
-SIZE_GB=170
+SIZE_GB=64
 PORT=8080
 ARCHIVE=/archive
 TSF_DIR=/opt/tesla-sentry
@@ -59,6 +59,19 @@ fi
 FREE_MB=$(df -Pm "$(dirname "$TSF_DIR")" 2>/dev/null | awk 'NR==2{print $4}')
 [ -z "$FREE_MB" ] && FREE_MB="?"
 say "存储空闲: ${FREE_MB}MB, 计划镜像 ${SIZE_GB}G (稀疏文件, 按实际写入占用)"
+
+# 兼容性保护: 车机首次使用会格式化整个虚拟U盘, 稀疏文件会被写成实占
+# (镜像标称多大就实占多大)。镜像 + 归档 + 系统必须留出余量, 否则磁盘写满后
+# 块设备返回 I/O 错误, 车机会把 U 盘判为"读不出/需要格式化"。
+# 经验值: 64G 镜像在哨兵 4 路约 8.4G/小时下可滚动录制 7 小时以上, 足够日常使用。
+if [ "$FREE_MB" != "?" ]; then
+    NEED_MB=$((SIZE_GB * 1024 + 20480))    # 镜像满容量 + 至少 20G 归档/系统余量
+    if [ "$FREE_MB" -lt "$NEED_MB" ]; then
+        echo "  [警告] 空闲 ${FREE_MB}MB 可能放不下 ${SIZE_GB}G 镜像+归档余量(约 ${NEED_MB}MB)"
+        echo "         车机格式化后镜像会按容量实占; 空间紧张请降低容量, 例如:"
+        echo "           sudo ./install.sh --size 32"
+    fi
+fi
 
 # 缓存目录 (缩略图/遥测/合成临时文件): F50 沿用 /opt/mu300, 其它设备放安装目录下
 if [ -d /opt/mu300 ]; then CACHE_DIR=/opt/mu300; else CACHE_DIR="$TSF_DIR/cache"; fi

@@ -14,7 +14,7 @@
                   │  └───────────────┬──────────────────────┘   │
                   │                  │ lun.0/file = $TSF_IMG     │
                   │                  ▼                          │
-                  │      teslacam.img (exFAT, 稀疏, 默认170G)    │
+                  │      teslacam.img (exFAT, 稀疏, 默认64G)     │
                   │                  │                          │
                   │                  │ 车闲置(镜像 mtime > IDLE) │
                   │                  ▼                          │
@@ -40,7 +40,7 @@ Linux 内核的 USB Gadget 框架允许设备扮演 USB 外设。通过 configfs
 | ACM | `functions/acm.GS0` | 串口控制台（救援用） |
 | Mass Storage | `functions/mass_storage.0` | 虚拟 U 盘（本项目追加） |
 
-`mass_storage` 的 `lun.0/file` 指向一个**普通文件**，主机就会把它当作块设备。所以"170G U 盘"其实是设备上的一个稀疏文件。
+`mass_storage` 的 `lun.0/file` 指向一个**普通文件**，主机就会把它当作块设备。所以"64G U 盘"其实是设备上的一个稀疏文件。
 
 > 注意：修改 gadget 必须先 `echo "" > UDC` 解绑，**解绑期间所有 USB 功能（网卡、串口、U 盘）会同时消失**。因此所有涉及解绑的操作必须脱离 SSH 会话执行（`setsid`），否则命令会被自己掐断。
 
