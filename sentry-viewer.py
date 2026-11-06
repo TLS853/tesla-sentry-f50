@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.4.4"
+APP_VERSION = "2.4.5"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -688,16 +688,16 @@ select.ninput { cursor:pointer; }
 <div class="panel" id="panel">
   <h2>⚙ 个性化 <button class="x" onclick="closePanel()">✕</button></h2>
   <div class="stabs">
+    <button class="stab active" id="st-files" onclick="stab('files')">📂 文件</button>
     <button class="stab" id="st-audio" onclick="stab('audio')">🔊 锁车语音</button>
     <button class="stab" id="st-wraps" onclick="stab('wraps')">🚙 涂装</button>
-    <button class="stab" id="st-files" onclick="stab('files')">📂 文件</button>
     <button class="stab" id="st-notify" onclick="stab('notify')">🔔 推送</button>
     <button class="stab" id="st-auth" onclick="stab('auth')">🔑 账号</button>
     <button class="stab" id="st-lang" onclick="stab('lang')">🌐 语言</button>
-    <button class="stab active" id="st-skin" onclick="stab('skin')">🎨 网页背景</button>
+    <button class="stab" id="st-skin" onclick="stab('skin')">🎨 网页背景</button>
     <button class="stab" id="st-update" onclick="stab('update')">🔄 更新</button>
   </div>
-  <div id="tab-skin">
+  <div id="tab-skin" style="display:none">
     <div class="hint">上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。</div>
     <div class="hint"><code>body{background:url(/skin-media/bg.jpg) center/cover}</code></div>
     <label class="upbtn">＋ 上传皮肤文件 (css/jpg/png/webp)<input type="file" id="skin-file" accept=".css,.jpg,.jpeg,.png,.webp" hidden></label>
@@ -717,7 +717,7 @@ select.ninput { cursor:pointer; }
     <label class="upbtn" id="wraps-upbtn">＋ 上传图片到 Wraps/ (png/jpg/webp, ≤100MB)<input type="file" id="wraps-file" accept=".png,.jpg,.jpeg,.webp" hidden multiple></label>
     <div id="wraps-grid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px"></div>
   </div>
-  <div id="tab-files" style="display:none">
+  <div id="tab-files">
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <button id="area-usb" class="stab" style="flex:1" onclick="switchArea('usb')">🚗 车机U盘</button>
       <button id="area-archive" class="stab" style="flex:1" onclick="switchArea('archive')">🗄 归档区</button>
@@ -1931,7 +1931,7 @@ function doLogout() {
   location.href = '/logout';
 }
 function stab(which) {
-  ['skin', 'audio', 'wraps', 'files', 'notify', 'auth', 'update', 'lang'].forEach(k => {
+  ['files', 'audio', 'wraps', 'notify', 'auth', 'lang', 'skin', 'update'].forEach(k => {
     const b = document.getElementById('st-' + k), t = document.getElementById('tab-' + k);
     if (b) b.classList.toggle('active', k === which);
     if (t) t.style.display = k === which ? '' : 'none';
@@ -2177,6 +2177,7 @@ setTimeout(() => {
 document.getElementById('gear').onclick = () => {
   document.getElementById('mask').classList.add('open');
   document.getElementById('panel').classList.add('open');
+  stab('files');
   refreshSkins(); refreshAudio(); refreshFiles();
 };
 function closePanel() {
