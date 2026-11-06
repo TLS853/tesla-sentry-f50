@@ -1877,8 +1877,11 @@ RECENT_KEEP_MIN = int(os.environ.get("TSF_RECENT_KEEP_MIN", "60"))    # 兜底�
 #   2) 按体积: 单个分类超过 MAX_GB 就从最旧的开始删, 直到回到上限以内。
 #      teslacam.img 高水位约 170G, loop 盘 207.7G, 盒子归档预算约 12G/类比较安全。
 # 同步进行中的目录 (1 小时内有改动) 跳过, 非时间戳命名的目录一律不动。
+# 清掉的分类/事件会记入 /archive/.pruned 墓碑文件, 同步端读到就跳过 —— 否则车机 U 盘上
+# 还留着的旧事件会被当成新片段重抄回来, 形成 删除→重抄 的死循环 (和 RecentClips 同理)。
 BOX_KEEP_DAYS = int(os.environ.get("TSF_BOX_KEEP_DAYS", "14"))        # 盒子侧哨兵/手动保存保留天数, 0=不按天数清
 BOX_MAX_GB = int(os.environ.get("TSF_BOX_MAX_GB", "12"))              # 盒子侧单个分类体积上限(GB), 0=不按体积清
+PRUNED_FILE = os.path.join(ARCHIVE, ".pruned")                        # 墓碑: 每行 "分类/事件名", 同步端跳过
 
 
 def free_mb(p):
@@ -1932,6 +1935,15 @@ def _dir_size(p):
     return sz
 
 
+def _tombstone(cat, ev):
+    """记录已清理的事件, 同步端读到就跳过, 防止 删除→重抄 死循环"""
+    try:
+        with open(PRUNED_FILE, "a", encoding="utf-8") as f:
+            f.write("%s/%s\n" % (cat, ev))
+    except OSError:
+        pass
+
+
 def roll_box():
     """盒子侧 SentryClips / SavedClips 定期清理 (按天数 + 按体积), 只删盒子归档, 不碰车机 U 盘"""
     n = 0
@@ -1963,7 +1975,9 @@ def roll_box():
             for dt, e, p, _sz in sized:
                 if dt < cutoff and os.path.isdir(p):
                     shutil.rmtree(p, ignore_errors=True)
-                    n += 1
+                    if not os.path.isdir(p):
+                        _tombstone(cat, e)
+                        n += 1
         # 2) 按体积: 超出 BOX_MAX_GB 从最旧开始删
         if BOX_MAX_GB > 0:
             left = [(dt, e, p, sz) for dt, e, p, sz in sized if os.path.isdir(p)]
@@ -1975,7 +1989,9 @@ def roll_box():
                     break
                 shutil.rmtree(p, ignore_errors=True)
                 total -= sz
-                n += 1
+                if not os.path.isdir(p):
+                    _tombstone(cat, e)
+                    n += 1
     return n
 
 

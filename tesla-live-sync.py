@@ -358,9 +358,21 @@ def ev_dt(ev):
         return None
 
 
+# 墓碑: sentry-viewer.py 清理盒子侧哨兵/手动保存归档时把 "分类/事件名" 记进 /archive/.pruned,
+# 这里读到就跳过 —— 车机 U 盘上还留着的旧事件若不跳过, 会被当成新片段重抄回来,
+# 形成 删除→重抄 的死循环 (和 RecentClips 滚动窗口同理)
+def load_pruned():
+    try:
+        with open(os.path.join(ARCHIVE, ".pruned"), encoding="utf-8", errors="ignore") as f:
+            return set(x.strip() for x in f if "/" in x)
+    except OSError:
+        return set()
+
+
 def do_sync(exfat, state, quiet=False):
     """跑一轮; 返回 (新增文件数, 字节数)"""
     cur = scan(exfat)
+    pruned = load_pruned()
     # 只收滚动窗口内的 RecentClips: 以车机 U 盘上最新的片段为锚点
     cut = None
     if ROLL_MIN > 0:
@@ -378,6 +390,8 @@ def do_sync(exfat, state, quiet=False):
     copied = 0
     bytes_ = 0
     for (cat, ev, name), e in cur.items():
+        if "%s/%s" % (cat, ev) in pruned:
+            continue            # 已被盒子侧定期清理, 不再重抄
         if cut is not None and cat == "RecentClips":
             d = ev_dt(ev)
             if d and d < cut:
