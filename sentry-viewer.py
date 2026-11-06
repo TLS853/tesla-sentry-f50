@@ -686,7 +686,8 @@ select.ninput { cursor:pointer; }
   <div id="tab-notify" style="display:none">
     <div class="hint">哨兵触发时自动把<b>时间 / 位置 / 触发原因 / 触发镜头</b>和<b>触发那一帧画面</b>推到飞书。<br>
     默认走<b>自建应用私聊</b>：只进你本人和机器人的单聊，别人看不到。做法：飞书开放平台建一个<b>企业自建应用</b> → 开<b>机器人</b>能力 → 加 <b>im:message</b>（发消息）和 <b>im:resource</b>（传图）权限 → 创建版本并发布 → 把 App ID / App Secret 和你自己的 open_id（或邮箱）填到下面。<br>
-    也可以切到<b>群机器人</b>：群里加「自定义机器人」，把 webhook 填进来即可（群里所有人可见）。</div>
+    也可以切到<b>群机器人</b>：群里加「自定义机器人」，把 webhook 填进来即可（群里所有人可见）。<br>
+    推送内容可选<b>封面卡片</b>或<b>触发摄像头那段视频</b>（视频只能用自建应用私聊发；群机器人发不了视频）。</div>
     <label class="nrow"><span>启用推送</span><input type="checkbox" id="nt-en"></label>
     <label class="nrow"><span>也推手动保存</span><input type="checkbox" id="nt-saved"></label>
     <select class="ninput" id="nt-mode">
@@ -694,6 +695,18 @@ select.ninput { cursor:pointer; }
       <option value="group">群机器人 — 群里所有人都能看到</option>
     </select>
     <input class="ninput" id="nt-to" placeholder="接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱">
+    <select class="ninput" id="nt-media" onchange="ntMediaUI()">
+      <option value="thumb">推送内容：封面卡片（触发那帧图 + 信息，最快）</option>
+      <option value="video">推送内容：触发摄像头视频（可回放）</option>
+    </select>
+    <div id="nt-vwrap" style="display:none">
+      <select class="ninput" id="nt-quality">
+        <option value="720p">视频清晰度：720p（约 5MB / 30 秒）</option>
+        <option value="480p">视频清晰度：480p（约 3MB / 30 秒）</option>
+        <option value="360p">视频清晰度：360p（约 1.8MB / 30 秒）</option>
+      </select>
+      <div class="nrow"><span>视频时长</span><input class="ninput num" id="nt-vdur" type="number" min="10" max="60"> <span class="hint2">秒（从触发前 5 秒开始截）</span></div>
+    </div>
     <input class="ninput" id="nt-appid" placeholder="App ID — cli_ 开头">
     <input class="ninput" id="nt-secret" type="password" placeholder="App Secret (已保存则留空表示不修改)">
     <input class="ninput" id="nt-hook" placeholder="群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...">
@@ -1793,6 +1806,10 @@ async function ntLoad() {
     document.getElementById('nt-en').checked = !!j.enabled;
     document.getElementById('nt-saved').checked = !!j.saved;
     document.getElementById('nt-mode').value = j.mode || 'dm';
+    document.getElementById('nt-media').value = j.media || 'thumb';
+    document.getElementById('nt-quality').value = j.quality || '480p';
+    document.getElementById('nt-vdur').value = j.vdur || 30;
+    ntMediaUI();
     document.getElementById('nt-to').value = j.receive_id || '';
     document.getElementById('nt-hook').value = j.webhook || '';
     document.getElementById('nt-appid').value = j.app_id || '';
@@ -1814,6 +1831,9 @@ async function ntSave() {
     enabled: document.getElementById('nt-en').checked,
     saved: document.getElementById('nt-saved').checked,
     mode: document.getElementById('nt-mode').value,
+    media: document.getElementById('nt-media').value,
+    quality: document.getElementById('nt-quality').value,
+    vdur: +document.getElementById('nt-vdur').value || 30,
     receive_id: document.getElementById('nt-to').value.trim(),
     webhook: document.getElementById('nt-hook').value.trim(),
     app_id: document.getElementById('nt-appid').value.trim(),
@@ -1843,6 +1863,11 @@ async function ntTest() {
     m.textContent = (j.ok ? '✅ ' : '❌ ') + j.msg;
     m.style.color = j.ok ? '#4cc38a' : 'var(--accent)';
   } catch (e) { m.textContent = '发送失败: ' + e; m.style.color = 'var(--accent)'; }
+}
+
+function ntMediaUI() {
+  const v = document.getElementById('nt-media').value === 'video';
+  document.getElementById('nt-vwrap').style.display = v ? '' : 'none';
 }
 
 /* ---------- 账号: 改登录密码 ---------- */
@@ -2746,6 +2771,7 @@ FEISHU_API = "https://open.feishu.cn/open-apis"
 _NC_DEFAULT = {
     "enabled": False, "mode": "dm", "webhook": "", "app_id": "", "app_secret": "",
     "receive_id": "", "receive_id_type": "", "public_url": "", "saved": False, "delay": 20,
+    "media": "thumb", "quality": "480p", "vdur": 30,
 }
 _TOK = {"v": "", "exp": 0}
 CAM_NUM = {0: "前视", 3: "左B柱", 4: "右B柱", 5: "左翼子板", 6: "右翼子板", 7: "后视"}
@@ -2838,9 +2864,9 @@ def _ev_files(d):
         return []
 
 
-def _trigger_frame(cat, name):
-    """按 event.json 的 camera + timestamp 找触发摄像头那一帧, 返回 (jpg 路径, meta);
-    没有元数据/对不上片段时回落到前视第 1 秒。"""
+def _pick_clip(cat, name):
+    """按 event.json 的 camera + timestamp 找出触发摄像头那一路的 mp4, 返回 (文件路径, 触发偏移秒, meta);
+    对不上时回落到前视。找不到任何片段返回 (None, 0, meta)。"""
     d = os.path.join(ARCHIVE, cat, name)
     meta = {}
     try:
@@ -2850,7 +2876,7 @@ def _trigger_frame(cat, name):
         meta = {}
     files = _ev_files(d)
     if not files:
-        return None, meta
+        return None, 0.0, meta
     cam_key = CAM_SUFFIX.get(int(meta.get("camera")) if str(meta.get("camera", "")).strip().isdigit() else -1)
     ts = None
     try:
@@ -2865,9 +2891,17 @@ def _trigger_frame(cat, name):
                 continue
             off = (ts - s).total_seconds()
             if 0 <= off <= 70 and f.rsplit("-", 1)[-1][:-4] == cam_key:
-                return thumb_file(os.path.join(d, f), max(0.0, min(off, 60.0))), meta
+                return os.path.join(d, f), max(0.0, min(off, 60.0)), meta
     front = [f for f in files if f.endswith("-front.mp4")]
-    return thumb_file(os.path.join(d, front[0] if front else files[0]), 1.0), meta
+    return os.path.join(d, front[0] if front else files[0]), 1.0, meta
+
+
+def _trigger_frame(cat, name):
+    """触发摄像头那一帧的封面图; 返回 (jpg 路径, meta)"""
+    fp, off, meta = _pick_clip(cat, name)
+    if not fp:
+        return None, meta
+    return thumb_file(fp, off), meta
 
 
 def _post_json(url, payload, timeout=12, headers=None):
@@ -2961,6 +2995,85 @@ def _feishu_upload(conf, jpg):
     if j.get("code") != 0 or not key:
         raise RuntimeError("上传封面失败: %s" % (j.get("msg") or j))
     return key
+
+
+VID_Q = {"720p": (720, 1500), "480p": (480, 800), "360p": (360, 500)}   # 输出高度, 目标码率 kbps
+
+
+def _make_push_video(fp, off, quality="480p", dur=30):
+    """把触发摄像头那一路片段, 从触发点前 5 秒起截 dur 秒, 转成体积可控的 mp4; 返回缓存路径"""
+    h, kbps = VID_Q.get(quality) or VID_Q["480p"]
+    dur = max(10, min(60, int(dur or 30)))
+    key = hashlib.md5(("%s|%d|%s|%d" % (fp, int(off), quality, dur)).encode()).hexdigest()[:16]
+    out = os.path.join(RES_DIR, "push-%s.mp4" % key)
+    if os.path.isfile(out) and os.path.getsize(out) > 0:
+        return out
+    if not os.path.isfile(FFMPEG_BIN):
+        raise RuntimeError("设备上没有 ffmpeg")
+    ss = max(0.0, float(off) - 5.0)       # 触发点前 5 秒, 能看到"人走过来"的过程
+    tmp = out + ".%d.tmp" % os.getpid()
+    cmd = ["sh", "-c", 'echo 300 > /proc/self/oom_score_adj 2>/dev/null; exec "$0" "$@"',
+           FFMPEG_BIN, "-nostdin", "-hide_banner", "-loglevel", "error", "-threads", "4",
+           "-ss", "%.2f" % ss, "-t", str(dur), "-i", fp,
+           "-vf", "scale=-2:%d" % h,
+           "-c:v", "libx264", "-preset", "superfast",
+           "-b:v", "%dk" % kbps, "-maxrate", "%dk" % (kbps * 3 // 2), "-bufsize", "%dk" % (kbps * 3),
+           "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", "-f", "mp4", "-y", tmp]
+    try:
+        r = subprocess.run(cmd, capture_output=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("转码超时 (>5 分钟)")
+    if r.returncode != 0 or not os.path.isfile(tmp) or os.path.getsize(tmp) == 0:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise RuntimeError("转码失败: %s" % (r.stderr or b"")[:100].decode("utf-8", "ignore"))
+    os.replace(tmp, out)
+    return out
+
+
+def _feishu_upload_file(conf, path, dur=30):
+    """上传视频文件到飞书, 返回 file_key"""
+    with open(path, "rb") as f:
+        data = f.read()
+    bd = "----tsf%s" % hashlib.md5(("%s%.6f" % (path, time.time())).encode()).hexdigest()
+
+    def fld(k, v):
+        return ("--%s\r\nContent-Disposition: form-data; name=\"%s\"\r\n\r\n%s\r\n" % (bd, k, v)).encode()
+
+    body = (fld("file_type", "mp4") + fld("file_name", os.path.basename(path))
+            + fld("duration", str(int(max(1, dur) * 1000)))
+            + ("--%s\r\nContent-Disposition: form-data; name=\"file\"; filename=\"clip.mp4\"\r\n"
+               "Content-Type: video/mp4\r\n\r\n" % bd).encode()
+            + data + ("\r\n--%s--\r\n" % bd).encode())
+    raw = _http_post(FEISHU_API + "/im/v1/files", body, {
+        "Authorization": "Bearer " + _feishu_token(conf),
+        "Content-Type": "multipart/form-data; boundary=" + bd,
+    }, timeout=180)
+    j = json.loads(raw.decode("utf-8", "replace"))
+    key = ((j or {}).get("data") or {}).get("file_key")
+    if j.get("code") != 0 or not key:
+        raise RuntimeError("上传视频失败: %s" % (j.get("msg") or j))
+    return key
+
+
+def _feishu_send_media(conf, file_key, image_key=""):
+    """给本人发一条视频消息 (media)"""
+    rid, rtype = _dm_target(conf)
+    content = {"file_key": file_key}
+    if image_key:
+        content["image_key"] = image_key
+    j = _post_json(FEISHU_API + "/im/v1/messages?receive_id_type=" + urllib.parse.quote(rtype),
+                   {"receive_id": rid, "msg_type": "media", "content": json.dumps(content)},
+                   timeout=60, headers={"Authorization": "Bearer " + _feishu_token(conf)})
+    if j.get("code") != 0:
+        raise RuntimeError("%s (code=%s)" % (j.get("msg") or "发视频失败", j.get("code")))
+    return True
 
 
 def _feishu_card(conf, cat, name, img_key=None, test=False):
@@ -3069,6 +3182,24 @@ def notify_push(cat, name, test=False):
             warn = " (封面未附上: %s)" % str(ex)[:80]
     else:
         warn = " (未配 app_id/app_secret, 只发文字卡片)"
+    # 视频模式: 先把触发摄像头那一路上传成视频消息, 再补一条精简卡片(带查看按钮)
+    if use_dm and (conf.get("media") or "thumb") == "video":
+        try:
+            fp, off, _meta = _pick_clip(cat, name)
+            if not fp:
+                raise RuntimeError("归档里没有可用的片段")
+            dur = int(conf.get("vdur") or 30)
+            vid = _make_push_video(fp, off, conf.get("quality") or "480p", dur)
+            fk = _feishu_upload_file(conf, vid, dur)
+            _feishu_send_media(conf, fk, img_key or "")
+            try:
+                _feishu_send_dm(conf, _feishu_card(conf, cat, name, img_key=None, test=test))
+            except Exception:
+                pass
+            mb = os.path.getsize(vid) / 1048576.0
+            return True, "已推送 %d 秒视频 (%.1fMB) 到飞书私聊" % (dur, mb) + warn
+        except Exception as ex:
+            warn = " (视频没发成, 已回落封面卡片: %s)" % str(ex)[:90]
     card = _feishu_card(conf, cat, name, img_key=img_key, test=test)
     try:
         if use_dm:
@@ -3163,6 +3294,9 @@ def notify_status():
         "public_url": conf.get("public_url") or "",
         "saved": bool(conf.get("saved")),
         "delay": int(conf.get("delay") or 20),
+        "media": conf.get("media") or "thumb",
+        "quality": conf.get("quality") or "480p",
+        "vdur": int(conf.get("vdur") or 30),
         "last": st.get("last") or {},
         "sent_total": len(st.get("seen") or {}),
     }
@@ -4315,7 +4449,8 @@ class Handler(BaseHTTPRequestHandler):
             for k in ("enabled", "saved"):
                 if k in body:
                     patch[k] = bool(body.get(k))
-            for k in ("mode", "webhook", "app_id", "receive_id", "receive_id_type", "public_url"):
+            for k in ("mode", "media", "quality", "webhook", "app_id", "receive_id",
+                      "receive_id_type", "public_url"):
                 if k in body:
                     patch[k] = str(body.get(k) or "").strip()
             if str(body.get("app_secret") or "").strip():
@@ -4325,6 +4460,15 @@ class Handler(BaseHTTPRequestHandler):
                     patch["delay"] = max(5, min(600, int(body["delay"])))
                 except (TypeError, ValueError):
                     pass
+            if "vdur" in body:
+                try:
+                    patch["vdur"] = max(10, min(60, int(body["vdur"])))
+                except (TypeError, ValueError):
+                    pass
+            if str(patch.get("quality") or "") not in ("360p", "480p", "720p"):
+                patch.pop("quality", None)
+            if str(patch.get("media") or "") not in ("thumb", "video"):
+                patch.pop("media", None)
             conf = notify_save(patch)
             if _dm_ready(conf):
                 warn = "" if (conf.get("public_url") or "").strip() else "私聊已可用; 填「查看链接前缀」后卡片上会有查看按钮"
