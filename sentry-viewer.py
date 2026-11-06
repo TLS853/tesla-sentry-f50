@@ -17,6 +17,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+import http.client
 import zipfile
 import tempfile
 import sys
@@ -37,7 +38,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.1.1"
+APP_VERSION = "2.2.0"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -506,9 +507,18 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .panel h2 { font-size:15px; margin-bottom:12px; display:flex; align-items:center; }
 .panel h2 .x { margin-left:auto; background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; }
 .stabs { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
-.stab { flex:1 1 0; min-width:0; padding:8px 2px; border-radius:10px; background:var(--panel2); color:var(--muted); text-align:center; cursor:pointer; font-size:12.5px; border:none; white-space:nowrap; }
+.stab { flex:1 1 28%; min-width:0; padding:8px 4px; border-radius:10px; background:var(--panel2); color:var(--muted); text-align:center; cursor:pointer; font-size:12.5px; border:none; white-space:nowrap; }
 .stab.active { background:var(--accent); color:#fff; }
 .hint { font-size:11.5px; color:var(--muted2); line-height:1.6; margin-bottom:10px; }
+/* 飞书推送 */
+.ninput { display:block; width:100%; box-sizing:border-box; margin-bottom:8px; padding:9px 11px; border-radius:9px;
+  background:var(--panel2); border:1px solid var(--line2); color:var(--text); font-size:12.5px; outline:none; }
+.ninput:focus { border-color:var(--accent); }
+.nrow { display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:13px; color:var(--text); }
+.nrow > span:first-child { flex:0 0 auto; }
+.nrow input[type=checkbox] { width:18px; height:18px; accent-color:var(--accent); margin-left:auto; }
+.ninput.num { width:76px; margin:0; text-align:center; }
+.hint2 { font-size:11.5px; color:var(--muted2); }
 /* 系统更新 (OTA) */
 .updrow { display:flex; align-items:baseline; gap:8px; padding:7px 0; font-size:13px; }
 .updk { color:var(--muted); min-width:64px; flex:0 0 auto; }
@@ -636,6 +646,7 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
     <button class="stab active" id="st-skin" onclick="stab('skin')">🎨 页面皮肤</button>
     <button class="stab" id="st-audio" onclick="stab('audio')">🔊 锁车语音</button>
     <button class="stab" id="st-files" onclick="stab('files')">📂 文件</button>
+    <button class="stab" id="st-notify" onclick="stab('notify')">🔔 推送</button>
     <button class="stab" id="st-update" onclick="stab('update')">🔄 更新</button>
   </div>
   <div id="tab-skin">
@@ -668,6 +679,23 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
       <label class="upbtn" id="upbtn">＋ 上传文件到当前目录 (任意类型, ≤100MB)<input type="file" id="anyfile-file" hidden></label>
       <div id="file-list"></div>
     </div>
+  </div>
+  <div id="tab-notify" style="display:none">
+    <div class="hint">哨兵触发时自动把<b>时间 / 位置 / 触发原因 / 触发镜头</b>和<b>触发那一帧画面</b>推到飞书群。<br>
+    ① 在飞书群里添加「自定义机器人」，复制 webhook 填到下面（只需这一步就能收文字卡片）。<br>
+    ② 想附带封面图，需再填「自建应用」的 App ID / App Secret（应用要开<b>机器人</b>能力并加 <b>im:message</b> 权限），程序会自动上传图片再发卡片。</div>
+    <label class="nrow"><span>启用推送</span><input type="checkbox" id="nt-en"></label>
+    <label class="nrow"><span>也推手动保存</span><input type="checkbox" id="nt-saved"></label>
+    <input class="ninput" id="nt-hook" placeholder="飞书机器人 webhook: https://open.feishu.cn/open-apis/bot/v2/hook/...">
+    <input class="ninput" id="nt-appid" placeholder="App ID (可选, 用于附带封面图) — cli_xxx">
+    <input class="ninput" id="nt-secret" type="password" placeholder="App Secret (可选, 已保存则留空表示不修改)">
+    <input class="ninput" id="nt-url" placeholder="查看链接前缀 (可选): http://你的域名:端口">
+    <div class="nrow"><span>延迟推送</span><input class="ninput num" id="nt-delay" type="number" min="5" max="600"> <span class="hint2">秒 (等片段写完再推)</span></div>
+    <div class="updbtns">
+      <button class="mini primary" onclick="ntSave()">保存设置</button>
+      <button class="mini" onclick="ntTest()">发送测试</button>
+    </div>
+    <div class="hint" id="nt-msg"></div>
   </div>
   <div id="tab-update" style="display:none">
     <div class="updrow"><span class="updk">当前版本</span><b id="upd-cur">—</b></div>
@@ -1731,12 +1759,62 @@ function toast(msg) {
   setTimeout(() => t.style.display = 'none', 2500);
 }
 function stab(which) {
-  ['skin', 'audio', 'files', 'update'].forEach(k => {
+  ['skin', 'audio', 'files', 'notify', 'update'].forEach(k => {
     const b = document.getElementById('st-' + k), t = document.getElementById('tab-' + k);
     if (b) b.classList.toggle('active', k === which);
     if (t) t.style.display = k === which ? '' : 'none';
   });
   if (which === 'update') otaCheck(false);
+  if (which === 'notify') ntLoad();
+}
+
+/* ---------- 飞书推送 ---------- */
+async function ntLoad() {
+  try {
+    const j = await (await fetch('/api/notify', { cache: 'no-store' })).json();
+    document.getElementById('nt-en').checked = !!j.enabled;
+    document.getElementById('nt-saved').checked = !!j.saved;
+    document.getElementById('nt-hook').value = j.webhook || '';
+    document.getElementById('nt-appid').value = j.app_id || '';
+    document.getElementById('nt-secret').value = '';
+    document.getElementById('nt-secret').placeholder = j.has_secret ? 'App Secret 已保存, 留空表示不修改' : 'App Secret (可选, 用于附带封面图)';
+    document.getElementById('nt-url').value = j.public_url || '';
+    document.getElementById('nt-delay').value = j.delay || 20;
+    const m = document.getElementById('nt-msg');
+    if (j.last && j.last.msg) {
+      m.textContent = '最近一次: ' + (j.last.ok ? '✅ ' : '❌ ') + j.last.msg + ' (' + new Date(j.last.at * 1000).toLocaleString() + ')';
+      m.style.color = j.last.ok ? '#4cc38a' : 'var(--accent)';
+    } else { m.textContent = j.enabled ? '已启用, 等下一个哨兵事件' : '未启用'; m.style.color = ''; }
+  } catch (e) { document.getElementById('nt-msg').textContent = '读取设置失败: ' + e; }
+}
+async function ntSave() {
+  const body = {
+    enabled: document.getElementById('nt-en').checked,
+    saved: document.getElementById('nt-saved').checked,
+    webhook: document.getElementById('nt-hook').value.trim(),
+    app_id: document.getElementById('nt-appid').value.trim(),
+    app_secret: document.getElementById('nt-secret').value.trim(),
+    public_url: document.getElementById('nt-url').value.trim(),
+    delay: +document.getElementById('nt-delay').value || 20,
+  };
+  if (body.enabled && !body.webhook) { toast('请先填 webhook'); return; }
+  const m = document.getElementById('nt-msg');
+  m.textContent = '保存中…';
+  try {
+    const j = await (await fetch('/api/notify/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    m.textContent = (j.ok ? '✅ 已保存' : '❌ ' + j.msg) + (j.warn ? ' · ' + j.warn : '');
+    m.style.color = j.ok ? '#4cc38a' : 'var(--accent)';
+    if (j.ok) ntLoad();
+  } catch (e) { m.textContent = '保存失败: ' + e; m.style.color = 'var(--accent)'; }
+}
+async function ntTest() {
+  const m = document.getElementById('nt-msg');
+  m.textContent = '正在发送测试卡片…'; m.style.color = '';
+  try {
+    const j = await (await fetch('/api/notify/test', { method: 'POST' })).json();
+    m.textContent = (j.ok ? '✅ ' : '❌ ') + j.msg;
+    m.style.color = j.ok ? '#4cc38a' : 'var(--accent)';
+  } catch (e) { m.textContent = '发送失败: ' + e; m.style.color = 'var(--accent)'; }
 }
 
 /* ---------- 系统更新 (OTA) ---------- */
@@ -2342,6 +2420,56 @@ MEDIA_SEM = threading.BoundedSemaphore(int(os.environ.get("TSF_MEDIA_CONN", "8")
 THUMB_DIR = os.environ.get("TSF_CACHE", "/opt/mu300") + "/thumbs"
 THUMB_SEM = threading.BoundedSemaphore(2)
 THUMB_W = 400
+
+
+def thumb_file(fp, ss_t=1.0):
+    """抽指定秒数那一帧并缓存在 eMMC, 返回 jpg 路径; 抽不出来返回 None。
+    列表缩略图 (/thumb) 和飞书推送封面共用。"""
+    try:
+        st = os.stat(fp)
+    except OSError:
+        return None
+    key = hashlib.md5(("%s|%d|%d|%g" % (fp, st.st_size, int(st.st_mtime), ss_t)).encode()).hexdigest()
+    out = os.path.join(THUMB_DIR, key + ".jpg")
+    try:                               # 0 字节是上次 ffmpeg 失败留下的残骸, 视为无效缓存
+        if os.path.getsize(out) == 0:
+            os.remove(out)
+    except OSError:
+        pass
+    if os.path.isfile(out):
+        return out
+    try:
+        os.makedirs(THUMB_DIR, exist_ok=True)
+    except OSError:
+        pass
+    tmp = os.path.join(THUMB_DIR, "%s.%d.tmp.jpg" % (key, threading.get_ident()))
+    if not THUMB_SEM.acquire(timeout=12):
+        return None
+    try:
+        if os.path.isfile(out):
+            return out
+        # 指定秒数可能落在片段末尾之外(触发帧偏移略超时长), 逐级回落
+        for ss in ("%.1f" % ss_t, "1", "0"):
+            try:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+                subprocess.run([FFMPEG_BIN, "-hide_banner", "-loglevel", "error", "-y",
+                                "-ss", ss, "-i", fp, "-frames:v", "1",
+                                "-vf", "scale=%d:-2" % THUMB_W, "-q:v", "7", tmp],
+                               capture_output=True, timeout=30)
+                if os.path.isfile(tmp) and os.path.getsize(tmp) > 0:
+                    os.replace(tmp, out)
+                    return out
+            except Exception:
+                pass
+        return None
+    finally:
+        THUMB_SEM.release()
+        if os.path.exists(tmp):
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
 # ---------- 在线清晰度: 按需转码 + eMMC 缓存 (设备端单任务串行, 防止重转码打崩内核) ----------
 # 源 1280x960 (4:3); 用固定目标码率: 公网 5G 上行只有 ~120KB/s, CRF 模式码率不可控会传不完
 # 8 核 T760 实测: -threads 8 + superfast 比 2 线程快一倍 (20s->10s/分钟片段), 内存峰值充足 (720p 后仍余 ~980MB)
@@ -2545,6 +2673,358 @@ def disk_guard():
         except Exception:
             pass
         time.sleep(300)
+
+
+# ---------- 飞书推送: 哨兵触发时把信息和触发画面推到群里 ----------
+# 机器人 webhook 只能发文字卡片; 要带封面图必须配「自建应用」的 app_id/app_secret
+# (应用需开机器人能力 + im:message/im:resource 权限), 由本程序换取 token 上传图片拿 img_key。
+NOTIFY_CONF = os.environ.get("TSF_NOTIFY_CONF", "/opt/tesla-sentry/notify.json")
+NOTIFY_STATE = os.environ.get("TSF_NOTIFY_STATE", "/opt/tesla-sentry/notify-state.json")
+FEISHU_API = "https://open.feishu.cn/open-apis"
+_NC_DEFAULT = {
+    "enabled": False, "webhook": "", "app_id": "", "app_secret": "",
+    "public_url": "", "saved": False, "delay": 20,
+}
+_TOK = {"v": "", "exp": 0}
+CAM_NUM = {0: "前视", 3: "左B柱", 4: "右B柱", 5: "左翼子板", 6: "右翼子板", 7: "后视"}
+CAM_SUFFIX = {0: "front", 3: "left_pillar", 4: "right_pillar",
+              5: "left_repeater", 6: "right_repeater", 7: "back"}
+REASON_DETAIL = {
+    "sentry_aware_object_detection": "侦测到物体移动",
+    "sentry_aware_accel": "侦测到碰撞/震动",
+    "sentry_aware_door": "车门被拉动",
+    "sentry_aware_handle": "门把手被拉动",
+    "sentry_panic": "遭遇袭击 (紧急报警)",
+    "sentry_trigger": "哨兵模式触发",
+    "user_interaction_honk": "按喇叭保存",
+    "user_interaction_dashcam_saved": "手动保存",
+    "user_interaction_dashcam_menu": "行车记录仪菜单保存",
+}
+
+
+def notify_conf():
+    c = dict(_NC_DEFAULT)
+    try:
+        with open(NOTIFY_CONF, encoding="utf-8") as f:
+            j = json.load(f)
+        if isinstance(j, dict):
+            c.update(j)
+    except Exception:
+        pass
+    return c
+
+
+def notify_save(patch):
+    c = notify_conf()
+    for k, v in (patch or {}).items():
+        if k in _NC_DEFAULT:
+            c[k] = v
+    try:
+        os.makedirs(os.path.dirname(NOTIFY_CONF) or ".", exist_ok=True)
+        tmp = NOTIFY_CONF + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(c, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, NOTIFY_CONF)
+    except OSError:
+        pass
+    return c
+
+
+def _nstate_load():
+    try:
+        with open(NOTIFY_STATE, encoding="utf-8") as f:
+            j = json.load(f)
+        return j if isinstance(j, dict) else {}
+    except Exception:
+        return {}
+
+
+def _nstate_save(st):
+    try:
+        os.makedirs(os.path.dirname(NOTIFY_STATE) or ".", exist_ok=True)
+        tmp = NOTIFY_STATE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(st, f, ensure_ascii=False)
+        os.replace(tmp, NOTIFY_STATE)
+    except OSError:
+        pass
+
+
+def _reason_info(reason):
+    """reason → (分类, 卡片主题色, 详情)"""
+    r = str(reason or "")
+    detail = REASON_DETAIL.get(r) or ("未标注原因" if not r else r)
+    if r.startswith(("sentry_panic", "sentry_aware_accel")):
+        return "遭遇袭击", "red", detail
+    if r.startswith(("sentry_aware_door", "sentry_aware_handle")):
+        return "车门拉动", "orange", detail
+    if r.startswith("sentry_"):
+        return "哨兵警觉", "blue", detail
+    if r.startswith("user_interaction"):
+        return "手动保存", "grey", detail
+    return "其他事件", "grey", detail
+
+
+def _ev_files(d):
+    try:
+        return sorted(f for f in os.listdir(d) if f.lower().endswith(".mp4"))
+    except OSError:
+        return []
+
+
+def _trigger_frame(cat, name):
+    """按 event.json 的 camera + timestamp 找触发摄像头那一帧, 返回 (jpg 路径, meta);
+    没有元数据/对不上片段时回落到前视第 1 秒。"""
+    d = os.path.join(ARCHIVE, cat, name)
+    meta = {}
+    try:
+        with open(os.path.join(d, "event.json"), encoding="utf-8", errors="ignore") as f:
+            meta = json.load(f) or {}
+    except Exception:
+        meta = {}
+    files = _ev_files(d)
+    if not files:
+        return None, meta
+    cam_key = CAM_SUFFIX.get(int(meta.get("camera")) if str(meta.get("camera", "")).strip().isdigit() else -1)
+    ts = None
+    try:
+        ts = datetime.datetime.strptime(str(meta.get("timestamp"))[:19], "%Y-%m-%dT%H:%M:%S")
+    except Exception:
+        ts = None
+    if ts is not None:
+        for f in files:                       # 文件名前 19 位是片段开始时间, 与 timestamp 同一时基
+            try:
+                s = datetime.datetime.strptime(f[:19], "%Y-%m-%d_%H-%M-%S")
+            except ValueError:
+                continue
+            off = (ts - s).total_seconds()
+            if 0 <= off <= 70 and f.rsplit("-", 1)[-1][:-4] == cam_key:
+                return thumb_file(os.path.join(d, f), max(0.0, min(off, 60.0))), meta
+    front = [f for f in files if f.endswith("-front.mp4")]
+    return thumb_file(os.path.join(d, front[0] if front else files[0]), 1.0), meta
+
+
+def _post_json(url, payload, timeout=12, headers=None):
+    """POST JSON 并解析返回。
+    注意: 这里用 http.client 而不是 urllib — urllib 会给请求带上 Connection: close,
+    飞书网关对这种短连接 POST 会直接断链 (SSL BAD_RECORD_MAC), 实测 http.client 正常。"""
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    h = {"Content-Type": "application/json; charset=utf-8"}
+    if headers:
+        h.update(headers)
+    return json.loads(_http_post(url, body, h, timeout).decode("utf-8", "replace"))
+
+
+def _http_post(url, body, headers=None, timeout=12):
+    """发一个 POST, 返回响应体 bytes; HTTP 4xx/5xx 也照常返回内容 (里面有飞书的错误码)"""
+    u = urllib.parse.urlsplit(url)
+    if u.scheme == "https":
+        conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=timeout)
+    elif u.scheme == "http":
+        conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=timeout)
+    else:
+        raise RuntimeError("不支持的地址: %s" % url[:40])
+    path = (u.path or "/") + (("?" + u.query) if u.query else "")
+    try:
+        conn.request("POST", path, body=body, headers=dict(headers or {}))
+        r = conn.getresponse()
+        return r.read() or b"{}"
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _feishu_token(conf):
+    if _TOK["v"] and _TOK["exp"] > time.time() + 60:
+        return _TOK["v"]
+    j = _post_json(FEISHU_API + "/auth/v3/tenant_access_token/internal",
+                   {"app_id": conf.get("app_id", ""), "app_secret": conf.get("app_secret", "")})
+    if j.get("code") != 0 or not j.get("tenant_access_token"):
+        raise RuntimeError("取 token 失败: %s" % (j.get("msg") or j))
+    _TOK["v"] = j["tenant_access_token"]
+    _TOK["exp"] = time.time() + max(600, int(j.get("expire") or 7200) - 300)
+    return _TOK["v"]
+
+
+def _feishu_upload(conf, jpg):
+    """上传封面图, 返回 image_key (失败抛异常)"""
+    with open(jpg, "rb") as f:
+        data = f.read()
+    bd = "----tsf%s" % hashlib.md5(("%s%.6f" % (jpg, time.time())).encode()).hexdigest()
+    pre = ("--%s\r\nContent-Disposition: form-data; name=\"image_type\"\r\n\r\nmessage\r\n"
+           "--%s\r\nContent-Disposition: form-data; name=\"image\"; filename=\"cover.jpg\"\r\n"
+           "Content-Type: image/jpeg\r\n\r\n" % (bd, bd)).encode()
+    body = pre + data + ("\r\n--%s--\r\n" % bd).encode()
+    raw = _http_post(FEISHU_API + "/im/v1/images", body, {
+        "Authorization": "Bearer " + _feishu_token(conf),
+        "Content-Type": "multipart/form-data; boundary=" + bd,
+    }, timeout=30)
+    j = json.loads(raw.decode("utf-8", "replace"))
+    key = ((j or {}).get("data") or {}).get("image_key")
+    if j.get("code") != 0 or not key:
+        raise RuntimeError("上传封面失败: %s" % (j.get("msg") or j))
+    return key
+
+
+def _feishu_card(conf, cat, name, img_key=None, test=False):
+    """拼一张飞书卡片 (标题/时间/位置/原因/镜头/封面/查看按钮)"""
+    d = os.path.join(ARCHIVE, cat, name)
+    meta = {}
+    try:
+        with open(os.path.join(d, "event.json"), encoding="utf-8", errors="ignore") as f:
+            meta = json.load(f) or {}
+    except Exception:
+        pass
+    cat_name, color, detail = _reason_info(meta.get("reason"))
+    if cat == "SavedClips" and not str(meta.get("reason", "")).startswith("sentry_"):
+        cat_name, color = "手动保存", "grey"
+    cam = CAM_NUM.get(int(meta["camera"])) if str(meta.get("camera", "")).strip().isdigit() else None
+    when = str(meta.get("timestamp") or name)[:19].replace("T", " ").replace("_", " ")
+    try:
+        dt = datetime.datetime.strptime(when, "%Y-%m-%d %H:%M:%S")
+        when = "%d月%d日 %02d:%02d:%02d" % (dt.month, dt.day, dt.hour, dt.minute, dt.second)
+    except Exception:
+        pass
+    loc = " ".join(x for x in (meta.get("city") or "", meta.get("street") or "") if x).strip() or "位置未知"
+    nclip = len(_ev_files(d))
+    title = ("🧪 [测试] " if test else "🚨 ") + cat_name + (" · " + cam if cam else "")
+    fields = [("时间", when), ("位置", loc), ("触发原因", detail)]
+    if cam:
+        fields.append(("触发镜头", "%s (#%s)" % (cam, meta.get("camera"))))
+    fields.append(("片段", "%d 路画面" % nclip))
+    els = []
+    if img_key:
+        els.append({"tag": "img", "img_key": img_key, "alt": {"tag": "plain_text", "content": "触发画面"}})
+    for i in range(0, len(fields), 2):
+        els.append({"tag": "div", "fields": [
+            {"is_short": True, "text": {"tag": "lark_md", "content": "**%s**\n%s" % (k, v)}}
+            for k, v in fields[i:i + 2]]})
+    link = (conf.get("public_url") or "").rstrip("/")
+    acts = []
+    if link:
+        acts.append({"tag": "button", "text": {"tag": "plain_text", "content": "查看录像"},
+                     "url": "%s/?ev=%s/%s" % (link, urllib.parse.quote(cat), urllib.parse.quote(name)),
+                     "type": "primary"})
+    if acts:
+        els.append({"tag": "action", "actions": acts})
+    if test:
+        els.append({"tag": "note", "elements": [{"tag": "plain_text", "content": "这是一条测试推送"}]})
+    return {
+        "config": {"wide_screen": True},
+        "header": {"template": color, "title": {"tag": "plain_text", "content": title}},
+        "elements": els,
+    }
+
+
+def notify_push(cat, name, test=False):
+    """推一条到飞书; 返回 (成功?, 提示)"""
+    conf = notify_conf()
+    if not conf.get("webhook"):
+        return False, "未配置飞书机器人 webhook"
+    img_key = None
+    warn = ""
+    if conf.get("app_id") and conf.get("app_secret"):
+        try:
+            jpg, _m = _trigger_frame(cat, name)
+            if jpg:
+                img_key = _feishu_upload(conf, jpg)
+            else:
+                warn = " (没抽到封面帧)"
+        except Exception as ex:
+            warn = " (封面未附上: %s)" % str(ex)[:80]
+    else:
+        warn = " (未配 app_id/app_secret, 只发文字卡片)"
+    card = _feishu_card(conf, cat, name, img_key=img_key, test=test)
+    try:
+        j = _post_json(conf["webhook"], {"msg_type": "interactive", "card": card})
+        code = j.get("code", j.get("StatusCode", -1))
+        if code not in (0, None):
+            raise RuntimeError("%s (code=%s)" % (j.get("msg") or j.get("StatusMessage") or "发送失败", code))
+    except Exception as ex:
+        return False, "推送失败: %s" % str(ex)[:140]
+    return True, "已推送到飞书" + warn
+
+
+def notify_scan():
+    """扫一遍归档, 把新出现的哨兵事件推给飞书; 返回本轮推送条数"""
+    conf = notify_conf()
+    if not conf.get("enabled") or not conf.get("webhook"):
+        return 0
+    st = _nstate_load()
+    seen = st.setdefault("seen", {})
+    tries = st.setdefault("try", {})
+    first = not st.get("init")
+    delay = max(5, int(conf.get("delay") or 20))
+    cats = ["SentryClips"] + (["SavedClips"] if conf.get("saved") else [])
+    sent = 0
+    for cat in cats:
+        base = os.path.join(ARCHIVE, cat)
+        if not os.path.isdir(base):
+            continue
+        for name in sorted(os.listdir(base)):
+            if not re.match(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", name):
+                continue
+            key = cat + "/" + name
+            if key in seen:
+                continue
+            d = os.path.join(base, name)
+            newest = 0.0
+            try:
+                for f in os.listdir(d):
+                    newest = max(newest, os.path.getmtime(os.path.join(d, f)))
+            except OSError:
+                continue
+            now = time.time()
+            if now - newest < delay:
+                continue                     # 还在同步写入, 下一轮再看
+            if first or now - newest > 6 * 3600:
+                seen[key] = int(now)         # 首次启用不补历史; 太旧的(>6h)也不补
+                continue
+            ok, msg = notify_push(cat, name)
+            st["last"] = {"at": int(time.time()), "ok": ok, "msg": msg, "ev": key}
+            if ok:
+                sent += 1
+                seen[key] = int(now)
+                tries.pop(key, None)
+            else:
+                tries[key] = tries.get(key, 0) + 1
+                if tries[key] >= 3:
+                    seen[key] = int(now)      # 连推 3 次都失败就放弃, 防止卡住队列
+                    tries.pop(key, None)
+            if sent >= 3:
+                break
+    if first:
+        st["init"] = 1
+    _nstate_save(st)
+    return sent
+
+
+def notify_loop():
+    time.sleep(25)
+    while True:
+        try:
+            notify_scan()
+        except Exception:
+            pass
+        time.sleep(30)
+
+
+def notify_status():
+    conf = notify_conf()
+    st = _nstate_load()
+    return {
+        "enabled": bool(conf.get("enabled")),
+        "webhook": conf.get("webhook") or "",
+        "app_id": conf.get("app_id") or "",
+        "has_secret": bool(conf.get("app_secret")),
+        "public_url": conf.get("public_url") or "",
+        "saved": bool(conf.get("saved")),
+        "delay": int(conf.get("delay") or 20),
+        "last": st.get("last") or {},
+        "sent_total": len(st.get("seen") or {}),
+    }
 
 
 def get_variant(fp, qv):
@@ -3378,6 +3858,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, **tel})
         elif path == "/api/live":
             self._json(live_status())
+        elif path == "/api/notify":
+            self._json(notify_status())
         elif path == "/api/ota/check":
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             self._json(ota_check(force=q.get("force", ["0"])[0] == "1"))
@@ -3588,48 +4070,10 @@ class Handler(BaseHTTPRequestHandler):
             ss_t = max(0.0, min(float(urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("t", ["1"])[0]), 3600.0))
         except ValueError:
             ss_t = 1.0
-        key = hashlib.md5(("%s|%d|%d|%g" % (fp, st.st_size, int(st.st_mtime), ss_t)).encode()).hexdigest()
-        out = os.path.join(THUMB_DIR, key + ".jpg")
-        # 0 字节文件是上次 ffmpeg 失败留下的残骸 (片段当时还没同步完), 视为无效缓存
-        try:
-            if os.path.getsize(out) == 0:
-                os.remove(out)
-        except OSError:
-            pass
-        if not os.path.isfile(out):
-            os.makedirs(THUMB_DIR, exist_ok=True)
-            tmp = os.path.join(THUMB_DIR, "%s.%d.tmp.jpg" % (key, threading.get_ident()))
-            if THUMB_SEM.acquire(timeout=12):
-                try:
-                    if not os.path.isfile(out):
-                        # 指定秒数可能落在片段末尾之外(触发帧偏移略超时长), 逐级回落
-                        cands = []
-                        for s in (("%.1f" % ss_t), "1", "0"):
-                            if s not in cands:
-                                cands.append(s)
-                        for ss in cands:
-                            try:
-                                if os.path.exists(tmp):
-                                    os.remove(tmp)
-                                subprocess.run([FFMPEG_BIN, "-hide_banner", "-loglevel", "error", "-y",
-                                                "-ss", ss, "-i", fp, "-frames:v", "1",
-                                                "-vf", "scale=%d:-2" % THUMB_W, "-q:v", "7", tmp],
-                                               capture_output=True, timeout=30)
-                                if os.path.isfile(tmp) and os.path.getsize(tmp) > 0:
-                                    os.replace(tmp, out)
-                                    break
-                            except Exception:
-                                pass
-                finally:
-                    THUMB_SEM.release()
-                    if os.path.exists(tmp):
-                        try:
-                            os.remove(tmp)
-                        except OSError:
-                            pass
-            if not os.path.isfile(out) or os.path.getsize(out) == 0:
-                self._send(404, b"no thumb")
-                return
+        out = thumb_file(fp, ss_t)
+        if not out:
+            self._send(404, b"no thumb")
+            return
         try:
             with open(out, "rb") as f:
                 data = f.read()
@@ -3654,6 +4098,47 @@ class Handler(BaseHTTPRequestHandler):
         if not self._gate():
             return
         path = urllib.parse.unquote(self.path)
+        if path == "/api/notify/save":
+            try:
+                n = int(self.headers.get("Content-Length", 0))
+                body = json.loads(self.rfile.read(n).decode("utf-8", "ignore") or "{}")
+            except Exception:
+                self._json({"ok": False, "msg": "参数错误"}, 400)
+                return
+            patch = {}
+            for k in ("enabled", "saved"):
+                if k in body:
+                    patch[k] = bool(body.get(k))
+            for k in ("webhook", "app_id", "public_url"):
+                if k in body:
+                    patch[k] = str(body.get(k) or "").strip()
+            if str(body.get("app_secret") or "").strip():
+                patch["app_secret"] = str(body["app_secret"]).strip()
+            if "delay" in body:
+                try:
+                    patch["delay"] = max(5, min(600, int(body["delay"])))
+                except (TypeError, ValueError):
+                    pass
+            conf = notify_save(patch)
+            self._json({"ok": True, "msg": "已保存", "status": notify_status(),
+                        "warn": "" if (conf.get("app_id") and conf.get("app_secret"))
+                        else "未配置 app_id/app_secret: 只能发文字卡片, 不会附带封面"})
+            return
+        if path == "/api/notify/test":
+            cat, name = "SentryClips", ""
+            try:
+                base = os.path.join(ARCHIVE, "SentryClips")
+                cands = sorted(e for e in os.listdir(base)
+                               if re.match(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", e))
+                name = cands[-1] if cands else ""
+            except OSError:
+                pass
+            if not name:
+                self._json({"ok": False, "msg": "归档里还没有哨兵事件, 无法生成测试卡片"}, 400)
+                return
+            ok, msg = notify_push(cat, name, test=True)
+            self._json({"ok": ok, "msg": msg})
+            return
         if path == "/api/ota/apply":
             ok, msg = ota_apply()
             self._json({"ok": ok, "msg": msg})
@@ -3850,6 +4335,7 @@ if __name__ == "__main__":
     subprocess.run([LOSETUP, "-d", LOOPDEV], capture_output=True)
     _gadget_rebind(True)
     threading.Thread(target=disk_guard, daemon=True).start()
+    threading.Thread(target=notify_loop, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     print(f"Sentry viewer on 0.0.0.0:{PORT}")
     print("auth: %s (%s)" % ("ON, user=" + AUTH_USER if AUTH_ON else "OFF - 公网可直接访问!", AUTH_FILE))
