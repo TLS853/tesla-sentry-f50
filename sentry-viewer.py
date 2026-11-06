@@ -33,13 +33,43 @@ AUDIO_DONE = os.path.join(ARCHIVE, "boombox-done")
 FILES_DIR = os.path.join(ARCHIVE, "files")
 PORT = int(os.environ.get("TSF_PORT", "8080"))
 CATS = ["SentryClips", "SavedClips", "RecentClips"]
+# ===== 多语言表 (由 tools/i18n_*.json 生成, key 为中文原文) =====
+LANG_NAMES = [("zh", "中文"), ("en", "English"), ("de", "Deutsch"), ("fr", "Français"),
+              ("it", "Italiano"), ("es", "Español"), ("nl", "Nederlands"), ("ru", "Русский"),
+              ("ja", "日本語"), ("ko", "한국어")]
+LANG_TABLE = {"de":{"App ID — cli_ 开头":"App ID — beginnt mit cli_","App Secret (已保存则留空表示不修改)":"App Secret (leer lassen = unverändert)","‹ 返回":"‹ Zurück","⏳ 待写入车机U盘:":"⏳ Warten auf Schreiben auf den USB-Stick:","▶ 轻触开始同步播放":"▶ Tippen für synchrone Wiedergabe","⚙ 个性化":"⚙ Personalisieren","✅ 已写入:":"✅ Geschrieben:","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"CSS-Skin-Datei oder Hintergrundbild hochladen (jpg/png/webp). Bilder im CSS über /skin-media/Dateiname einbinden.","下载":"Herunterladen","下载清晰度":"Download-Qualität","主题":"Design","也推手动保存":"Manuelle Speicherungen ebenfalls pushen","仅支持 wav/mp3":"Nur wav/mp3 unterstützt","仅限本人访问":"Nur für den Besitzer","今天":"Heute","位置":"Position","使用中":"Aktiv","侦测到物体移动":"Bewegung erkannt","侦测到碰撞/震动":"Aufprall/Erschütterung erkannt","保存失败":"Speichern fehlgeschlagen","保存设置":"Einstellungen speichern","修改密码":"Passwort ändern","全选":"Alle auswählen","全部":"Alle","全部日期":"Alle Daten","再输一次新密码":"Neues Passwort wiederholen","删除":"Löschen","刹车":"Bremse","刹车占比":"Bremsanteil","前视":"Vorne","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"Das Update lädt das neueste Programm von GitHub und mehreren Mirrors parallel, überschreibt lokale Dateien und startet den Dienst automatisch neu (ca. 5 s); Konfiguration, Aufnahmen und Anmeldedaten bleiben unberührt.","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"Eine halbtransparente Zeile: Zeit/Position/Geschwindigkeit/Gang/Pedale/Bremse, verdeckt kaum","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"Einzelauswahl lädt die Originaldatei direkt herunter (mit Wasserzeichen lokal komponiert); Mehrfachauswahl fügt ein Multi-View-Video zusammen. Download/ZIP-Export in der gewählten Qualität (beim ersten Mal Wartezeit durch Transkodierung).","原因":"Grund","原画":"Original","发送测试":"Test senden","叠加行车信息水印":"Fahrdaten-Wasserzeichen einblenden","右B柱":"B-Säule rechts","右前翼":"Kotflügel vorn rechts","右翼子板":"Kotflügel rechts","合成视频":"Video zusammenfügen","同步状态":"Sync-Status","后视":"Hinten","启用推送":"Push aktivieren","哨兵告警":"Sentry-Alarme","哨兵模式触发":"Sentry-Modus ausgelöst","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"Bei Sentry-Auslösung werden Zeit/Position, Auslösegrund und Auslösebild an Feishu gepusht. Standardmäßig private Nachrichten über die eigene App (nur für dich sichtbar); alternativ Gruppen-Bot-webhook (für alle in der Gruppe sichtbar). Video-Push nur für private Nachrichten.","哨兵警觉":"Sentry-Wahrnehmung","回滚到上一版本":"Zur vorherigen Version zurückkehren","天":"Tage","实时同步中":"Live-Sync läuft","密码":"Passwort","尝试次数过多，请 5 分钟后再试":"Zu viele Versuche, bitte in 5 Minuten erneut versuchen","展开详细数据 ⌄":"Details ausklappen ⌄","左B柱":"B-Säule links","左前翼":"Kotflügel vorn links","左翼子板":"Kotflügel links","已保存":"Gespeichert","已删除":"Gelöscht","已加入队列, 归档同步时写入车机U盘":"In Warteschlange, wird bei der Archiv-Synchronisierung auf den Auto-USB-Stick geschrieben","已同步":"Synchronisiert","已是最新":"Aktuell","延迟推送":"Push-Verzögerung","当前密码":"Aktuelles Passwort","当前版本":"Aktuelle Version","恢复车机导出":"Auto-Zugriff wiederherstellen","手动保存":"Manuelle Speicherung","打包zip":"ZIP-Paket","按喇叭保存":"Hupen-Speicherung","换个日期或点「全部」查看本分类所有事件":"Anderes Datum wählen oder \"Alle\" tippen, um alle Ereignisse dieser Kategorie zu sehen","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"Empfänger: deine open_id (beginnt mit ou_) oder Feishu-Login-E-Mail","推送内容：封面卡片（触发那帧图 + 信息，最快）":"Push-Inhalt: Cover-Karte (Auslösebild + Infos, am schnellsten)","推送内容：触发摄像头视频（可回放）":"Push-Inhalt: Video der Auslösekamera (abspielbar)","摄像头":"Kamera","收起详细数据 ⌃":"Details einklappen ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"Nach der Änderung meldet sich dieses Gerät automatisch mit dem neuen Passwort neu an; Anmeldungen auf Handy/weiteren Geräten werden sofort ungültig.","敏感信息已明文显示，注意别外发":"Sensible Daten im Klartext, beim Weitergeben aufpassen","敏感信息已隐藏（截图安全）":"Sensible Daten verborgen (screenshot-sicher)","新密码 (至少 6 位)":"Neues Passwort (mindestens 6 Zeichen)","方向盘角度":"Lenkwinkel","日期":"Datum","时间":"Zeit","昨天":"Gestern","暂无归档视频":"Noch keine archivierten Videos","暂无皮肤, 使用默认外观":"Keine Skins, Standarddarstellung aktiv","最新版本":"Neueste Version","有新版本":"Neue Version verfügbar","未标注原因":"Kein Grund angegeben","未检查":"Nicht geprüft","条":"Clips","查看链接前缀 (可选): http://你的域名:端口":"Link-Präfix (optional): http://deine-domain:port","检查中…":"Prüfe…","检查更新":"Nach Updates suchen","正在上传…":"Wird hochgeladen…","正在下载并校验新版本…":"Neue Version wird heruntergeladen und geprüft…","正在合成多画面视频":"Multi-View-Video wird erstellt","活动ID":"Ereignis-ID","浅色":"Hell","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"Auto-USB-Stick durchsuchen und verwalten (das von Tesla geschriebene Abbild). Beim Verbinden wird das Lesen durch das Auto einige Sekunden unterbrochen; nach 5 Minuten ohne Bedienung erfolgt die Wiederherstellung automatisch.","深色":"Dunkel","清空":"Leeren","点击行车记录仪图标":"Dashcam-Symbol angetippt","片段":"Clips","用户名":"Benutzername","用户名或密码不对":"Benutzername oder Passwort falsch","画面":"Ansichten","界面语言，保存在本机浏览器":"Sprache der Oberfläche, im Browser gespeichert","登录":"Anmelden","登录状态保留":"Anmeldung gemerkt für","盒子归档存储":"Box-Archivspeicher","确定要退出登录吗？":"Wirklich abmelden?","私聊推送 — 只有我本人能看到":"Privatnachricht — nur ich kann sie sehen","秒 (等片段写完再推)":"Sekunden (warten, bis Clips fertig geschrieben sind)","秒（从触发前 5 秒开始截）":"Sekunden (beginnt 5 s vor Auslösung)","立即升级":"Jetzt aktualisieren","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"Gruppen-Bot-webhook (nur für Gruppen-Push): https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"Gruppen-Bot — für alle in der Gruppe sichtbar","自动":"Auto","行车记录":"Dashcam","行车记录仪菜单保存":"Speichern im Dashcam-Menü","视频时长":"Videolänge","视频清晰度：360p（约 1.8MB / 30 秒）":"Videoqualität: 360p (ca. 1,8MB / 30 s)","视频清晰度：480p（约 3MB / 30 秒）":"Videoqualität: 480p (ca. 3MB / 30 s)","视频清晰度：720p（约 5MB / 30 秒）":"Videoqualität: 720p (ca. 5MB / 30 s)","触发原因":"Auslösegrund","设为锁车音":"Als Verriegelungston festlegen","设备正在拼接各路画面, 请勿关闭页面":"Ansichten werden zusammengefügt, Seite nicht schließen","设置":"Einstellungen","该筛选下暂无事件":"Keine Ereignisse für diesen Filter","跳转":"Los","车机U盘未连接":"Auto-USB-Stick nicht verbunden","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"Nach der Aufnahme im Auto übernimmt die Archiv-Synchronisierung die Videos automatisch (Spiegelung benötigt 10 Min. Leerlauf)","车机要求单个音频 <1MB, 请裁剪后重试":"Das Auto verlangt Audio <1MB, bitte kürzen und erneut versuchen","车载U盘存储":"USB-Stick-Speicher","车门拉动":"Türzug","车门被拉动":"Tür bewegt","载入中…":"Wird geladen…","连接车机U盘":"Auto-USB-Stick verbinden","退出登录":"Abmelden","选择日期…":"Datum wählen…","选择要导出的画面":"Ansichten für den Export wählen","选择语言":"Sprache wählen","遭遇袭击":"Aufprall","遭遇袭击 (紧急报警)":"Aufprall (Notruf)","锁车音":"Verriegelungston","锁车音必须是 WAV (mp3 只能当喇叭音效)":"Verriegelungston muss WAV sein (mp3 nur als Boombox-Sound)","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"Verriegelungston erfordert WAV 44.1kHz 16-bit <1MB 1–5 s; LockChime.wav kommt ins Stammverzeichnis des Auto-USB-Sticks, andere mp3/wav werden als Boombox-Sounds in den Ordner Boombox/ geschrieben. Dateien werden bei der Archiv-Synchronisierung auf den USB-Stick geschrieben.","门把手被拉动":"Türgriff gezogen","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ Datei in den aktuellen Ordner hochladen (beliebiger Typ, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ Skin-Datei hochladen (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ Audio hochladen (wav/mp3, <1MB)","🌐 语言":"🌐 Sprache","🎨 页面皮肤":"🎨 Skin","👁 显示":"👁 Anzeigen","📂 文件":"📂 Dateien","🔄 更新":"🔄 Update","🔊 锁车语音":"🔊 Verriegelungston","🔑 账号":"🔑 Konto","🔔 推送":"🔔 Push","🗄 归档区":"🗄 Archivbereich","🙈 隐藏":"🙈 Ausblenden","🚗 特斯拉哨兵查看器":"🚗 Tesla Sentry Viewer","🚗 车机U盘":"🚗 Auto-USB-Stick","归档":"Archiv","待确认":"Ausstehend","同步服务未运行":"Synchronisierungsdienst läuft nicht","路画面":"Kanalansicht","最近一次":"Letzter Lauf","未启用":"Nicht aktiviert","已启用私聊推送, 等下一个哨兵事件":"Direktnachrichten aktiviert, warte auf das nächste Sentry-Ereignis","已启用, 但接收人/应用凭据未配全":"Aktiviert, aber Empfänger-/App-Zugangsdaten unvollständig","读取设置失败":"Einstellungen konnten nicht geladen werden","私聊需要 App ID / Secret + 接收人":"Direktnachrichten benötigen App ID / Secret + Empfänger","请先填群机器人 webhook":"Bitte zuerst den Gruppenbot-Webhook eintragen","保存中…":"Speichern…","发送失败":"Senden fehlgeschlagen","正在发送测试卡片…":"Testkarte wird gesendet…","当前未开启登录保护, 设置密码后即开启":"Anmeldeschutz ist aus, mit einem Passwort wird er aktiviert","新密码至少 6 位":"Neues Passwort mindestens 6 Zeichen","两次输入的新密码不一致":"Die neuen Passwörter stimmen nicht überein","提交中…":"Wird übermittelt…","空目录":"Leerer Ordner","正在连接 GitHub…":"Verbindung zu GitHub…","检查失败":"Prüfung fehlgeschlagen","连不上 GitHub":"GitHub nicht erreichbar","(可稍后重试)":"(später erneut versuchen)","来源":"Quelle","升级失败":"Upgrade fehlgeschlagen","原密码不对":"Aktuelles Passwort ist falsch","修改失败":"Änderung fehlgeschlagen","上传失败":"Upload fehlgeschlagen","密码已更新, 其它设备需要重新登录":"Passwort aktualisiert, andere Geräte müssen sich neu anmelden","仅支持 css/jpg/png/webp":"Nur css/jpg/png/webp unterstützt","皮肤已上传并应用":"Skin hochgeladen und angewendet","文件超过 100MB 上限":"Datei überschreitet das Limit von 100 MB","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"USB-Stick im Fahrzeug verbunden (Fahrzeugzugriff vorübergehend getrennt, automatische Wiederherstellung nach 5 Minuten Inaktivität)","已恢复车机导出":"Fahrzeugexport wiederhergestellt","车机U盘未连接, 请先点「连接车机U盘」":"USB-Stick im Fahrzeug nicht verbunden, bitte zuerst 「USB-Stick im Fahrzeug verbinden」 antippen","归档里没有可用的片段":"Keine verwendbaren Clips im Archiv","请至少选择一路":"Bitte mindestens einen Kanal auswählen","已有合成在进行":"Zusammenführung läuft bereits","合成失败":"Zusammenführung fehlgeschlagen","已开始下载":"Download gestartet","此浏览器不支持本机合成, 请使用打包下载":"Dieser Browser unterstützt keine lokale Zusammenführung, bitte den Paket-Download verwenden","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"Zusammenfügen fertig","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}},"en":{"App ID — cli_ 开头":"App ID — starts with cli_","App Secret (已保存则留空表示不修改)":"App Secret (leave blank to keep current)","‹ 返回":"‹ Back","⏳ 待写入车机U盘:":"⏳ Pending write to car USB:","▶ 轻触开始同步播放":"▶ Tap to start synced playback","⚙ 个性化":"⚙ Personalize","✅ 已写入:":"✅ Written:","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"Upload a CSS skin file or background image (jpg/png/webp). Reference images in CSS as /skin-media/filename.","下载":"Download","下载清晰度":"Download quality","主题":"Theme","也推手动保存":"Also push manual saves","仅支持 wav/mp3":"Only wav/mp3 supported","仅限本人访问":"Owner access only","今天":"Today","位置":"Location","使用中":"Active","侦测到物体移动":"Object movement detected","侦测到碰撞/震动":"Impact/vibration detected","保存失败":"Save failed","保存设置":"Save settings","修改密码":"Change password","全选":"Select all","全部":"All","全部日期":"All dates","再输一次新密码":"Repeat new password","删除":"Delete","刹车":"Brake","刹车占比":"Brake %","前视":"Front","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"The upgrade fetches the latest build from GitHub and multiple mirrors in parallel, overwrites local files and restarts the service automatically (about 5 s); configs, recordings and login info are unaffected.","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"Single semi-transparent line: time/location/speed/gear/throttle/brake, barely covers the view","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"Single-select downloads the original file directly (with watermark it composites locally); multi-select merges one multi-view video. Downloads/zips export at the selected quality (first time may wait for transcoding).","原因":"Reason","原画":"Original","发送测试":"Send test","叠加行车信息水印":"Overlay driving data watermark","右B柱":"Right B-pillar","右前翼":"Right front fender","右翼子板":"Right fender","合成视频":"Merge video","同步状态":"Sync status","后视":"Rear","启用推送":"Enable push","哨兵告警":"Sentry alerts","哨兵模式触发":"Sentry mode triggered","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"When Sentry triggers, pushes time/location, trigger reason and the trigger frame to Feishu. Defaults to private messages via your own app (only you can see them); you can also switch to a group bot webhook (visible to the whole group). Video push works for private messages only.","哨兵警觉":"Sentry aware","回滚到上一版本":"Roll back to previous version","天":"days","实时同步中":"Live syncing","密码":"Password","尝试次数过多，请 5 分钟后再试":"Too many attempts, try again in 5 minutes","展开详细数据 ⌄":"Show details ⌄","左B柱":"Left B-pillar","左前翼":"Left front fender","左翼子板":"Left fender","已保存":"Saved","已删除":"Deleted","已加入队列, 归档同步时写入车机U盘":"Queued, will be written to car USB during archive sync","已同步":"Synced","已是最新":"Up to date","延迟推送":"Push delay","当前密码":"Current password","当前版本":"Current version","恢复车机导出":"Restore car access","手动保存":"Manual save","打包zip":"Zip download","按喇叭保存":"Horn save","换个日期或点「全部」查看本分类所有事件":"Try another date or tap \"All\" to see all events in this category","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"Recipient: your open_id (starts with ou_) or Feishu login email","推送内容：封面卡片（触发那帧图 + 信息，最快）":"Push content: cover card (trigger frame + info, fastest)","推送内容：触发摄像头视频（可回放）":"Push content: trigger camera video (playable)","摄像头":"Camera","收起详细数据 ⌃":"Hide details ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"After the change, this device logs back in with the new password automatically; login sessions on phones/other devices are invalidated immediately.","敏感信息已明文显示，注意别外发":"Sensitive info shown in plain text, be careful when sharing","敏感信息已隐藏（截图安全）":"Sensitive info hidden (screenshot-safe)","新密码 (至少 6 位)":"New password (at least 6 characters)","方向盘角度":"Steering angle","日期":"Date","时间":"Time","昨天":"Yesterday","暂无归档视频":"No archived videos yet","暂无皮肤, 使用默认外观":"No skins, using the default look","最新版本":"Latest version","有新版本":"New version available","未标注原因":"No reason tagged","未检查":"Not checked","条":"clips","查看链接前缀 (可选): http://你的域名:端口":"View link prefix (optional): http://your-domain:port","检查中…":"Checking…","检查更新":"Check for updates","正在上传…":"Uploading…","正在下载并校验新版本…":"Downloading and verifying new version…","正在合成多画面视频":"Compositing multi-view video","活动ID":"Event ID","浅色":"Light","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"Browse and manage the car USB drive (the mirror written by Tesla). Connecting briefly interrupts car read access for a few seconds; it auto-restores after 5 minutes of inactivity.","深色":"Dark","清空":"Clear","点击行车记录仪图标":"Dashcam icon tapped","片段":"Clips","用户名":"Username","用户名或密码不对":"Wrong username or password","画面":"Views","界面语言，保存在本机浏览器":"UI language, saved in this browser","登录":"Log in","登录状态保留":"Login remembered for","盒子归档存储":"Box archive storage","确定要退出登录吗？":"Are you sure you want to log out?","私聊推送 — 只有我本人能看到":"Direct message — only I can see it","秒 (等片段写完再推)":"seconds (wait for clips to finish writing)","秒（从触发前 5 秒开始截）":"seconds (starts 5 s before trigger)","立即升级":"Upgrade now","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"Group bot webhook (group push only): https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"Group bot — everyone in the group can see it","自动":"Auto","行车记录":"Dashcam","行车记录仪菜单保存":"Dashcam menu save","视频时长":"Clip length","视频清晰度：360p（约 1.8MB / 30 秒）":"Video quality: 360p (~1.8MB / 30 s)","视频清晰度：480p（约 3MB / 30 秒）":"Video quality: 480p (~3MB / 30 s)","视频清晰度：720p（约 5MB / 30 秒）":"Video quality: 720p (~5MB / 30 s)","触发原因":"Trigger reason","设为锁车音":"Set as lock chime","设备正在拼接各路画面, 请勿关闭页面":"Stitching camera views, do not close this page","设置":"Settings","该筛选下暂无事件":"No events for this filter","跳转":"Go","车机U盘未连接":"Car USB not connected","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"After the car records, archive sync pulls in videos automatically (mirror needs 10 min idle)","车机要求单个音频 <1MB, 请裁剪后重试":"Car requires each audio file <1MB, trim it and retry","车载U盘存储":"USB drive storage","车门拉动":"Door pull","车门被拉动":"Door pulled","载入中…":"Loading…","连接车机U盘":"Connect car USB","退出登录":"Log out","选择日期…":"Pick a date…","选择要导出的画面":"Select views to export","选择语言":"Select language","遭遇袭击":"Impact","遭遇袭击 (紧急报警)":"Impact (panic alarm)","锁车音":"Lock chime","锁车音必须是 WAV (mp3 只能当喇叭音效)":"Lock chime must be WAV (mp3 only works as a Boombox sound)","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"Lock chime requires WAV 44.1kHz 16-bit <1MB 1–5 s; LockChime.wav goes to the root of the car USB drive, other mp3/wav files are written to the Boombox/ folder as Boombox sounds. Files are written to the car USB during archive sync.","门把手被拉动":"Door handle pulled","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ Upload file to current folder (any type, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ Upload skin file (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ Upload audio (wav/mp3, <1MB)","🌐 语言":"🌐 Language","🎨 页面皮肤":"🎨 Skin","👁 显示":"👁 Show","📂 文件":"📂 Files","🔄 更新":"🔄 Update","🔊 锁车语音":"🔊 Lock chime","🔑 账号":"🔑 Account","🔔 推送":"🔔 Push","🗄 归档区":"🗄 Archive area","🙈 隐藏":"🙈 Hide","🚗 特斯拉哨兵查看器":"🚗 Tesla Sentry Viewer","🚗 车机U盘":"🚗 Car USB","归档":"Archive","待确认":"Pending","同步服务未运行":"Sync service not running","路画面":"Channel view","最近一次":"Last run","未启用":"Not enabled","已启用私聊推送, 等下一个哨兵事件":"Direct messages enabled, waiting for the next Sentry event","已启用, 但接收人/应用凭据未配全":"Enabled, but recipient/app credentials are incomplete","读取设置失败":"Failed to load settings","私聊需要 App ID / Secret + 接收人":"Direct messages need App ID / Secret + recipient","请先填群机器人 webhook":"Fill in the group bot webhook first","保存中…":"Saving…","发送失败":"Send failed","正在发送测试卡片…":"Sending test card…","当前未开启登录保护, 设置密码后即开启":"Login protection is off, set a password to enable it","新密码至少 6 位":"New password must be at least 6 characters","两次输入的新密码不一致":"New passwords do not match","提交中…":"Submitting…","空目录":"Empty folder","正在连接 GitHub…":"Connecting to GitHub…","检查失败":"Check failed","连不上 GitHub":"Cannot reach GitHub","(可稍后重试)":"(you can retry later)","来源":"Source","升级失败":"Upgrade failed","原密码不对":"Current password is incorrect","修改失败":"Update failed","上传失败":"Upload failed","密码已更新, 其它设备需要重新登录":"Password updated, other devices need to sign in again","仅支持 css/jpg/png/webp":"Only css/jpg/png/webp supported","皮肤已上传并应用":"Skin uploaded and applied","文件超过 100MB 上限":"File exceeds the 100 MB limit","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"Car USB drive connected (car access temporarily released, auto-restores after 5 minutes idle)","已恢复车机导出":"Car export restored","车机U盘未连接, 请先点「连接车机U盘」":"Car USB drive not connected, tap 「Connect car USB drive」 first","归档里没有可用的片段":"No usable clips in the archive","请至少选择一路":"Select at least one channel","已有合成在进行":"A merge is already in progress","合成失败":"Merge failed","已开始下载":"Download started","此浏览器不支持本机合成, 请使用打包下载":"This browser does not support local merging, use the packaged download","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"Merge complete","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}},"es":{"App ID — cli_ 开头":"App ID — empieza por cli_","App Secret (已保存则留空表示不修改)":"App Secret (déjalo vacío para no cambiarlo)","‹ 返回":"‹ Volver","⏳ 待写入车机U盘:":"⏳ Pendiente de escribir en el USB del coche:","▶ 轻触开始同步播放":"▶ Toca para iniciar la reproducción sincronizada","⚙ 个性化":"⚙ Personalización","✅ 已写入:":"✅ Escritos:","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"Sube un archivo de skin CSS o una imagen de fondo (jpg/png/webp). Para las imágenes en el CSS usa /skin-media/nombrearchivo.","下载":"Descargar","下载清晰度":"Calidad de descarga","主题":"Tema","也推手动保存":"También los guardados manuales","仅支持 wav/mp3":"Solo wav/mp3","仅限本人访问":"Acceso solo para el propietario","今天":"Hoy","位置":"Ubicación","使用中":"En uso","侦测到物体移动":"Movimiento detectado","侦测到碰撞/震动":"Colisión/vibración detectada","保存失败":"Error al guardar","保存设置":"Guardar ajustes","修改密码":"Cambiar contraseña","全选":"Seleccionar todo","全部":"Todos","全部日期":"Todas las fechas","再输一次新密码":"Repite la nueva contraseña","删除":"Eliminar","刹车":"Freno","刹车占比":"Porcentaje de freno","前视":"Delantera","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"La actualización descarga la última versión en paralelo desde GitHub y varios espejos, sobrescribe los archivos locales y reinicia el servicio (unos 5 s); la configuración, las grabaciones y el acceso no se ven afectados.","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"Una línea semitransparente: hora/ubicación/velocidad/marcha/acelerador/freno, apenas tapa la imagen","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"Con una sola selección descargas el archivo original (con marca de agua se compone en local); con varias se crea un único vídeo multivista. La descarga y el zip se exportan en la calidad elegida (la primera vez hay que esperar la transcodificación).","原因":"Motivo","原画":"Original","发送测试":"Enviar prueba","叠加行车信息水印":"Añadir marca de agua con datos de conducción","右B柱":"Pilar B der.","右前翼":"Aleta delantera der.","右翼子板":"Aleta der.","合成视频":"Unir vídeo","同步状态":"Estado de sync","后视":"Trasera","启用推送":"Activar notificaciones","哨兵告警":"Alertas Centinela","哨兵模式触发":"Activación del Centinela","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"Cuando salta el Centinela envía a Feishu la hora/ubicación/causa y el fotograma del aviso. Por defecto usa la app privada (solo lo ves tú); también puedes cambiar al webhook de un bot de grupo (lo ve todo el grupo). El push de vídeo solo funciona en privado.","哨兵警觉":"Alerta centinela","回滚到上一版本":"Volver a la versión anterior","天":"días","实时同步中":"Sincronizando en vivo","密码":"Contraseña","尝试次数过多，请 5 分钟后再试":"Demasiados intentos, inténtalo en 5 minutos","展开详细数据 ⌄":"Mostrar datos detallados ⌄","左B柱":"Pilar B izq.","左前翼":"Aleta delantera izq.","左翼子板":"Aleta izq.","已保存":"Guardado","已删除":"Eliminado","已加入队列, 归档同步时写入车机U盘":"En cola, se escribirá en el USB del coche al sincronizar el archivo","已同步":"Sincronizado","已是最新":"Ya está actualizado","延迟推送":"Push retrasado","当前密码":"Contraseña actual","当前版本":"Versión actual","恢复车机导出":"Restaurar acceso del coche","手动保存":"Guardados manuales","打包zip":"Crear zip","按喇叭保存":"Guardado con claxon","换个日期或点「全部」查看本分类所有事件":"Cambia la fecha o toca «Todos» para ver todos los eventos de la categoría","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"Destinatario: tu open_id (empieza por ou_) o el correo de acceso a Feishu","推送内容：封面卡片（触发那帧图 + 信息，最快）":"Contenido: tarjeta de portada (fotograma del aviso + info, lo más rápido)","推送内容：触发摄像头视频（可回放）":"Contenido: vídeo de la cámara que lo activó (reproducible)","摄像头":"Cámara","收起详细数据 ⌃":"Ocultar datos detallados ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"Tras el cambio, este dispositivo inicia sesión con la nueva contraseña; las sesiones del móvil y otros dispositivos se cierran al instante.","敏感信息已明文显示，注意别外发":"Datos sensibles a la vista, no los compartas","敏感信息已隐藏（截图安全）":"Datos sensibles ocultos (seguro para capturas)","新密码 (至少 6 位)":"Nueva contraseña (mínimo 6 caracteres)","方向盘角度":"Ángulo de dirección","日期":"Fecha","时间":"Hora","昨天":"Ayer","暂无归档视频":"No hay vídeos archivados","暂无皮肤, 使用默认外观":"Sin skins, aspecto predeterminado","最新版本":"Última versión","有新版本":"Nueva versión disponible","未标注原因":"Motivo no indicado","未检查":"Sin comprobar","条":"clips","查看链接前缀 (可选): http://你的域名:端口":"Prefijo del enlace de vista (opcional): http://tu-dominio:puerto","检查中…":"Comprobando…","检查更新":"Buscar actualizaciones","正在上传…":"Subiendo…","正在下载并校验新版本…":"Descargando y verificando la nueva versión…","正在合成多画面视频":"Creando vídeo multivista","活动ID":"ID del evento","浅色":"Claro","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"Explora y gestiona el USB del coche (la copia que escribe Tesla). Al conectar, el coche pierde el acceso unos segundos; se restaura tras 5 minutos sin actividad.","深色":"Oscuro","清空":"Deseleccionar todo","点击行车记录仪图标":"Toque en el icono Dashcam","片段":"Clips","用户名":"Usuario","用户名或密码不对":"Usuario o contraseña incorrectos","画面":"Vistas","界面语言，保存在本机浏览器":"Idioma de la interfaz, guardado en este navegador","登录":"Iniciar sesión","登录状态保留":"Mantener la sesión","盒子归档存储":"Espacio de archivo del box","确定要退出登录吗？":"¿Seguro que quieres cerrar sesión?","私聊推送 — 只有我本人能看到":"Push privado — solo lo ves tú","秒 (等片段写完再推)":"segundos (espera a que se escriban los clips)","秒（从触发前 5 秒开始截）":"segundos (desde 5 s antes del aviso)","立即升级":"Actualizar ahora","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"webhook del bot de grupo (solo para push de grupo): https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"Bot de grupo — lo ve todo el grupo","自动":"Auto","行车记录":"Dashcam","行车记录仪菜单保存":"Guardado desde el menú Dashcam","视频时长":"Duración del vídeo","视频清晰度：360p（约 1.8MB / 30 秒）":"Calidad de vídeo: 360p (unos 1.8MB / 30 s)","视频清晰度：480p（约 3MB / 30 秒）":"Calidad de vídeo: 480p (unos 3MB / 30 s)","视频清晰度：720p（约 5MB / 30 秒）":"Calidad de vídeo: 720p (unos 5MB / 30 s)","触发原因":"Causa de activación","设为锁车音":"Usar como sonido al cerrar","设备正在拼接各路画面, 请勿关闭页面":"El dispositivo está uniendo las vistas, no cierres la página","设置":"Ajustes","该筛选下暂无事件":"No hay eventos con este filtro","跳转":"Ir","车机U盘未连接":"USB del coche no conectado","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"Tras grabar el coche, la sincronización del archivo recoge los vídeos (el espejo debe estar inactivo 10 minutos)","车机要求单个音频 <1MB, 请裁剪后重试":"El coche exige audio <1MB, recorta el archivo e inténtalo de nuevo","车载U盘存储":"Espacio USB del coche","车门拉动":"Puerta forzada","车门被拉动":"Puerta manipulada","载入中…":"Cargando…","连接车机U盘":"Conectar USB del coche","退出登录":"Cerrar sesión","选择日期…":"Elegir fecha…","选择要导出的画面":"Elige las vistas que quieres exportar","选择语言":"Elegir idioma","遭遇袭击":"Agresión","遭遇袭击 (紧急报警)":"Agresión (alarma de emergencia)","锁车音":"Sonido al cerrar","锁车音必须是 WAV (mp3 只能当喇叭音效)":"El sonido al cerrar debe ser WAV (mp3 solo como efecto de claxon)","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"El sonido al cerrar debe ser WAV 44.1kHz 16-bit <1MB 1~5 s; LockChime.wav se escribe en la raíz del USB del coche y los demás mp3/wav como efectos de Boombox en la carpeta Boombox/. Los archivos se escriben en el USB del coche al sincronizar el archivo.","门把手被拉动":"Manilla accionada","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ Subir archivo a la carpeta actual (cualquier tipo, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ Subir archivo de skin (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ Subir audio (wav/mp3, <1MB)","🌐 语言":"🌐 Idioma","🎨 页面皮肤":"🎨 Apariencia","👁 显示":"👁 Mostrar","📂 文件":"📂 Archivos","🔄 更新":"🔄 Actualización","🔊 锁车语音":"🔊 Sonido al cerrar","🔑 账号":"🔑 Cuenta","🔔 推送":"🔔 Notificaciones","🗄 归档区":"🗄 Archivo","🙈 隐藏":"🙈 Ocultar","🚗 特斯拉哨兵查看器":"🚗 Visor Centinela Tesla","🚗 车机U盘":"🚗 USB del coche","归档":"Archivo","待确认":"Pendiente de confirmar","同步服务未运行":"Servicio de sincronización no activo","路画面":"Vista de canal","最近一次":"Última vez","未启用":"No activado","已启用私聊推送, 等下一个哨兵事件":"Avisos privados activados, esperando el próximo evento Centinela","已启用, 但接收人/应用凭据未配全":"Activado, pero faltan destinatarios o credenciales de la app","读取设置失败":"No se pudo leer la configuración","私聊需要 App ID / Secret + 接收人":"Los avisos privados requieren App ID / Secret + destinatario","请先填群机器人 webhook":"Primero rellena el webhook del bot de grupo","保存中…":"Guardando…","发送失败":"Error al enviar","正在发送测试卡片…":"Enviando tarjeta de prueba…","当前未开启登录保护, 设置密码后即开启":"Protección de acceso desactivada: se activa al definir una contraseña","新密码至少 6 位":"La nueva contraseña debe tener al menos 6 caracteres","两次输入的新密码不一致":"Las contraseñas nuevas no coinciden","提交中…":"Enviando…","空目录":"Carpeta vacía","正在连接 GitHub…":"Conectando con GitHub…","检查失败":"Error en la comprobación","连不上 GitHub":"No se puede conectar con GitHub","(可稍后重试)":"(puedes reintentarlo más tarde)","来源":"Origen","升级失败":"Error en la actualización","原密码不对":"La contraseña actual es incorrecta","修改失败":"Error al modificar","上传失败":"Error al subir","密码已更新, 其它设备需要重新登录":"Contraseña actualizada, los demás dispositivos deben volver a iniciar sesión","仅支持 css/jpg/png/webp":"Solo css/jpg/png/webp","皮肤已上传并应用":"Tema subido y aplicado","文件超过 100MB 上限":"El archivo supera el límite de 100MB","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"Memoria USB del coche conectada (lectura del coche interrumpida, se restaura automáticamente tras 5 minutos sin actividad)","已恢复车机导出":"Exportación del coche restaurada","车机U盘未连接, 请先点「连接车机U盘」":"Memoria USB del coche no conectada, pulsa antes «Conectar memoria USB del coche»","归档里没有可用的片段":"No hay clips disponibles en el archivo","请至少选择一路":"Selecciona al menos un canal","已有合成在进行":"Ya hay una composición en curso","合成失败":"Error en la composición","已开始下载":"Descarga iniciada","此浏览器不支持本机合成, 请使用打包下载":"Este navegador no admite la composición local, usa la descarga empaquetada","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"Unión completada","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}},"fr":{"App ID — cli_ 开头":"App ID — commence par cli_","App Secret (已保存则留空表示不修改)":"App Secret (laisser vide pour ne pas modifier)","‹ 返回":"‹ Retour","⏳ 待写入车机U盘:":"⏳ En attente d'écriture sur l'USB :","▶ 轻触开始同步播放":"▶ Touchez pour lancer la lecture synchro","⚙ 个性化":"⚙ Personnalisation","✅ 已写入:":"✅ Écrit :","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"Chargez un fichier de skin CSS ou une image de fond (jpg/png/webp). Dans le CSS, référencez les images via /skin-media/nomfichier.","下载":"Télécharger","下载清晰度":"Qualité de téléchargement","主题":"Thème","也推手动保存":"Notifier aussi les enregistrements manuels","仅支持 wav/mp3":"Formats acceptés : wav/mp3","仅限本人访问":"Accès réservé au propriétaire","今天":"Aujourd'hui","位置":"Position","使用中":"Actif","侦测到物体移动":"Mouvement détecté","侦测到碰撞/震动":"Impact/vibration détecté","保存失败":"Échec de l'enregistrement","保存设置":"Enregistrer les réglages","修改密码":"Modifier le mot de passe","全选":"Tout sélectionner","全部":"Tout","全部日期":"Toutes les dates","再输一次新密码":"Ressaisir le nouveau mot de passe","删除":"Supprimer","刹车":"Frein","刹车占比":"% de freinage","前视":"Avant","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"La mise à jour récupère la dernière version depuis GitHub et plusieurs miroirs en parallèle, remplace les fichiers locaux et redémarre le service automatiquement (environ 5 s) ; configuration, enregistrements et connexion restent inchangés.","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"Ligne semi-transparente : heure/position/vitesse/rapport/pédale/frein, gêne à peine la vue","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"Sélection simple : téléchargement du fichier original (avec filigrane, composition locale) ; sélection multiple : fusion en une vidéo multi-vues. Téléchargement/zip exportés à la qualité choisie (première fois : attente de transcodage).","原因":"Motif","原画":"Originale","发送测试":"Envoyer un test","叠加行车信息水印":"Incruster les infos de conduite","右B柱":"Montant B droit","右前翼":"Aile avant droite","右翼子板":"Aile droite","合成视频":"Fusionner en vidéo","同步状态":"État de synchronisation","后视":"Arrière","启用推送":"Activer les notifications","哨兵告警":"Alertes Sentry","哨兵模式触发":"Mode Sentry déclenché","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"Au déclenchement Sentry, envoie heure/position, motif de déclenchement et image du déclenchement vers Feishu. Par défaut, messages privés via votre propre app (visibles par vous seul) ; sinon webhook de bot de groupe (visible par tout le groupe). L'envoi vidéo fonctionne uniquement en privé.","哨兵警觉":"Vigilance Sentry","回滚到上一版本":"Revenir à la version précédente","天":"jours","实时同步中":"Synchro en cours","密码":"Mot de passe","尝试次数过多，请 5 分钟后再试":"Trop de tentatives, réessayez dans 5 minutes","展开详细数据 ⌄":"Déplier les détails ⌄","左B柱":"Montant B gauche","左前翼":"Aile avant gauche","左翼子板":"Aile gauche","已保存":"Enregistré","已删除":"Supprimé","已加入队列, 归档同步时写入车机U盘":"En file d'attente, écrit sur l'USB voiture lors de la synchro d'archive","已同步":"Synchronisé","已是最新":"À jour","延迟推送":"Délai d'envoi","当前密码":"Mot de passe actuel","当前版本":"Version actuelle","恢复车机导出":"Restaurer l'accès voiture","手动保存":"Enregistrement manuel","打包zip":"Archive zip","按喇叭保存":"Enregistrement au klaxon","换个日期或点「全部」查看本分类所有事件":"Choisissez une autre date ou touchez « Tout » pour voir tous les événements de cette catégorie","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"Destinataire : votre open_id (commence par ou_) ou e-mail de connexion Feishu","推送内容：封面卡片（触发那帧图 + 信息，最快）":"Contenu : carte de couverture (image du déclenchement + infos, le plus rapide)","推送内容：触发摄像头视频（可回放）":"Contenu : vidéo de la caméra de déclenchement (lecture possible)","摄像头":"Caméra","收起详细数据 ⌃":"Réduire les détails ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"Après la modification, cet appareil se reconnecte automatiquement avec le nouveau mot de passe ; les sessions sur mobile/autres appareils sont immédiatement invalidées.","敏感信息已明文显示，注意别外发":"Infos sensibles en clair, attention au partage","敏感信息已隐藏（截图安全）":"Infos sensibles masquées (sûr pour captures)","新密码 (至少 6 位)":"Nouveau mot de passe (6 caractères minimum)","方向盘角度":"Angle du volant","日期":"Date","时间":"Heure","昨天":"Hier","暂无归档视频":"Aucune vidéo archivée","暂无皮肤, 使用默认外观":"Aucun skin, apparence par défaut","最新版本":"Dernière version","有新版本":"Nouvelle version disponible","未标注原因":"Motif non renseigné","未检查":"Non vérifié","条":"clips","查看链接前缀 (可选): http://你的域名:端口":"Préfixe du lien de visualisation (optionnel) : http://votre-domaine:port","检查中…":"Vérification…","检查更新":"Rechercher des mises à jour","正在上传…":"Envoi en cours…","正在下载并校验新版本…":"Téléchargement et vérification de la nouvelle version…","正在合成多画面视频":"Fusion de la vidéo multi-vues","活动ID":"ID d'événement","浅色":"Clair","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"Parcourez et gérez l'USB voiture (le miroir écrit par Tesla). La connexion interrompt brièvement la lecture par la voiture quelques secondes ; restauration automatique après 5 minutes d'inactivité.","深色":"Sombre","清空":"Vider","点击行车记录仪图标":"Icône dashcam touchée","片段":"Clips","用户名":"Nom d'utilisateur","用户名或密码不对":"Nom d'utilisateur ou mot de passe incorrect","画面":"Vues","界面语言，保存在本机浏览器":"Langue de l'interface, mémorisée dans ce navigateur","登录":"Se connecter","登录状态保留":"Connexion conservée","盒子归档存储":"Stockage archive Box","确定要退出登录吗？":"Voulez-vous vraiment vous déconnecter ?","私聊推送 — 只有我本人能看到":"Message privé — visible uniquement par moi","秒 (等片段写完再推)":"secondes (attendre la fin d'écriture des clips)","秒（从触发前 5 秒开始截）":"secondes (commence 5 s avant le déclenchement)","立即升级":"Mettre à jour maintenant","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"Webhook du bot de groupe (groupes uniquement) : https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"Bot de groupe — visible par tous dans le groupe","自动":"Auto","行车记录":"Dashcam","行车记录仪菜单保存":"Enregistrement via menu dashcam","视频时长":"Durée de la vidéo","视频清晰度：360p（约 1.8MB / 30 秒）":"Qualité vidéo : 360p (~1,8MB / 30 s)","视频清晰度：480p（约 3MB / 30 秒）":"Qualité vidéo : 480p (~3MB / 30 s)","视频清晰度：720p（约 5MB / 30 秒）":"Qualité vidéo : 720p (~5MB / 30 s)","触发原因":"Motif de déclenchement","设为锁车音":"Définir comme son de verrouillage","设备正在拼接各路画面, 请勿关闭页面":"Assemblage des vues en cours, ne fermez pas la page","设置":"Paramètres","该筛选下暂无事件":"Aucun événement pour ce filtre","跳转":"Aller","车机U盘未连接":"USB voiture non connecté","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"Après enregistrement par la voiture, la synchro d'archive importe les vidéos automatiquement (le miroir doit être inactif 10 min)","车机要求单个音频 <1MB, 请裁剪后重试":"La voiture exige un audio <1MB, raccourcissez et réessayez","车载U盘存储":"Stockage USB embarqué","车门拉动":"Tirage de portière","车门被拉动":"Portière manipulée","载入中…":"Chargement…","连接车机U盘":"Connecter l'USB voiture","退出登录":"Se déconnecter","选择日期…":"Choisir une date…","选择要导出的画面":"Choisir les vues à exporter","选择语言":"Choisir la langue","遭遇袭击":"Impact","遭遇袭击 (紧急报警)":"Impact (alarme d'urgence)","锁车音":"Son de verrouillage","锁车音必须是 WAV (mp3 只能当喇叭音效)":"Le son de verrouillage doit être WAV (mp3 réservé aux sons Boombox)","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"Le son de verrouillage exige WAV 44.1kHz 16-bit <1MB 1 à 5 s ; LockChime.wav va à la racine de l'USB voiture, les autres mp3/wav sont écrits dans le dossier Boombox/ comme sons Boombox. Les fichiers sont écrits sur l'USB voiture lors de la synchro d'archive.","门把手被拉动":"Poignée tirée","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ Charger un fichier ici (tout type, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ Charger un fichier de skin (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ Charger un audio (wav/mp3, <1MB)","🌐 语言":"🌐 Langue","🎨 页面皮肤":"🎨 Habillage","👁 显示":"👁 Afficher","📂 文件":"📂 Fichiers","🔄 更新":"🔄 Mise à jour","🔊 锁车语音":"🔊 Son de verrouillage","🔑 账号":"🔑 Compte","🔔 推送":"🔔 Notifications","🗄 归档区":"🗄 Zone d'archive","🙈 隐藏":"🙈 Masquer","🚗 特斯拉哨兵查看器":"🚗 Tesla Sentry Viewer","🚗 车机U盘":"🚗 USB voiture","归档":"Archives","待确认":"En attente","同步服务未运行":"Service de synchronisation inactif","路画面":"Vue par canal","最近一次":"Dernière exécution","未启用":"Non activé","已启用私聊推送, 等下一个哨兵事件":"Messages privés activés, en attente du prochain événement Sentry","已启用, 但接收人/应用凭据未配全":"Activé, mais destinataire/identifiants d'application incomplets","读取设置失败":"Échec du chargement des paramètres","私聊需要 App ID / Secret + 接收人":"Les messages privés nécessitent App ID / Secret + destinataire","请先填群机器人 webhook":"Renseignez d'abord le webhook du bot de groupe","保存中…":"Enregistrement…","发送失败":"Échec de l'envoi","正在发送测试卡片…":"Envoi de la carte de test…","当前未开启登录保护, 设置密码后即开启":"La protection de connexion est désactivée, définissez un mot de passe pour l'activer","新密码至少 6 位":"Nouveau mot de passe : 6 caractères minimum","两次输入的新密码不一致":"Les nouveaux mots de passe ne correspondent pas","提交中…":"Envoi…","空目录":"Dossier vide","正在连接 GitHub…":"Connexion à GitHub…","检查失败":"Échec de la vérification","连不上 GitHub":"GitHub inaccessible","(可稍后重试)":"(réessayez plus tard)","来源":"Source","升级失败":"Échec de la mise à niveau","原密码不对":"Mot de passe actuel incorrect","修改失败":"Échec de la modification","上传失败":"Échec du téléversement","密码已更新, 其它设备需要重新登录":"Mot de passe mis à jour, les autres appareils doivent se reconnecter","仅支持 css/jpg/png/webp":"Seuls css/jpg/png/webp sont pris en charge","皮肤已上传并应用":"Skin téléversé et appliqué","文件超过 100MB 上限":"Le fichier dépasse la limite de 100 Mo","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"Clé USB du véhicule connectée (accès véhicule temporairement libéré, rétablissement automatique après 5 minutes d'inactivité)","已恢复车机导出":"Export véhicule rétabli","车机U盘未连接, 请先点「连接车机U盘」":"Clé USB du véhicule non connectée, touchez d'abord 「Connecter la clé USB du véhicule」","归档里没有可用的片段":"Aucun clip utilisable dans les archives","请至少选择一路":"Sélectionnez au moins un canal","已有合成在进行":"Une fusion est déjà en cours","合成失败":"Échec de la fusion","已开始下载":"Téléchargement démarré","此浏览器不支持本机合成, 请使用打包下载":"Ce navigateur ne prend pas en charge la fusion locale, utilisez le téléchargement groupé","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"Fusion terminée","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}},"it":{"App ID — cli_ 开头":"App ID — inizia con cli_","App Secret (已保存则留空表示不修改)":"App Secret (lascia vuoto per non modificarlo)","‹ 返回":"‹ Indietro","⏳ 待写入车机U盘:":"⏳ Da scrivere sull'USB dell'auto:","▶ 轻触开始同步播放":"▶ Tocca per avviare la riproduzione sincronizzata","⚙ 个性化":"⚙ Personalizzazione","✅ 已写入:":"✅ Scritti:","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"Carica un file skin CSS o un'immagine di sfondo (jpg/png/webp). Per le immagini nei CSS usa /skin-media/nomefile.","下载":"Scarica","下载清晰度":"Qualità download","主题":"Tema","也推手动保存":"Anche i salvataggi manuali","仅支持 wav/mp3":"Solo wav/mp3","仅限本人访问":"Accesso riservato al proprietario","今天":"Oggi","位置":"Posizione","使用中":"In uso","侦测到物体移动":"Movimento rilevato","侦测到碰撞/震动":"Collisione/urto rilevato","保存失败":"Salvataggio non riuscito","保存设置":"Salva impostazioni","修改密码":"Cambia password","全选":"Seleziona tutto","全部":"Tutti","全部日期":"Tutte le date","再输一次新密码":"Ripeti la nuova password","删除":"Elimina","刹车":"Freno","刹车占比":"Percentuale frenata","前视":"Anteriore","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"L'aggiornamento scarica l'ultima versione in parallelo da GitHub e da più mirror, sovrascrive i file locali e riavvia il servizio (circa 5 s); configurazione, registrazioni e accesso restano invariati.","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"Una riga semitrasparente: ora/posizione/velocità/marcia/acceleratore/freno, non copre quasi nulla","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"Con una sola selezione scarichi il file originale (con watermark viene ricomposto in locale); con più selezioni crei un unico video multi-vista. Download e zip esportano alla qualità scelta (la prima volta serve la transcodifica).","原因":"Motivo","原画":"Originale","发送测试":"Invia test","叠加行车信息水印":"Aggiungi watermark con i dati di guida","右B柱":"B-pilastro dx","右前翼":"Parafango ant. dx","右翼子板":"Parafango dx","合成视频":"Unisci video","同步状态":"Stato sync","后视":"Posteriore","启用推送":"Attiva notifiche","哨兵告警":"Avvisi Sentinella","哨兵模式触发":"Attivazione Sentinella","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"Quando scatta la Sentinella invia a Feishu ora/posizione/causa e il frame del trigger. Per impostazione predefinita usa l'app privata (lo vedi solo tu); puoi passare al webhook di un bot di gruppo (lo vede tutto il gruppo). Il push dei video è solo in privato.","哨兵警觉":"Allerta sentinella","回滚到上一版本":"Torna alla versione precedente","天":"giorni","实时同步中":"Sync in tempo reale","密码":"Password","尝试次数过多，请 5 分钟后再试":"Troppi tentativi, riprova tra 5 minuti","展开详细数据 ⌄":"Mostra dati dettagliati ⌄","左B柱":"B-pilastro sx","左前翼":"Parafango ant. sx","左翼子板":"Parafango sx","已保存":"Salvato","已删除":"Eliminato","已加入队列, 归档同步时写入车机U盘":"Aggiunto in coda, verrà scritto sull'USB dell'auto durante la sincronizzazione archivio","已同步":"Sincronizzato","已是最新":"Già aggiornato","延迟推送":"Push ritardato","当前密码":"Password attuale","当前版本":"Versione attuale","恢复车机导出":"Ripristina accesso auto","手动保存":"Salvataggi manuali","打包zip":"Crea zip","按喇叭保存":"Salvataggio con clacson","换个日期或点「全部」查看本分类所有事件":"Cambia data o tocca «Tutti» per vedere tutti gli eventi della categoria","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"Destinatario: il tuo open_id (inizia con ou_) o l'email di accesso Feishu","推送内容：封面卡片（触发那帧图 + 信息，最快）":"Contenuto: scheda copertina (frame del trigger + info, il più veloce)","推送内容：触发摄像头视频（可回放）":"Contenuto: video della telecamera che ha attivato (riproducibile)","摄像头":"Telecamera","收起详细数据 ⌃":"Nascondi dati dettagliati ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"Dopo la modifica questo dispositivo accede automaticamente con la nuova password; le sessioni su telefono e altri dispositivi decadono subito.","敏感信息已明文显示，注意别外发":"Dati sensibili in chiaro, non condividerli","敏感信息已隐藏（截图安全）":"Dati sensibili nascosti (sicuro per gli screenshot)","新密码 (至少 6 位)":"Nuova password (almeno 6 caratteri)","方向盘角度":"Angolo sterzo","日期":"Data","时间":"Ora","昨天":"Ieri","暂无归档视频":"Nessun video archiviato","暂无皮肤, 使用默认外观":"Nessuna skin, aspetto predefinito","最新版本":"Ultima versione","有新版本":"Nuova versione disponibile","未标注原因":"Motivo non indicato","未检查":"Non verificato","条":"clip","查看链接前缀 (可选): http://你的域名:端口":"Prefisso link di visualizzazione (facoltativo): http://tuo-dominio:porta","检查中…":"Controllo…","检查更新":"Controlla aggiornamenti","正在上传…":"Caricamento in corso…","正在下载并校验新版本…":"Download e verifica della nuova versione…","正在合成多画面视频":"Creazione video multi-vista in corso","活动ID":"ID evento","浅色":"Chiaro","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"Sfoglia e gestisci l'USB dell'auto (la copia scritta da Tesla). Al collegamento l'auto perde l'accesso per qualche secondo; dopo 5 minuti di inattività viene ripristinato.","深色":"Scuro","清空":"Deseleziona tutto","点击行车记录仪图标":"Tocco sull'icona Dashcam","片段":"Clip","用户名":"Nome utente","用户名或密码不对":"Nome utente o password errati","画面":"Viste","界面语言，保存在本机浏览器":"Lingua dell'interfaccia, salvata in questo browser","登录":"Accedi","登录状态保留":"Mantieni l'accesso per","盒子归档存储":"Spazio archivio box","确定要退出登录吗？":"Vuoi davvero uscire?","私聊推送 — 只有我本人能看到":"Push in privato — visibile solo a te","秒 (等片段写完再推)":"secondi (attendi la scrittura delle clip)","秒（从触发前 5 秒开始截）":"secondi (a partire da 5 s prima del trigger)","立即升级":"Aggiorna ora","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"webhook bot di gruppo (solo per push di gruppo): https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"Bot di gruppo — visibile a tutto il gruppo","自动":"Auto","行车记录":"Dashcam","行车记录仪菜单保存":"Salvataggio dal menu Dashcam","视频时长":"Durata video","视频清晰度：360p（约 1.8MB / 30 秒）":"Qualità video: 360p (circa 1.8MB / 30 s)","视频清晰度：480p（约 3MB / 30 秒）":"Qualità video: 480p (circa 3MB / 30 s)","视频清晰度：720p（约 5MB / 30 秒）":"Qualità video: 720p (circa 5MB / 30 s)","触发原因":"Causa attivazione","设为锁车音":"Imposta come suono di chiusura","设备正在拼接各路画面, 请勿关闭页面":"Il dispositivo sta unendo le viste, non chiudere la pagina","设置":"Impostazioni","该筛选下暂无事件":"Nessun evento con questo filtro","跳转":"Vai","车机U盘未连接":"USB dell'auto non connesso","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"Dopo la registrazione dell'auto, la sincronizzazione archivio importa i video (il mirror deve restare inattivo 10 minuti)","车机要求单个音频 <1MB, 请裁剪后重试":"L'auto richiede file audio <1MB, taglia il file e riprova","车载U盘存储":"Spazio USB auto","车门拉动":"Portiera forzata","车门被拉动":"Portiera tirata","载入中…":"Caricamento…","连接车机U盘":"Collega USB auto","退出登录":"Esci","选择日期…":"Scegli data…","选择要导出的画面":"Scegli le viste da esportare","选择语言":"Scegli la lingua","遭遇袭击":"Aggressione","遭遇袭击 (紧急报警)":"Aggressione (allarme di emergenza)","锁车音":"Suono di chiusura","锁车音必须是 WAV (mp3 只能当喇叭音效)":"Il suono di chiusura deve essere WAV (mp3 solo come effetto clacson)","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"Il suono di chiusura richiede WAV 44.1kHz 16-bit <1MB 1~5 s; LockChime.wav viene scritto nella radice dell'USB dell'auto, gli altri mp3/wav come effetti Boombox nella cartella Boombox/. I file vengono scritti sull'USB dell'auto durante la sincronizzazione archivio.","门把手被拉动":"Maniglia tirata","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ Carica file nella cartella corrente (qualsiasi tipo, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ Carica file skin (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ Carica audio (wav/mp3, <1MB)","🌐 语言":"🌐 Lingua","🎨 页面皮肤":"🎨 Tema grafico","👁 显示":"👁 Mostra","📂 文件":"📂 File","🔄 更新":"🔄 Aggiornamenti","🔊 锁车语音":"🔊 Suono di chiusura","🔑 账号":"🔑 Account","🔔 推送":"🔔 Notifiche","🗄 归档区":"🗄 Archivio","🙈 隐藏":"🙈 Nascondi","🚗 特斯拉哨兵查看器":"🚗 Visualizzatore Sentinella Tesla","🚗 车机U盘":"🚗 USB auto","归档":"Archivio","待确认":"Da confermare","同步服务未运行":"Servizio di sincronizzazione non attivo","路画面":"Vista canale","最近一次":"Ultima volta","未启用":"Non attivo","已启用私聊推送, 等下一个哨兵事件":"Notifiche private attive, in attesa del prossimo evento Sentinella","已启用, 但接收人/应用凭据未配全":"Attivo, ma destinatari/credenziali app incompleti","读取设置失败":"Lettura impostazioni non riuscita","私聊需要 App ID / Secret + 接收人":"I messaggi privati richiedono App ID / Secret + destinatario","请先填群机器人 webhook":"Compila prima il webhook del bot di gruppo","保存中…":"Salvataggio…","发送失败":"Invio non riuscito","正在发送测试卡片…":"Invio della card di test…","当前未开启登录保护, 设置密码后即开启":"Protezione accesso disattivata: si attiva impostando una password","新密码至少 6 位":"La nuova password deve avere almeno 6 caratteri","两次输入的新密码不一致":"Le nuove password non coincidono","提交中…":"Invio in corso…","空目录":"Cartella vuota","正在连接 GitHub…":"Connessione a GitHub…","检查失败":"Controllo non riuscito","连不上 GitHub":"Impossibile raggiungere GitHub","(可稍后重试)":"(puoi riprovare più tardi)","来源":"Origine","升级失败":"Aggiornamento non riuscito","原密码不对":"Password attuale errata","修改失败":"Modifica non riuscita","上传失败":"Caricamento non riuscito","密码已更新, 其它设备需要重新登录":"Password aggiornata, gli altri dispositivi devono riaccedere","仅支持 css/jpg/png/webp":"Solo css/jpg/png/webp","皮肤已上传并应用":"Tema caricato e applicato","文件超过 100MB 上限":"File oltre il limite di 100MB","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"Chiavetta USB dell'auto collegata (lettura dall'auto sospesa, ripristino automatico dopo 5 minuti di inattività)","已恢复车机导出":"Esportazione dall'auto ripristinata","车机U盘未连接, 请先点「连接车机U盘」":"Chiavetta USB dell'auto non collegata, tocca prima «Collega chiavetta USB auto»","归档里没有可用的片段":"Nessun clip disponibile nell'archivio","请至少选择一路":"Seleziona almeno un canale","已有合成在进行":"Composizione già in corso","合成失败":"Composizione non riuscita","已开始下载":"Download avviato","此浏览器不支持本机合成, 请使用打包下载":"Questo browser non supporta la composizione locale, usa il download in pacchetto","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"Unione completata","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}},"ja":{"App ID — cli_ 开头":"App ID — cli_ で始まる","App Secret (已保存则留空表示不修改)":"App Secret（保存済みなら空欄で変更なし）","‹ 返回":"‹ 戻る","⏳ 待写入车机U盘:":"⏳ 車載USBへの書き込み待ち:","▶ 轻触开始同步播放":"▶ タップして同期再生を開始","⚙ 个性化":"⚙ カスタマイズ","✅ 已写入:":"✅ 書き込み済み:","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"CSSスキンまたは背景画像（jpg/png/webp）をアップロード。CSS内で画像を参照するときは /skin-media/ファイル名 を使います。","下载":"ダウンロード","下载清晰度":"ダウンロード画質","主题":"テーマ","也推手动保存":"手動保存も通知","仅支持 wav/mp3":"wav/mp3 のみ対応","仅限本人访问":"本人限定アクセス","今天":"今日","位置":"位置","使用中":"使用中","侦测到物体移动":"物体の動きを検知","侦测到碰撞/震动":"衝突・振動を検知","保存失败":"保存に失敗しました","保存设置":"設定を保存","修改密码":"パスワード変更","全选":"すべて選択","全部":"すべて","全部日期":"すべての日付","再输一次新密码":"新しいパスワードを再入力","删除":"削除","刹车":"ブレーキ","刹车占比":"ブレーキ割合","前视":"前方","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"更新時はGitHubと複数のミラーから最新版を並行して取得し、本体のファイルを上書きしてサービスを自動再起動します（約5秒）。設定・録画・ログイン情報は影響を受けません。","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"半透明の1行：時刻/位置/車速/ギア/アクセル/ブレーキ。映像をほぼ遮りません","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"1つ選択時は元ファイルをそのままダウンロード（ウォーターマーク付きは本機で合成）。複数選択時は1つのマルチ画面動画に合成します。ダウンロードとまとめは選択した画質で書き出します（初回は変換待ち）。","原因":"原因","原画":"オリジナル","发送测试":"テスト送信","叠加行车信息水印":"走行データのウォーターマークを重ねる","右B柱":"右Bピラー","右前翼":"右前フェンダー","右翼子板":"右フェンダー","合成视频":"動画を合成","同步状态":"同期状態","后视":"後方","启用推送":"通知を有効化","哨兵告警":"セントリー警告","哨兵模式触发":"セントリーモード作動","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"セントリー作動時に時刻・位置・原因・トリガー映像をFeishuへ送信します。既定は自建アプリの個人チャット（本人のみ閲覧可）で、グループボットのwebhook（グループ全員が閲覧可）にも切り替えられます。動画通知は個人チャットのみ対応です。","哨兵警觉":"セントリー警戒","回滚到上一版本":"前のバージョンに戻す","天":"日","实时同步中":"リアルタイム同期中","密码":"パスワード","尝试次数过多，请 5 分钟后再试":"試行回数が多すぎます。5分後にもう一度お試しください","展开详细数据 ⌄":"詳細データを開く ⌄","左B柱":"左Bピラー","左前翼":"左前フェンダー","左翼子板":"左フェンダー","已保存":"保存しました","已删除":"削除しました","已加入队列, 归档同步时写入车机U盘":"キューに追加しました。保存同期時に車載USBへ書き込みます","已同步":"同期済み","已是最新":"最新です","延迟推送":"通知の遅延","当前密码":"現在のパスワード","当前版本":"現在のバージョン","恢复车机导出":"車載機のエクスポートを再開","手动保存":"手動保存","打包zip":"zipにまとめる","按喇叭保存":"ホーンで保存","换个日期或点「全部」查看本分类所有事件":"日付を変えるか「すべて」をタップすると、この分類の全イベントを表示します","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"受信者：あなたの open_id（ou_ で始まる）またはFeishuのログインメール","推送内容：封面卡片（触发那帧图 + 信息，最快）":"通知内容：カバーカード（トリガー時のフレーム＋情報、最速）","推送内容：触发摄像头视频（可回放）":"通知内容：トリガーカメラの動画（再生可）","摄像头":"カメラ","收起详细数据 ⌃":"詳細データを閉じる ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"変更後は本機が新しいパスワードで自動再ログインし、スマホや他の端末のログイン状態は即座に無効になります。","敏感信息已明文显示，注意别外发":"機密情報を表示中。外部に送らないでください","敏感信息已隐藏（截图安全）":"機密情報は非表示です（スクショ安全）","新密码 (至少 6 位)":"新しいパスワード（6文字以上）","方向盘角度":"ステアリング角度","日期":"日付","时间":"時刻","昨天":"昨日","暂无归档视频":"保存された動画はありません","暂无皮肤, 使用默认外观":"スキンなし、既定の外観を使用","最新版本":"最新バージョン","有新版本":"新しいバージョンあり","未标注原因":"原因の記録なし","未检查":"未確認","条":"件","查看链接前缀 (可选): http://你的域名:端口":"閲覧リンクの接頭辞（任意）: http://あなたのドメイン:ポート","检查中…":"確認中…","检查更新":"更新を確認","正在上传…":"アップロード中…","正在下载并校验新版本…":"新バージョンをダウンロードして検証中…","正在合成多画面视频":"マルチ画面動画を合成中","活动ID":"イベントID","浅色":"ライト","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"車載USB（Teslaが書き込むミラー）を閲覧・管理します。接続すると車載機の読み取りが数秒中断され、5分間操作がないと自動で復帰します。","深色":"ダーク","清空":"クリア","点击行车记录仪图标":"ドラレコアイコンをタップ","片段":"クリップ","用户名":"ユーザー名","用户名或密码不对":"ユーザー名またはパスワードが違います","画面":"映像","界面语言，保存在本机浏览器":"表示言語はこのブラウザに保存されます","登录":"ログイン","登录状态保留":"ログイン状態の保持","盒子归档存储":"ボックス保存領域","确定要退出登录吗？":"ログアウトしますか？","私聊推送 — 只有我本人能看到":"個人チャット通知 — 本人だけが閲覧可","秒 (等片段写完再推)":"秒（クリップ完成後に通知）","秒（从触发前 5 秒开始截）":"秒（トリガー5秒前から記録）","立即升级":"今すぐ更新","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"グループボットの webhook（グループ通知のみ必要）: https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"グループボット — グループ全員が閲覧可","自动":"自動","行车记录":"ドライブレコーダー","行车记录仪菜单保存":"ドラレコメニューから保存","视频时长":"動画の長さ","视频清晰度：360p（约 1.8MB / 30 秒）":"動画画質：360p（約1.8MB / 30秒）","视频清晰度：480p（约 3MB / 30 秒）":"動画画質：480p（約3MB / 30秒）","视频清晰度：720p（约 5MB / 30 秒）":"動画画質：720p（約5MB / 30秒）","触发原因":"トリガー原因","设为锁车音":"ロック音に設定","设备正在拼接各路画面, 请勿关闭页面":"各カメラの映像を結合しています。ページを閉じないでください","设置":"設定","该筛选下暂无事件":"この条件のイベントはありません","跳转":"移動","车机U盘未连接":"車載USB未接続","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"車載機で録画されると、保存同期が自動で動画を取り込みます（ミラーは10分の待機が必要）","车机要求单个音频 <1MB, 请裁剪后重试":"車載機の制限で1ファイル<1MBです。トリミングして再試行してください","车载U盘存储":"車載USBストレージ","车门拉动":"ドアを引かれた","车门被拉动":"ドアが引かれました","载入中…":"読み込み中…","连接车机U盘":"車載USBに接続","退出登录":"ログアウト","选择日期…":"日付を選択…","选择要导出的画面":"書き出す映像を選択","选择语言":"言語を選択","遭遇袭击":"襲撃を検知","遭遇袭击 (紧急报警)":"襲撃を検知（緊急通報）","锁车音":"ロック音","锁车音必须是 WAV (mp3 只能当喇叭音效)":"ロック音はWAVのみ（mp3はホーン音としてのみ使用可）","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"ロック音はWAV 44.1kHz 16-bit <1MB 1〜5秒。LockChime.wav は車載USBのルートに、その他の mp3/wav は Boombox 音效として Boombox/ ディレクトリに書き込みます。ファイルは保存同期時に車載USBへ書き込まれます。","门把手被拉动":"ドアノブが引かれました","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ 現在のフォルダにファイルをアップロード (任意の種類, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ スキンファイルをアップロード (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ 音声をアップロード (wav/mp3, <1MB)","🌐 语言":"🌐 言語","🎨 页面皮肤":"🎨 スキン","👁 显示":"👁 表示","📂 文件":"📂 ファイル","🔄 更新":"🔄 アップデート","🔊 锁车语音":"🔊 ロック音","🔑 账号":"🔑 アカウント","🔔 推送":"🔔 通知","🗄 归档区":"🗄 保存領域","🙈 隐藏":"🙈 隠す","🚗 特斯拉哨兵查看器":"🚗 テスラ・セントリービューア","🚗 车机U盘":"🚗 車載USB","归档":"保存領域","待确认":"確認待ち","同步服务未运行":"同期サービスが停止中","路画面":"画面","最近一次":"最新","未启用":"無効","已启用私聊推送, 等下一个哨兵事件":"個人チャット通知を有効にしました。次のセントリーイベントを待機中","已启用, 但接收人/应用凭据未配全":"有効ですが、受信者またはアプリ資格情報が未設定です","读取设置失败":"設定の読み込みに失敗しました","私聊需要 App ID / Secret + 接收人":"個人チャットには App ID / Secret と受信者が必要です","请先填群机器人 webhook":"先にグループボットの webhook を入力してください","保存中…":"保存中…","发送失败":"送信に失敗しました","正在发送测试卡片…":"テストカードを送信中…","当前未开启登录保护, 设置密码后即开启":"現在ログイン保護は無効です。パスワードを設定すると有効になります","新密码至少 6 位":"新しいパスワードは6文字以上","两次输入的新密码不一致":"新しいパスワードが一致しません","提交中…":"送信中…","空目录":"空のフォルダ","正在连接 GitHub…":"GitHub に接続中…","检查失败":"確認に失敗しました","连不上 GitHub":"GitHub に接続できません","(可稍后重试)":"(後で再試行できます)","来源":"ソース","升级失败":"アップデートに失敗しました","原密码不对":"現在のパスワードが違います","修改失败":"変更に失敗しました","上传失败":"アップロードに失敗しました","密码已更新, 其它设备需要重新登录":"パスワードを更新しました。他の端末では再ログインが必要です","仅支持 css/jpg/png/webp":"css/jpg/png/webp のみ対応","皮肤已上传并应用":"スキンをアップロードして適用しました","文件超过 100MB 上限":"ファイルが上限の100MBを超えています","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"車載USBメモリを接続しました (車載機の読み取りを一時停止中。5分間操作がないと自動復帰)","已恢复车机导出":"車載機のエクスポートを復帰しました","车机U盘未连接, 请先点「连接车机U盘」":"車載USBメモリが未接続です。先に「車載USBメモリに接続」を押してください","归档里没有可用的片段":"保存領域に使用できるクリップがありません","请至少选择一路":"少なくとも1画面を選択してください","已有合成在进行":"合成を実行中です","合成失败":"合成に失敗しました","已开始下载":"ダウンロードを開始しました","此浏览器不支持本机合成, 请使用打包下载":"このブラウザは本機合成に非対応です。まとめてダウンロードしてください","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"合成完了","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}},"ko":{"App ID — cli_ 开头":"App ID — cli_ 로 시작","App Secret (已保存则留空表示不修改)":"App Secret (저장된 경우 비워두면 변경 안 함)","‹ 返回":"‹ 뒤로","⏳ 待写入车机U盘:":"⏳ 차량 USB 기록 대기:","▶ 轻触开始同步播放":"▶ 눌러서 동기화 재생 시작","⚙ 个性化":"⚙ 개인 설정","✅ 已写入:":"✅ 기록 완료:","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"CSS 스킨이나 배경 이미지(jpg/png/webp)를 업로드하세요. CSS에서 이미지를 참조할 때는 /skin-media/파일명을 사용하세요.","下载":"다운로드","下载清晰度":"다운로드 화질","主题":"테마","也推手动保存":"수동 저장도 알림","仅支持 wav/mp3":"wav/mp3만 지원","仅限本人访问":"본인만 접근 가능","今天":"오늘","位置":"위치","使用中":"사용 중","侦测到物体移动":"물체 움직임 감지","侦测到碰撞/震动":"충돌/진동 감지","保存失败":"저장 실패","保存设置":"설정 저장","修改密码":"비밀번호 변경","全选":"전체 선택","全部":"전체","全部日期":"모든 날짜","再输一次新密码":"새 비밀번호 다시 입력","删除":"삭제","刹车":"브레이크","刹车占比":"브레이크 비율","前视":"전방","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"업데이트 시 GitHub와 여러 미러에서 최신 프로그램을 동시에 받아 본체 파일을 덮어쓰고 서비스를 자동 재시작합니다 (약 5초). 설정, 녹화, 로그인 정보는 영향받지 않습니다.","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"반투명 한 줄: 시간/위치/속도/기어/액셀/브레이크, 화면을 거의 가리지 않음","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"하나 선택 시 원본 파일을 바로 다운로드(워터마크 시 본체에서 합성), 여러 개 선택 시 하나의 다중 화면 영상으로 합성합니다. 다운로드와 묶기는 선택한 화질로 내보냅니다(처음엔 변환 대기 필요).","原因":"원인","原画":"원본","发送测试":"테스트 전송","叠加行车信息水印":"주행 정보 워터마크 표시","右B柱":"우측 B필러","右前翼":"우측 전면 펜더","右翼子板":"우측 펜더","合成视频":"영상 합성","同步状态":"동기화 상태","后视":"후방","启用推送":"알림 사용","哨兵告警":"센트리 경보","哨兵模式触发":"센트리 모드 작동","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"센트리 작동 시 시간/위치/트리거 원인과 트리거 화면을 Feishu로 보냅니다. 기본은 자체 앱 개인 채팅(본인만 확인 가능)이며, 그룹 봇 webhook(그룹원 모두 확인 가능)으로 전환할 수 있습니다. 영상 알림은 개인 채팅만 지원합니다.","哨兵警觉":"센트리 주의","回滚到上一版本":"이전 버전으로 롤백","天":"일","实时同步中":"실시간 동기화 중","密码":"비밀번호","尝试次数过多，请 5 分钟后再试":"시도 횟수가 너무 많습니다. 5분 후 다시 시도하세요","展开详细数据 ⌄":"상세 데이터 펼치기 ⌄","左B柱":"좌측 B필러","左前翼":"좌측 전면 펜더","左翼子板":"좌측 펜더","已保存":"저장됨","已删除":"삭제됨","已加入队列, 归档同步时写入车机U盘":"대기열에 추가됨, 보관 동기화 시 차량 USB에 기록","已同步":"동기화됨","已是最新":"최신 버전","延迟推送":"알림 지연","当前密码":"현재 비밀번호","当前版本":"현재 버전","恢复车机导出":"차량 내보내기 복구","手动保存":"수동 저장","打包zip":"zip으로 묶기","按喇叭保存":"경적을 눌러 저장","换个日期或点「全部」查看本分类所有事件":"날짜를 바꾸거나 「전체」를 눌러 이 분류의 모든 이벤트를 보세요","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"수신자: 내 open_id (ou_ 로 시작) 또는 Feishu 로그인 이메일","推送内容：封面卡片（触发那帧图 + 信息，最快）":"알림 내용: 커버 카드 (트리거 순간 이미지 + 정보, 가장 빠름)","推送内容：触发摄像头视频（可回放）":"알림 내용: 트리거 카메라 영상 (재생 가능)","摄像头":"카메라","收起详细数据 ⌃":"상세 데이터 접기 ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"변경 후 본체는 새 비밀번호로 자동 재로그인되며, 휴대폰과 다른 기기의 로그인 상태는 즉시 만료됩니다.","敏感信息已明文显示，注意别外发":"민감 정보가 표시됩니다. 외부 유출 주의","敏感信息已隐藏（截图安全）":"민감 정보가 가려졌습니다 (캡처 안전)","新密码 (至少 6 位)":"새 비밀번호 (6자 이상)","方向盘角度":"핸들 각도","日期":"날짜","时间":"시간","昨天":"어제","暂无归档视频":"보관된 영상이 없습니다","暂无皮肤, 使用默认外观":"스킨 없음, 기본 화면 사용","最新版本":"최신 버전","有新版本":"새 버전 있음","未标注原因":"원인 미표시","未检查":"확인 안 함","条":"개","查看链接前缀 (可选): http://你的域名:端口":"조회 링크 접두사 (선택): http://내-도메인:포트","检查中…":"확인 중…","检查更新":"업데이트 확인","正在上传…":"업로드 중…","正在下载并校验新版本…":"새 버전 다운로드 및 검증 중…","正在合成多画面视频":"다중 화면 영상 합성 중","活动ID":"이벤트 ID","浅色":"라이트","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"차량 USB(Tesla가 기록하는 미러)를 보고 관리합니다. 연결하면 차량 읽기가 몇 초간 끊기고, 5분간 조작이 없으면 자동 복구됩니다.","深色":"다크","清空":"초기화","点击行车记录仪图标":"블랙박스 아이콘 터치","片段":"클립","用户名":"사용자 이름","用户名或密码不对":"사용자 이름 또는 비밀번호가 틀렸습니다","画面":"화면","界面语言，保存在本机浏览器":"인터페이스 언어는 이 브라우저에 저장됩니다","登录":"로그인","登录状态保留":"로그인 상태 유지","盒子归档存储":"박스 보관 저장공간","确定要退出登录吗？":"로그아웃할까요?","私聊推送 — 只有我本人能看到":"개인 채팅 알림 — 본인만 볼 수 있음","秒 (等片段写完再推)":"초 (클립 저장 후 알림)","秒（从触发前 5 秒开始截）":"초 (트리거 5초 전부터 녹화)","立即升级":"지금 업데이트","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"그룹 봇 webhook (그룹 알림에만 필요): https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"그룹 봇 — 그룹원 모두 볼 수 있음","自动":"자동","行车记录":"주행 기록","行车记录仪菜单保存":"블랙박스 메뉴에서 저장","视频时长":"영상 길이","视频清晰度：360p（约 1.8MB / 30 秒）":"영상 화질: 360p (약 1.8MB / 30초)","视频清晰度：480p（约 3MB / 30 秒）":"영상 화질: 480p (약 3MB / 30초)","视频清晰度：720p（约 5MB / 30 秒）":"영상 화질: 720p (약 5MB / 30초)","触发原因":"트리거 원인","设为锁车音":"잠금음으로 설정","设备正在拼接各路画面, 请勿关闭页面":"각 화면을 이어 붙이는 중입니다. 페이지를 닫지 마세요","设置":"설정","该筛选下暂无事件":"이 필터에 이벤트가 없습니다","跳转":"이동","车机U盘未连接":"차량 USB 연결 안 됨","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"차량에서 녹화하면 보관 동기화 작업이 자동으로 영상을 가져옵니다 (미러는 10분간 유휴 필요)","车机要求单个音频 <1MB, 请裁剪后重试":"차량 요구사항으로 파일당 <1MB입니다. 잘라서 다시 시도하세요","车载U盘存储":"차량 USB 저장공간","车门拉动":"문 당김","车门被拉动":"문이 당겨졌습니다","载入中…":"불러오는 중…","连接车机U盘":"차량 USB 연결","退出登录":"로그아웃","选择日期…":"날짜 선택…","选择要导出的画面":"내보낼 화면 선택","选择语言":"언어 선택","遭遇袭击":"차량 습격 감지","遭遇袭击 (紧急报警)":"차량 습격 감지 (긴급 경보)","锁车音":"잠금음","锁车音必须是 WAV (mp3 只能当喇叭音效)":"잠금음은 WAV만 가능 (mp3는 경적음으로만 사용)","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"잠금음은 WAV 44.1kHz 16-bit <1MB 1~5초가 필요합니다. LockChime.wav는 차량 USB 루트에, 그 외 mp3/wav는 Boombox 음향으로 Boombox/ 폴더에 기록됩니다. 파일은 보관 동기화 시 차량 USB에 기록됩니다.","门把手被拉动":"도어 손잡이가 당겨졌습니다","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ 현재 폴더로 파일 업로드 (모든 형식, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ 스킨 파일 업로드 (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ 오디오 업로드 (wav/mp3, <1MB)","🌐 语言":"🌐 언어","🎨 页面皮肤":"🎨 스킨","👁 显示":"👁 표시","📂 文件":"📂 파일","🔄 更新":"🔄 업데이트","🔊 锁车语音":"🔊 잠금 사운드","🔑 账号":"🔑 계정","🔔 推送":"🔔 알림","🗄 归档区":"🗄 보관함","🙈 隐藏":"🙈 숨기기","🚗 特斯拉哨兵查看器":"🚗 테슬라 센트리 뷰어","🚗 车机U盘":"🚗 차량 USB","归档":"보관함","待确认":"확인 대기","同步服务未运行":"동기화 서비스가 실행되지 않음","路画面":"화면","最近一次":"최근","未启用":"사용 안 함","已启用私聊推送, 等下一个哨兵事件":"개인 채팅 알림이 켜졌습니다. 다음 센트리 이벤트를 기다리는 중","已启用, 但接收人/应用凭据未配全":"사용 중이지만 수신자/앱 자격 정보가 모두 설정되지 않았습니다","读取设置失败":"설정을 읽지 못했습니다","私聊需要 App ID / Secret + 接收人":"개인 채팅에는 App ID / Secret 과 수신자가 필요합니다","请先填群机器人 webhook":"먼저 그룹 봇 webhook을 입력하세요","保存中…":"저장 중…","发送失败":"전송 실패","正在发送测试卡片…":"테스트 카드 전송 중…","当前未开启登录保护, 设置密码后即开启":"현재 로그인 보호가 꺼져 있습니다. 비밀번호를 설정하면 켜집니다","新密码至少 6 位":"새 비밀번호는 6자 이상","两次输入的新密码不一致":"새 비밀번호가 일치하지 않습니다","提交中…":"제출 중…","空目录":"빈 폴더","正在连接 GitHub…":"GitHub에 연결 중…","检查失败":"확인 실패","连不上 GitHub":"GitHub에 연결할 수 없음","(可稍后重试)":"(나중에 다시 시도할 수 있습니다)","来源":"출처","升级失败":"업데이트 실패","原密码不对":"현재 비밀번호가 틀렸습니다","修改失败":"변경 실패","上传失败":"업로드 실패","密码已更新, 其它设备需要重新登录":"비밀번호가 변경되었습니다. 다른 기기에서는 다시 로그인해야 합니다","仅支持 css/jpg/png/webp":"css/jpg/png/webp만 지원","皮肤已上传并应用":"스킨을 업로드하고 적용했습니다","文件超过 100MB 上限":"파일이 100MB 한도를 초과했습니다","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"차량 USB 메모리가 연결되었습니다 (차량 읽기를 일시 중단, 5분간 조작이 없으면 자동 복구)","已恢复车机导出":"차량 내보내기를 복구했습니다","车机U盘未连接, 请先点「连接车机U盘」":"차량 USB 메모리가 연결되지 않았습니다. 먼저 「차량 USB 메모리 연결」을 누르세요","归档里没有可用的片段":"보관함에 사용할 수 있는 클립이 없습니다","请至少选择一路":"화면을 하나 이상 선택하세요","已有合成在进行":"이미 합성 중입니다","合成失败":"합성 실패","已开始下载":"다운로드를 시작했습니다","此浏览器不支持本机合成, 请使用打包下载":"이 브라우저는 본체 합성을 지원하지 않습니다. 묶음 다운로드를 사용하세요","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"합성 완료","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}},"nl":{"App ID — cli_ 开头":"App ID — begint met cli_","App Secret (已保存则留空表示不修改)":"App Secret (leeg laten om ongewijzigd te houden)","‹ 返回":"‹ Terug","⏳ 待写入车机U盘:":"⏳ Nog naar de USB van de auto te schrijven:","▶ 轻触开始同步播放":"▶ Tik om synchroon af te spelen","⚙ 个性化":"⚙ Personalisatie","✅ 已写入:":"✅ Geschreven:","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"Upload een CSS-skinbestand of achtergrondafbeelding (jpg/png/webp). Verwijs naar afbeeldingen in CSS via /skin-media/bestandsnaam.","下载":"Downloaden","下载清晰度":"Downloadkwaliteit","主题":"Thema","也推手动保存":"Ook handmatige opnames","仅支持 wav/mp3":"Alleen wav/mp3","仅限本人访问":"Alleen toegankelijk voor jou","今天":"Vandaag","位置":"Locatie","使用中":"In gebruik","侦测到物体移动":"Beweging gedetecteerd","侦测到碰撞/震动":"Botsing/schok gedetecteerd","保存失败":"Opslaan mislukt","保存设置":"Instellingen opslaan","修改密码":"Wachtwoord wijzigen","全选":"Alles selecteren","全部":"Alles","全部日期":"Alle datums","再输一次新密码":"Herhaal het nieuwe wachtwoord","删除":"Verwijderen","刹车":"Rem","刹车占比":"Rempercentage","前视":"Voor","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"De update haalt de nieuwste versie parallel op van GitHub en meerdere mirrors, overschrijft de lokale bestanden en herstart de service (circa 5 s); instellingen, opnames en inloggegevens blijven behouden.","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"Eén semi-transparante regel: tijd/locatie/snelheid/versnelling/gas/rem, nauwelijks zichtbaar over het beeld","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"Bij één selectie download je het originele bestand (met watermerk wordt het lokaal samengesteld); bij meerdere selecties wordt één multi-beeldvideo gemaakt. Downloaden en zippen gebeurt in de gekozen kwaliteit (de eerste keer moet er worden getranscodeerd).","原因":"Reden","原画":"Origineel","发送测试":"Test verzenden","叠加行车信息水印":"Rijgegevens als watermerk toevoegen","右B柱":"B-stijl rechts","右前翼":"Voorspatbord rechts","右翼子板":"Spatbord rechts","合成视频":"Video samenvoegen","同步状态":"Synchronisatiestatus","后视":"Achter","启用推送":"Meldingen inschakelen","哨兵告警":"Sentry-meldingen","哨兵模式触发":"Sentry geactiveerd","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"Bij een Sentry-trigger worden tijd/locatie/oorzaak en het triggerbeeld naar Feishu gestuurd. Standaard via de eigen app in privé (alleen jij ziet het); je kunt ook de webhook van een groepsbot gebruiken (iedereen in de groep ziet het). Video-push kan alleen privé.","哨兵警觉":"Sentry-alert","回滚到上一版本":"Terug naar vorige versie","天":"dagen","实时同步中":"Live synchroniseren","密码":"Wachtwoord","尝试次数过多，请 5 分钟后再试":"Te veel pogingen, probeer het over 5 minuten","展开详细数据 ⌄":"Details tonen ⌄","左B柱":"B-stijl links","左前翼":"Voorspatbord links","左翼子板":"Spatbord links","已保存":"Opgeslagen","已删除":"Verwijderd","已加入队列, 归档同步时写入车机U盘":"In de wachtrij, wordt bij de archiefsynchronisatie naar de USB van de auto geschreven","已同步":"Gesynchroniseerd","已是最新":"Al up-to-date","延迟推送":"Vertraagde melding","当前密码":"Huidig wachtwoord","当前版本":"Huidige versie","恢复车机导出":"Toegang auto herstellen","手动保存":"Handmatige opnames","打包zip":"zip maken","按喇叭保存":"Opgeslagen met claxon","换个日期或点「全部」查看本分类所有事件":"Kies een andere datum of tik op 'Alles' om alle gebeurtenissen van deze categorie te zien","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"Ontvanger: je open_id (begint met ou_) of je Feishu-inlogmail","推送内容：封面卡片（触发那帧图 + 信息，最快）":"Inhoud: omslagkaart (beeld van de trigger + info, het snelst)","推送内容：触发摄像头视频（可回放）":"Inhoud: video van de camera die triggerde (afspeelbaar)","摄像头":"Camera","收起详细数据 ⌃":"Details verbergen ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"Na de wijziging logt dit apparaat automatisch opnieuw in met het nieuwe wachtwoord; sessies op je telefoon en andere apparaten vervallen direct.","敏感信息已明文显示，注意别外发":"Gevoelige gegevens zichtbaar, deel ze niet","敏感信息已隐藏（截图安全）":"Gevoelige gegevens verborgen (veilig voor screenshots)","新密码 (至少 6 位)":"Nieuw wachtwoord (minimaal 6 tekens)","方向盘角度":"Stuurhoek","日期":"Datum","时间":"Tijd","昨天":"Gisteren","暂无归档视频":"Geen gearchiveerde video's","暂无皮肤, 使用默认外观":"Geen skins, standaarduiterlijk","最新版本":"Nieuwste versie","有新版本":"Nieuwe versie beschikbaar","未标注原因":"Geen reden opgegeven","未检查":"Niet gecontroleerd","条":"clips","查看链接前缀 (可选): http://你的域名:端口":"Voorvoegsel weergavelink (optioneel): http://jouwdomein:poort","检查中…":"Controleren…","检查更新":"Controleren op updates","正在上传…":"Uploaden…","正在下载并校验新版本…":"Nieuwe versie downloaden en verifiëren…","正在合成多画面视频":"Multi-beeldvideo wordt gemaakt","活动ID":"Gebeurtenis-ID","浅色":"Licht","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"Bekijk en beheer de USB van de auto (de kopie die Tesla schrijft). Bij verbinden verliest de auto enkele seconden de toegang; na 5 minuten zonder activiteit wordt dit hersteld.","深色":"Donker","清空":"Selectie opheffen","点击行车记录仪图标":"Dashcam-pictogram aangetikt","片段":"Clips","用户名":"Gebruikersnaam","用户名或密码不对":"Gebruikersnaam of wachtwoord onjuist","画面":"Beelden","界面语言，保存在本机浏览器":"Taal van de interface, opgeslagen in deze browser","登录":"Inloggen","登录状态保留":"Ingelogd blijven","盒子归档存储":"Archiefopslag box","确定要退出登录吗？":"Weet je zeker dat je wilt uitloggen?","私聊推送 — 只有我本人能看到":"Privébericht — alleen jij kunt het zien","秒 (等片段写完再推)":"seconden (wacht tot de clips zijn geschreven)","秒（从触发前 5 秒开始截）":"seconden (vanaf 5 s voor de trigger)","立即升级":"Nu bijwerken","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"webhook van groepsbot (alleen nodig voor groepspush): https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"Groepsbot — iedereen in de groep kan het zien","自动":"Automatisch","行车记录":"Dashcam","行车记录仪菜单保存":"Opgeslagen via Dashcam-menu","视频时长":"Duur van de video","视频清晰度：360p（约 1.8MB / 30 秒）":"Videokwaliteit: 360p (circa 1.8MB / 30 s)","视频清晰度：480p（约 3MB / 30 秒）":"Videokwaliteit: 480p (circa 3MB / 30 s)","视频清晰度：720p（约 5MB / 30 秒）":"Videokwaliteit: 720p (circa 5MB / 30 s)","触发原因":"Oorzaak activatie","设为锁车音":"Instellen als vergrendelgeluid","设备正在拼接各路画面, 请勿关闭页面":"Het apparaat voegt de beelden samen, sluit de pagina niet","设置":"Instellingen","该筛选下暂无事件":"Geen gebeurtenissen met dit filter","跳转":"Gaan","车机U盘未连接":"USB van de auto niet verbonden","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"Na opname in de auto neemt de archiefsynchronisatie de video's automatisch over (de mirror moet 10 minuten inactief zijn)","车机要求单个音频 <1MB, 请裁剪后重试":"De auto vereist audio <1MB, knip het bestand en probeer opnieuw","车载U盘存储":"USB-opslag auto","车门拉动":"Portier geforceerd","车门被拉动":"Portier opengetrokken","载入中…":"Laden…","连接车机U盘":"USB van de auto verbinden","退出登录":"Uitloggen","选择日期…":"Kies datum…","选择要导出的画面":"Kies de beelden om te exporteren","选择语言":"Taal kiezen","遭遇袭击":"Aanval","遭遇袭击 (紧急报警)":"Aanval (noodalarm)","锁车音":"Vergrendelgeluid","锁车音必须是 WAV (mp3 只能当喇叭音效)":"Vergrendelgeluid moet WAV zijn (mp3 alleen als claxongeluid)","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"Vergrendelgeluid vereist WAV 44.1kHz 16-bit <1MB 1~5 s; LockChime.wav wordt in de hoofdmap van de USB van de auto gezet, overige mp3/wav als Boombox-geluiden in de map Boombox/. Bestanden worden bij de archiefsynchronisatie naar de USB van de auto geschreven.","门把手被拉动":"Deurgreep opengetrokken","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ Bestand uploaden naar huidige map (elk type, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ Skinbestand uploaden (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ Audio uploaden (wav/mp3, <1MB)","🌐 语言":"🌐 Taal","🎨 页面皮肤":"🎨 Uiterlijk","👁 显示":"👁 Tonen","📂 文件":"📂 Bestanden","🔄 更新":"🔄 Updates","🔊 锁车语音":"🔊 Vergrendelgeluid","🔑 账号":"🔑 Account","🔔 推送":"🔔 Meldingen","🗄 归档区":"🗄 Archief","🙈 隐藏":"🙈 Verbergen","🚗 特斯拉哨兵查看器":"🚗 Tesla Sentry-viewer","🚗 车机U盘":"🚗 USB van de auto","归档":"Archief","待确认":"Te bevestigen","同步服务未运行":"Synchronisatieservice niet actief","路画面":"Kanaalbeeld","最近一次":"Laatste keer","未启用":"Niet ingeschakeld","已启用私聊推送, 等下一个哨兵事件":"Privéberichten ingeschakeld, wacht op de volgende Sentinelle-gebeurtenis","已启用, 但接收人/应用凭据未配全":"Ingeschakeld, maar ontvangers/app-referenties ontbreken","读取设置失败":"Instellingen lezen mislukt","私聊需要 App ID / Secret + 接收人":"Privéberichten vereisen App ID / Secret + ontvanger","请先填群机器人 webhook":"Vul eerst de webhook van de groepsbot in","保存中…":"Opslaan…","发送失败":"Verzenden mislukt","正在发送测试卡片…":"Testkaart wordt verzonden…","当前未开启登录保护, 设置密码后即开启":"Toegangsbeveiliging uit: wordt ingeschakeld zodra je een wachtwoord instelt","新密码至少 6 位":"Nieuw wachtwoord moet minstens 6 tekens hebben","两次输入的新密码不一致":"De nieuwe wachtwoorden komen niet overeen","提交中…":"Bezig met verzenden…","空目录":"Lege map","正在连接 GitHub…":"Verbinden met GitHub…","检查失败":"Controle mislukt","连不上 GitHub":"Kan geen verbinding maken met GitHub","(可稍后重试)":"(probeer het later opnieuw)","来源":"Bron","升级失败":"Upgraden mislukt","原密码不对":"Huidig wachtwoord onjuist","修改失败":"Wijzigen mislukt","上传失败":"Uploaden mislukt","密码已更新, 其它设备需要重新登录":"Wachtwoord bijgewerkt, andere apparaten moeten opnieuw inloggen","仅支持 css/jpg/png/webp":"Alleen css/jpg/png/webp","皮肤已上传并应用":"Thema geüpload en toegepast","文件超过 100MB 上限":"Bestand groter dan de limiet van 100MB","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"USB-stick van de auto verbonden (lezen door de auto tijdelijk gestopt, automatisch hersteld na 5 minuten inactiviteit)","已恢复车机导出":"Export vanaf de auto hersteld","车机U盘未连接, 请先点「连接车机U盘」":"USB-stick van de auto niet verbonden, tik eerst op 'USB-stick auto verbinden'","归档里没有可用的片段":"Geen bruikbare clips in het archief","请至少选择一路":"Selecteer minstens één kanaal","已有合成在进行":"Er loopt al een samenvoeging","合成失败":"Samenvoegen mislukt","已开始下载":"Download gestart","此浏览器不支持本机合成, 请使用打包下载":"Deze browser ondersteunt lokaal samenvoegen niet, gebruik de download als pakket","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"Samenvoegen klaar","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}},"ru":{"App ID — cli_ 开头":"App ID — начинается с cli_","App Secret (已保存则留空表示不修改)":"App Secret (оставьте пустым, чтобы не менять)","‹ 返回":"‹ Назад","⏳ 待写入车机U盘:":"⏳ Ожидают записи на USB авто:","▶ 轻触开始同步播放":"▶ Коснитесь для синхронного воспроизведения","⚙ 个性化":"⚙ Персонализация","✅ 已写入:":"✅ Записано:","上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。":"Загрузите CSS-скин или фоновое изображение (jpg/png/webp). В CSS ссылайтесь на картинки как /skin-media/имя файла.","下载":"Скачать","下载清晰度":"Качество скачивания","主题":"Тема","也推手动保存":"И ручные сохранения","仅支持 wav/mp3":"Поддерживается только wav/mp3","仅限本人访问":"Доступ только для владельца","今天":"Сегодня","位置":"Место","使用中":"Используется","侦测到物体移动":"Обнаружено движение объекта","侦测到碰撞/震动":"Обнаружен удар или вибрация","保存失败":"Не удалось сохранить","保存设置":"Сохранить","修改密码":"Сменить пароль","全选":"Выбрать все","全部":"Все","全部日期":"Все даты","再输一次新密码":"Повторите новый пароль","删除":"Удалить","刹车":"Тормоз","刹车占比":"Доля торможения","前视":"Передняя","升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。":"При обновлении последняя версия скачивается с GitHub и нескольких зеркал одновременно, файлы на устройстве заменяются, сервис перезапускается (около 5 с); настройки, записи и данные входа не затрагиваются.","半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面":"Полупрозрачная строка: время/место/скорость/передача/газ/тормоз, почти не закрывает кадр","单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。":"Один файл скачивается как оригинал (с водяным знаком — сборка на устройстве); несколько — в одно многокамерное видео. Скачивание и архив идут в выбранном качестве (в первый раз нужно дождаться перекодирования).","原因":"Причина","原画":"Оригинал","发送测试":"Отправить тест","叠加行车信息水印":"Добавить водяной знак с данными","右B柱":"Правая стойка B","右前翼":"Правое переднее крыло","右翼子板":"Правое крыло","合成视频":"Объединить в видео","同步状态":"Статус синхронизации","后视":"Задняя","启用推送":"Включить уведомления","哨兵告警":"Оповещения Sentry","哨兵模式触发":"Сработал режим Sentry","哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。":"При срабатывании Sentry время, место, причина и кадр отправляются в Feishu. По умолчанию — личные сообщения приложения (видите только вы); можно переключиться на webhook бота чата (видят все в чате). Видео отправляется только в личные сообщения.","哨兵警觉":"Внимание Sentry","回滚到上一版本":"Откатить к прошлой версии","天":"дн.","实时同步中":"Синхронизация в реальном времени","密码":"Пароль","尝试次数过多，请 5 分钟后再试":"Слишком много попыток, повторите через 5 минут","展开详细数据 ⌄":"Развернуть данные ⌄","左B柱":"Левая стойка B","左前翼":"Левое переднее крыло","左翼子板":"Левое крыло","已保存":"Сохранено","已删除":"Удалено","已加入队列, 归档同步时写入车机U盘":"Добавлено в очередь, запись на USB авто при синхронизации","已同步":"Синхронизировано","已是最新":"Актуальная версия","延迟推送":"Задержка отправки","当前密码":"Текущий пароль","当前版本":"Текущая версия","恢复车机导出":"Вернуть доступ авто к USB","手动保存":"Сохранено вручную","打包zip":"Упаковать в zip","按喇叭保存":"Сохранение сигналом","换个日期或点「全部」查看本分类所有事件":"Смените дату или нажмите «Все», чтобы увидеть все события категории","接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱":"Получатель: ваш open_id (начинается с ou_) или почта входа Feishu","推送内容：封面卡片（触发那帧图 + 信息，最快）":"Содержание: карточка (кадр срабатывания + данные, быстрее всего)","推送内容：触发摄像头视频（可回放）":"Содержание: видео с камеры (с просмотром)","摄像头":"Камера","收起详细数据 ⌃":"Свернуть данные ⌃","改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。":"После изменения устройство автоматически войдёт с новым паролем, а сеансы на телефоне и других устройствах сразу завершатся.","敏感信息已明文显示，注意别外发":"Чувствительные данные открыты — не пересылайте","敏感信息已隐藏（截图安全）":"Чувствительные данные скрыты (безопасно для скриншотов)","新密码 (至少 6 位)":"Новый пароль (минимум 6 символов)","方向盘角度":"Угол руля","日期":"Дата","时间":"Время","昨天":"Вчера","暂无归档视频":"Архивных видео нет","暂无皮肤, 使用默认外观":"Скинов нет, используется стандартный вид","最新版本":"Последняя версия","有新版本":"Есть обновление","未标注原因":"Причина не указана","未检查":"Не проверено","条":"шт.","查看链接前缀 (可选): http://你的域名:端口":"Префикс ссылки (необязательно): http://ваш-домен:порт","检查中…":"Проверка…","检查更新":"Проверить обновления","正在上传…":"Идёт загрузка…","正在下载并校验新版本…":"Загрузка и проверка новой версии…","正在合成多画面视频":"Идёт сборка многокамерного видео","活动ID":"ID события","浅色":"Светлая","浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。":"Просмотр USB авто (зеркало, куда пишет Tesla). При подключении чтение в авто прерывается на несколько секунд, через 5 минут без действий доступ восстанавливается.","深色":"Тёмная","清空":"Очистить","点击行车记录仪图标":"Нажата иконка регистратора","片段":"Фрагментов","用户名":"Имя пользователя","用户名或密码不对":"Неверное имя пользователя или пароль","画面":"Камер","界面语言，保存在本机浏览器":"Язык интерфейса, хранится в этом браузере","登录":"Войти","登录状态保留":"Сеанс сохраняется","盒子归档存储":"Архив на боксе","确定要退出登录吗？":"Выйти из аккаунта?","私聊推送 — 只有我本人能看到":"Личные сообщения — видите только вы","秒 (等片段写完再推)":"с (сначала запись клипа, затем отправка)","秒（从触发前 5 秒开始截）":"с (запись начинается за 5 с до срабатывания)","立即升级":"Обновить сейчас","群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...":"webhook бота чата (только для группы): https://open.feishu.cn/open-apis/bot/v2/hook/...","群机器人 — 群里所有人都能看到":"Бот в чате — видят все участники","自动":"Авто","行车记录":"Дорожные записи","行车记录仪菜单保存":"Сохранение через меню регистратора","视频时长":"Длительность видео","视频清晰度：360p（约 1.8MB / 30 秒）":"Качество видео: 360p (около 1.8MB / 30 с)","视频清晰度：480p（约 3MB / 30 秒）":"Качество видео: 480p (около 3MB / 30 с)","视频清晰度：720p（约 5MB / 30 秒）":"Качество видео: 720p (около 5MB / 30 с)","触发原因":"Причина срабатывания","设为锁车音":"Сделать звуком закрытия","设备正在拼接各路画面, 请勿关闭页面":"Устройство склеивает камеры, не закрывайте страницу","设置":"Настройки","该筛选下暂无事件":"По этому фильтру событий нет","跳转":"Перейти","车机U盘未连接":"USB авто не подключён","车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)":"После записи в авто задача синхронизации сама заберёт видео (зеркалу нужно 10 минут простоя)","车机要求单个音频 <1MB, 请裁剪后重试":"Авто требует файл <1MB, обрежьте и повторите","车载U盘存储":"Хранилище USB в авто","车门拉动":"Дёргание двери","车门被拉动":"Дверь дёрнули","载入中…":"Загрузка…","连接车机U盘":"Подключить USB авто","退出登录":"Выйти","选择日期…":"Выбрать дату…","选择要导出的画面":"Выберите камеры для экспорта","选择语言":"Выбор языка","遭遇袭击":"Нападение на авто","遭遇袭击 (紧急报警)":"Нападение на авто (тревога)","锁车音":"Звук закрытия","锁车音必须是 WAV (mp3 只能当喇叭音效)":"Звук закрытия должен быть WAV (mp3 — только для Boombox)","锁车音要求 WAV 44.1kHz 16-bit <1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。":"Звук закрытия: WAV 44.1kHz 16-bit <1MB 1–5 с; LockChime.wav записывается в корень USB авто, остальные mp3/wav — как звуки Boombox в папку Boombox/. Файлы записываются на USB авто при синхронизации архива.","门把手被拉动":"Дёрнули ручку двери","＋ 上传文件到当前目录 (任意类型, ≤100MB)":"＋ Загрузить файл в текущую папку (любой тип, ≤100MB)","＋ 上传皮肤文件 (css/jpg/png/webp)":"＋ Загрузить файл скина (css/jpg/png/webp)","＋ 上传音频 (wav/mp3, <1MB)":"＋ Загрузить аудио (wav/mp3, <1MB)","🌐 语言":"🌐 Язык","🎨 页面皮肤":"🎨 Оформление","👁 显示":"👁 Показать","📂 文件":"📂 Файлы","🔄 更新":"🔄 Обновление","🔊 锁车语音":"🔊 Звук закрытия","🔑 账号":"🔑 Аккаунт","🔔 推送":"🔔 Уведомления","🗄 归档区":"🗄 Архив","🙈 隐藏":"🙈 Скрыть","🚗 特斯拉哨兵查看器":"🚗 Просмотр записей Tesla Sentry","🚗 车机U盘":"🚗 USB в авто","归档":"Архив","待确认":"Ожидает подтверждения","同步服务未运行":"Служба синхронизации не запущена","路画面":"Камер","最近一次":"Последний раз","未启用":"Не включено","已启用私聊推送, 等下一个哨兵事件":"Личные уведомления включены, ждём следующее событие Sentry","已启用, 但接收人/应用凭据未配全":"Включено, но получатель или данные приложения заполнены не полностью","读取设置失败":"Не удалось прочитать настройки","私聊需要 App ID / Secret + 接收人":"Для личных сообщений нужны App ID / Secret и получатель","请先填群机器人 webhook":"Сначала укажите webhook бота чата","保存中…":"Сохранение…","发送失败":"Не удалось отправить","正在发送测试卡片…":"Отправка тестовой карточки…","当前未开启登录保护, 设置密码后即开启":"Защита входа выключена, включится после установки пароля","新密码至少 6 位":"Новый пароль — минимум 6 символов","两次输入的新密码不一致":"Новые пароли не совпадают","提交中…":"Отправка…","空目录":"Пустая папка","正在连接 GitHub…":"Подключение к GitHub…","检查失败":"Проверка не удалась","连不上 GitHub":"Нет связи с GitHub","(可稍后重试)":"(можно повторить позже)","来源":"Источник","升级失败":"Не удалось обновить","原密码不对":"Неверный текущий пароль","修改失败":"Не удалось изменить","上传失败":"Не удалось загрузить","密码已更新, 其它设备需要重新登录":"Пароль обновлён, на других устройствах нужен повторный вход","仅支持 css/jpg/png/webp":"Только css/jpg/png/webp","皮肤已上传并应用":"Скин загружен и применён","文件超过 100MB 上限":"Файл больше лимита 100MB","车机U盘已连接 (已临时断开车机读取, 5分钟无操作自动恢复)":"USB-накопитель авто подключён (чтение в авто временно отключено, через 5 минут без действий доступ восстановится)","已恢复车机导出":"Доступ авто к USB восстановлен","车机U盘未连接, 请先点「连接车机U盘」":"USB-накопитель авто не подключён, сначала нажмите «Подключить USB авто»","归档里没有可用的片段":"В архиве нет доступных фрагментов","请至少选择一路":"Выберите хотя бы одну камеру","已有合成在进行":"Сборка уже идёт","合成失败":"Не удалось собрать","已开始下载":"Загрузка начата","此浏览器不支持本机合成, 请使用打包下载":"Браузер не поддерживает сборку на устройстве, используйте скачивание архивом","特斯拉哨兵云盘":"Tesla Sentry Drive","合成完成":"Готово","路":{"en":"cams","de":"Kam.","fr":"cams","it":"cam","es":"cams","nl":"cam.","ru":"кам.","ja":"カメラ","ko":"카메라"}}}
+
+def tr(s, lang="en"):
+    """把中文 UI 文案翻成 lang (查不到回落到英文, 再回落到原文)"""
+    if not s or lang == "zh":
+        return s
+    m = LANG_TABLE.get(lang) or {}
+    return m.get(s) or (LANG_TABLE.get("en") or {}).get(s) or s
+
+def lang_from_accept(hdr, default="zh"):
+    """从 Accept-Language 里挑一个我们支持的语言"""
+    codes = [c for c, _ in LANG_NAMES]
+    for part in (hdr or "").split(","):
+        tag = part.split(";")[0].strip().lower()
+        if not tag:
+            continue
+        if tag in codes:
+            return tag
+        two = tag.split("-")[0]
+        if two in codes:
+            return two
+    return default
+
 CAT_NAMES = {"SentryClips": "哨兵告警", "SavedClips": "手动保存", "RecentClips": "行车记录"}
+# 注入页面用的 JSON (预生成, 避免每次请求都序列化)
+I18N_JS = json.dumps(LANG_TABLE, ensure_ascii=False, separators=(",", ":"))
+LANG_JS = json.dumps([[c, n] for c, n in LANG_NAMES], ensure_ascii=False, separators=(",", ":"))
 MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频有自己的更小限制)
 
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.3.1"
+APP_VERSION = "2.4.0"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -510,6 +540,12 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .stabs { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
 .stab { flex:1 1 28%; min-width:0; padding:8px 4px; border-radius:10px; background:var(--panel2); color:var(--muted); text-align:center; cursor:pointer; font-size:12.5px; border:none; white-space:nowrap; }
 .stab.active { background:var(--accent); color:#fff; }
+.langgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px; }
+.langgrid button { padding:10px 6px; border-radius:10px; background:var(--panel2); border:1px solid var(--line2);
+  color:var(--text); font-size:13px; cursor:pointer; text-align:center; line-height:1.35; }
+.langgrid button .code { display:block; font-size:10.5px; color:var(--muted2); margin-top:2px; letter-spacing:.5px; }
+.langgrid button.on { border-color:var(--accent); box-shadow:0 0 0 2px var(--accent) inset; color:var(--accent); }
+.langgrid button.on .code { color:var(--accent); opacity:.8; }
 .hint { font-size:11.5px; color:var(--muted2); line-height:1.6; margin-bottom:10px; }
 /* 飞书推送 */
 .ninput { display:block; width:100%; box-sizing:border-box; margin-bottom:8px; padding:9px 11px; border-radius:9px;
@@ -535,6 +571,7 @@ select.ninput { cursor:pointer; }
 .updnotes { display:none; background:var(--panel2); border-radius:10px; padding:9px 12px; font-size:12.5px; line-height:1.85; color:var(--muted); margin:6px 0 2px; }
 .updbtns { display:flex; gap:8px; margin:10px 0 8px; }
 .updbtns .mini { flex:1; padding:9px 0; border-radius:9px; background:var(--panel2); border:none; color:var(--text); font-size:13px; cursor:pointer; }
+.updbtns .mini.logout { background:transparent; border:1px solid var(--accent); color:var(--accent); }
 .updbtns .mini.primary { background:var(--accent); color:#fff; }
 .updbtns .mini:disabled { opacity:.45; cursor:default; }
 #gear { position:relative; }
@@ -568,7 +605,7 @@ select.ninput { cursor:pointer; }
 </style></head><body>
 <header><h1>🚗 特斯拉哨兵查看器</h1><span class="sub" id="stat"></span>
 <span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
-<nav class="tabs" id="tabs"></nav><button id="theme" title="主题: 自动/浅色/深色" onclick="cycleTheme()">🌗</button><button id="gear" title="皮肤与锁车音">⚙</button><button id="out" title="退出登录" onclick="location.href='/logout'">⏏</button></header>
+<nav class="tabs" id="tabs"></nav><button id="theme" title="主题: 自动/浅色/深色" onclick="cycleTheme()">🌗</button><button id="gear" title="设置">⚙</button></header>
 <nav class="storwrap" id="storwrap" style="display:none">
   <div class="storcard">
     <div class="storrow"><span class="storlab" id="storlab">车载U盘存储</span><span class="storval" id="storval"></span></div>
@@ -644,7 +681,7 @@ select.ninput { cursor:pointer; }
     <button class="mini" onclick="doExportZip()">打包zip</button>
     <button class="mini primary" onclick="doExport()">合成视频</button>
   </div>
-  <div class="hint" style="margin-top:8px;margin-bottom:0">单选直接下载原文件(加水印时走本机合成); 多选合成 <b>一个多画面视频</b>。<b>下载/打包zip</b> 按所选清晰度导出 (首次需等转码); 水印合成始终原画</div>
+  <div class="hint" style="margin-top:8px;margin-bottom:0">单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。</div>
 </div>
 
 <div class="mask" id="mask" onclick="closePanel()"></div>
@@ -657,14 +694,16 @@ select.ninput { cursor:pointer; }
     <button class="stab" id="st-notify" onclick="stab('notify')">🔔 推送</button>
     <button class="stab" id="st-auth" onclick="stab('auth')">🔑 账号</button>
     <button class="stab" id="st-update" onclick="stab('update')">🔄 更新</button>
+    <button class="stab" id="st-lang" onclick="stab('lang')">🌐 语言</button>
   </div>
   <div id="tab-skin">
-    <div class="hint">上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 <b>/skin-media/文件名</b>。CSS 示例:<br><code>body{background:url(/skin-media/bg.jpg) center/cover}</code></div>
+    <div class="hint">上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。</div>
+    <div class="hint"><code>body{background:url(/skin-media/bg.jpg) center/cover}</code></div>
     <label class="upbtn">＋ 上传皮肤文件 (css/jpg/png/webp)<input type="file" id="skin-file" accept=".css,.jpg,.jpeg,.png,.webp" hidden></label>
     <div id="skin-list"></div>
   </div>
   <div id="tab-audio" style="display:none">
-    <div class="hint">锁车音要求: <b>WAV · 44.1kHz · 16-bit · &lt;1MB · 1~5秒</b>, 文件名保存为 <b>LockChime.wav</b> 后写入车机U盘 <b>Boombox/</b> 目录 (车机端 Toybox→Boombox→Lock Sound 选 USB)。上传其他 mp3/wav 可作为 Boombox 喇叭音效 (车机只认字母序前5个, 每个同样 &lt;1MB)。<br>文件将在<b>归档同步时</b>自动写入车机U盘 (镜像空闲10分钟后, 每10分钟检查一次)。</div>
+    <div class="hint">锁车音要求 WAV 44.1kHz 16-bit &lt;1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。</div>
     <label class="upbtn">＋ 上传音频 (wav/mp3, &lt;1MB)<input type="file" id="audio-file" accept=".wav,.mp3" hidden></label>
     <div class="hint" style="color:#4cc38a">⏳ 待写入车机U盘:</div>
     <div id="audio-list"></div>
@@ -677,7 +716,7 @@ select.ninput { cursor:pointer; }
       <button id="area-archive" class="stab" style="flex:1" onclick="switchArea('archive')">🗄 归档区</button>
     </div>
     <div id="usb-status" style="display:none;margin-bottom:10px"></div>
-    <div id="usb-hint" class="hint">浏览和管理<b>车机U盘</b> (特斯拉写入的镜像)。连接后会<b>临时断开车机读取几秒</b>, 断开5分钟无操作自动恢复导出, 也可手动恢复。恢复后 U 盘重新出现在车上。</div>
+    <div id="usb-hint" class="hint">浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。</div>
     <div id="arch-hint" class="hint" style="display:none">归档区 (F50 内部存储): 查看器用的视频副本、皮肤、文件中转。</div>
     <div id="dir-nav" style="display:none">
       <div style="display:flex;gap:8px;margin-bottom:10px">
@@ -690,11 +729,7 @@ select.ninput { cursor:pointer; }
     </div>
   </div>
   <div id="tab-notify" style="display:none">
-    <div class="hint">哨兵触发时自动把<b>时间 / 位置 / 触发原因 / 触发镜头</b>和<b>触发那一帧画面</b>推到飞书。<br>
-    默认走<b>自建应用私聊</b>：只进你本人和机器人的单聊，别人看不到。做法：飞书开放平台建一个<b>企业自建应用</b> → 开<b>机器人</b>能力 → 加 <b>im:message</b>（发消息）和 <b>im:resource</b>（传图）权限 → 创建版本并发布 → 把 App ID / App Secret 和你自己的 open_id（或邮箱）填到下面。<br>
-    也可以切到<b>群机器人</b>：群里加「自定义机器人」，把 webhook 填进来即可（群里所有人可见）。<br>
-    推送内容可选<b>封面卡片</b>或<b>触发摄像头那段视频</b>（视频只能用自建应用私聊发；群机器人发不了视频）。<br>
-    敏感字段（接收人 / App ID / Secret / webhook）默认<b>打码隐藏</b>，方便截图演示；点「👁 显示」才可编辑。</div>
+    <div class="hint">哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。</div>
     <label class="nrow"><span>启用推送</span><input type="checkbox" id="nt-en"></label>
     <label class="nrow"><span>也推手动保存</span><input type="checkbox" id="nt-saved"></label>
     <select class="ninput" id="nt-mode">
@@ -730,13 +765,15 @@ select.ninput { cursor:pointer; }
     <div class="hint" id="nt-msg"></div>
   </div>
   <div id="tab-auth" style="display:none">
-    <div class="hint">修改网页登录密码。改完<b>本机会自动用新密码重新登录</b>, 手机/其它设备上的登录状态立即失效, 需要用新密码重新登。</div>
+    <div class="hint">改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。</div>
     <input class="ninput" id="pw-old" type="password" placeholder="当前密码" autocomplete="current-password">
     <input class="ninput" id="pw-new" type="password" placeholder="新密码 (至少 6 位)" autocomplete="new-password">
     <input class="ninput" id="pw-new2" type="password" placeholder="再输一次新密码" autocomplete="new-password">
     <div class="updbtns"><button class="mini primary" onclick="pwSave()">修改密码</button></div>
     <div class="hint" id="pw-msg"></div>
-    <div class="hint">用户名 <b id="pw-user">admin</b>；要改用户名请编辑设备上 <code>/opt/tesla-sentry/auth.conf</code> 的 <code>user=</code>。</div>
+    <div class="hint" style="margin-top:12px"><span>用户名</span>: <b id="pw-user">admin</b></div>
+    <div class="hint">要改用户名请编辑设备上 /opt/tesla-sentry/auth.conf 的 user=</div>
+    <div class="updbtns" style="margin-top:16px"><button class="mini logout" onclick="doLogout()">退出登录</button></div>
   </div>
   <div id="tab-update" style="display:none">
     <div class="updrow"><span class="updk">当前版本</span><b id="upd-cur">—</b></div>
@@ -746,8 +783,14 @@ select.ninput { cursor:pointer; }
       <button class="mini" id="upd-check" onclick="otaCheck(true)">检查更新</button>
       <button class="mini primary" id="upd-go" onclick="otaApply()" disabled>立即升级</button>
     </div>
-    <div class="hint" id="upd-msg">升级会从 GitHub 及多个镜像<b>并发竞速</b>拉取最新程序 (哪个源快用哪个, 被墙自动切换), 覆盖本机文件并自动重启服务 (约 5 秒); 配置、录像、登录信息不受影响。</div>
+    <div class="hint" id="upd-msg"></div>
     <div class="updbtns"><button class="mini" id="upd-rb" onclick="otaRollback()" style="display:none">↩ 回滚到上一版本</button></div>
+    <div class="hint">升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。</div>
+  </div>
+  <div id="tab-lang" style="display:none">
+    <div class="hint" style="margin-bottom:8px">选择语言</div>
+    <div class="langgrid" id="lang-grid"></div>
+    <div class="hint">界面语言，保存在本机浏览器</div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -761,9 +804,83 @@ select.ninput { cursor:pointer; }
   </div>
 </div>
 
+<script>window.__I18N=__I18N__;window.__LANGS=__LANGS__;</script>
 <script>
 let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '', reasonFilter = 'all', dateFilter = 'all';
 let curClips = [], curClipIx = 0, TEL = null;
+
+/* ---------- 多语言 ----------
+   字典以中文原文为 key; 静态文案由 applyLang() 遍历 DOM 替换, 动态文案在生成时用 t() 包一层。
+   切回中文时从节点上保存的原文还原, 不会叠加翻译。 */
+const I18N = window.__I18N || {};
+const LANGS = window.__LANGS || [['zh', '中文']];
+let LANG = (localStorage.getItem('tsf_lang') || '').trim();
+if (!LANGS.some(l => l[0] === LANG)) {
+  const nav = String((navigator.languages && navigator.languages[0]) || navigator.language || 'zh').toLowerCase();
+  const hit = LANGS.find(l => nav === l[0] || nav.indexOf(l[0] + '-') === 0);
+  LANG = hit ? hit[0] : 'en';
+}
+function t(s) {
+  if (!s || LANG === 'zh') return s;
+  const m = I18N[LANG] || {};
+  return m[s] || (I18N.en || {})[s] || s;
+}
+function langName(code) {
+  const l = LANGS.find(x => x[0] === code);
+  return l ? l[1] : code;
+}
+const ZH_TXT = '__zh', ZH_TV = '__tv', ZH_ATTR = '__zha';
+function applyLang() {
+  document.documentElement.lang = (LANG === 'zh') ? 'zh-CN' : LANG;
+  const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
+  const nodes = [];
+  while (w.nextNode()) nodes.push(w.currentNode);
+  for (const n of nodes) {
+    const p = n.parentNode;
+    if (!p) continue;
+    const tag = p.nodeName;
+    if (tag === 'SCRIPT' || tag === 'STYLE') continue;
+    const cur = n.nodeValue;
+    if (n[ZH_TXT] !== undefined && cur !== n[ZH_TV] && cur !== n[ZH_TXT]) n[ZH_TXT] = cur;
+    if (n[ZH_TXT] === undefined) n[ZH_TXT] = cur;
+    const raw = n[ZH_TXT], key = (raw || '').trim();
+    if (!key) continue;
+    const val = t(key);
+    n.nodeValue = (val === key) ? raw : raw.replace(key, val);
+    n[ZH_TV] = n.nodeValue;
+  }
+  document.querySelectorAll('[placeholder],[title]').forEach(el => {
+    ['placeholder', 'title'].forEach(a => {
+      if (!el.hasAttribute(a)) return;
+      el[ZH_ATTR] = el[ZH_ATTR] || {};
+      if (el[ZH_ATTR][a] === undefined) el[ZH_ATTR][a] = el.getAttribute(a);
+      const raw = el[ZH_ATTR][a], key = (raw || '').trim();
+      if (!key) return;
+      const val = t(key);
+      el.setAttribute(a, val === key ? raw : raw.replace(key, val));
+    });
+  });
+  const g = document.getElementById('lang-grid');
+  if (g) renderLangGrid();
+}
+function renderLangGrid() {
+  const g = document.getElementById('lang-grid');
+  if (!g) return;
+  g.innerHTML = LANGS.map(([c, n]) =>
+    '<button class="' + (c === LANG ? 'on' : '') + '" onclick="setLang(\'' + c + '\')">' +
+    n + '<span class="code">' + c.toUpperCase() + '</span></button>').join('');
+}
+function setLang(code) {
+  if (!LANGS.some(l => l[0] === code)) return;
+  LANG = code;
+  localStorage.setItem('tsf_lang', code);
+  applyLang();
+  const th = localStorage.getItem('tsf_theme') || 'auto';
+  const b = document.getElementById('theme');
+  if (b) b.title = t('主题') + ': ' + t(th === 'auto' ? '自动' : th === 'light' ? '浅色' : '深色');
+  if (typeof data !== 'undefined' && data && document.getElementById('tabs')) { try { load(); } catch (e) {} }
+}
+
 /* ---------- 主题: 自动(跟系统) / 浅色 / 深色, 手动循环切换并记住 ---------- */
 const THEME_ICONS = { auto: '🌗', light: '☀️', dark: '🌙' };
 const THEME_NEXT = { auto: 'light', light: 'dark', dark: 'auto' };
@@ -774,7 +891,7 @@ function applyTheme(mode) {
   }
   document.documentElement.dataset.theme = eff;
   const b = document.getElementById('theme');
-  if (b) { b.textContent = THEME_ICONS[mode] || '🌗'; b.title = '主题: ' + (mode === 'auto' ? '自动' : mode === 'light' ? '浅色' : '深色'); }
+  if (b) { b.textContent = THEME_ICONS[mode] || '🌗'; b.title = t('主题') + ': ' + t(mode === 'auto' ? '自动' : mode === 'light' ? '浅色' : '深色'); }
 }
 function cycleTheme() {
   const cur = localStorage.getItem('tsf_theme') || 'auto';
@@ -855,8 +972,8 @@ const REASON_LABEL = {
 };
 function reasonLabel(r) {
   if (!r) return '';
-  if (REASON_LABEL[r]) return REASON_LABEL[r];
-  for (const k in REASON_LABEL) if (r.indexOf(k) === 0) return REASON_LABEL[k];
+  if (REASON_LABEL[r]) return t(REASON_LABEL[r]);
+  for (const k in REASON_LABEL) if (r.indexOf(k) === 0) return t(REASON_LABEL[k]);
   return r;
 }
 const EMPTY_HTML = document.getElementById('empty').innerHTML;
@@ -871,7 +988,7 @@ const CAM_NAME = { front:'前视', back:'后视', left_repeater:'左B柱', right
    这样左右对称, 前后同一排, 一眼能看出方位 */
 const CAM_ORDER_4 = ['front','back','left_repeater','right_repeater','left_pillar','right_pillar'];
 const CAM_ORDER_6 = ['left_pillar','front','right_pillar','left_repeater','back','right_repeater'];
-function camLabel(c) { return CAM_NAME[c] || c || '画面'; }
+function camLabel(c) { return t(CAM_NAME[c] || c || '画面'); }
 function fmtFull(n) {
   const m = (n || '').match(/^(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})/);
   return m ? `${m[1]}/${m[2]}/${m[3]} ${m[4]}:${m[5]}:00` : n;
@@ -933,11 +1050,11 @@ async function load() {
   for (const c of Object.keys(data)) {
     const b = document.createElement('button');
     b.className = 'tab' + (c === 'SentryClips' ? ' active' : '');
-    b.textContent = `${CATS_NAME[c] || c} (${data[c].length})`;
+    b.textContent = `${t(CATS_NAME[c] || c)} (${data[c].length})`;
     b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; reasonFilter = 'all'; dateFilter = 'all'; render(c); };
     tabs.appendChild(b);
   }
-  document.getElementById('stat').textContent = `归档 ${Object.values(data).reduce((a, v) => a + v.length, 0)} 个事件`;
+  document.getElementById('stat').textContent = `${t('归档')} ${Object.values(data).reduce((a, v) => a + v.length, 0)} ${t('条')}`;
   lastSig = sigOf(data);
   renderQSel();
   render(currentCat);
@@ -991,19 +1108,19 @@ async function refreshLive() {
   const dot = document.getElementById('livedot'), txt = document.getElementById('livetxt');
   if (live.running) {
     dot.style.background = '#4cc38a';
-    if (live.pending > 0) txt.textContent = `实时同步 · ${live.pending} 个待确认`;
-    else if (live.ago !== null && live.ago !== undefined) txt.textContent = `实时同步 · ${live.ago}s 前`;
-    else txt.textContent = '实时同步中';
+    if (live.pending > 0) txt.textContent = `${t('实时同步中')} · ${live.pending} ${t('待确认')}`;
+    else if (live.ago !== null && live.ago !== undefined) txt.textContent = `${t('实时同步中')} · ${live.ago}s`;
+    else txt.textContent = t('实时同步中');
   } else {
     dot.style.background = '#e8443f';
-    txt.textContent = '同步服务未运行';
+    txt.textContent = t('同步服务未运行');
   }
   // 车载U盘存储条 (镜像未挂载时回落显示归档盘)
   const sw = document.getElementById('storwrap');
   if (live.disk && live.disk.total > 0) {
     const GB = 1073741824, d = live.disk;
     sw.style.display = '';
-    document.getElementById('storlab').textContent = d.src === 'usb' ? '车载U盘存储' : '盒子归档存储';
+    document.getElementById('storlab').textContent = t(d.src === 'usb' ? '车载U盘存储' : '盒子归档存储');
     document.getElementById('storval').textContent =
       (d.used / GB).toFixed(1) + 'GB / ' + (d.total / GB).toFixed(1) + 'GB';
     const pct = Math.min(100, d.used / d.total * 100);
@@ -1022,9 +1139,9 @@ async function refreshLive() {
       const tabs = document.getElementById('tabs');
       [...tabs.children].forEach((b, i) => {
         const c = Object.keys(d)[i];
-        if (c) b.textContent = `${CATS_NAME[c] || c} (${d[c].length})`;
+        if (c) b.textContent = `${t(CATS_NAME[c] || c)} (${d[c].length})`;
       });
-      document.getElementById('stat').textContent = `归档 ${Object.values(d).reduce((a, v) => a + v.length, 0)} 个事件`;
+      document.getElementById('stat').textContent = `${t('归档')} ${Object.values(d).reduce((a, v) => a + v.length, 0)} ${t('条')}`;
       if (!document.getElementById('player').classList.contains('open')) render(currentCat);
     }
   } catch (e) {}
@@ -1098,7 +1215,7 @@ function renderFilters(cat) {
     byDate.forEach(ev => { const t = reasonTab(reasonOf(ev)); cnt[t] = (cnt[t] || 0) + 1; });
     rbox.className = 'filters show';
     rbox.innerHTML = SENTRY_TABS.map(([k, label]) =>
-      `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${label}<span class="n">${cnt[k] || 0}</span></button>`
+      `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${t(label)}<span class="n">${cnt[k] || 0}</span></button>`
     ).join('');
   } else {
     const rcnt = {};
@@ -1107,9 +1224,9 @@ function renderFilters(cat) {
     if (rkeys.length < 2) { rbox.className = 'filters'; rbox.innerHTML = ''; }
     else {
       rbox.className = 'filters show';
-      const items = [['all', '全部', byDate.length]].concat(
-        rkeys.map(k => [k, reasonLabel(k) !== k ? reasonLabel(k) : '未标注原因', rcnt[k]]));
-      rbox.innerHTML = '<span class="flab">原因</span>' + items.map(([k, label, n]) =>
+      const items = [['all', t('全部'), byDate.length]].concat(
+        rkeys.map(k => [k, reasonLabel(k) !== k ? reasonLabel(k) : t('未标注原因'), rcnt[k]]));
+      rbox.innerHTML = '<span class="flab">' + t('原因') + '</span>' + items.map(([k, label, n]) =>
         `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${label}<span class="n">${n}</span></button>`
       ).join('');
     }
@@ -1124,11 +1241,11 @@ function renderFilters(cat) {
   if (dateFilter !== 'all' && !days.includes(dateFilter)) days = [dateFilter].concat(days);
   if (!alldays.length && dateFilter === 'all') { dbox.className = 'filters'; dbox.innerHTML = ''; return; }
   dbox.className = 'filters show';
-  const items = [['all', '全部日期', byReason.length]].concat(
+  const items = [['all', t('全部日期'), byReason.length]].concat(
     days.map(d => [d, d.slice(5).replace('-', '/'), dcnt[d] || 0]));
-  dbox.innerHTML = '<span class="flab">日期</span>' + items.map(([k, label, n]) =>
+  dbox.innerHTML = '<span class="flab">' + t('日期') + '</span>' + items.map(([k, label, n]) =>
     `<button class="chip d${k === dateFilter ? ' on' : ''}" onclick="setDate('${k}')">${label}<span class="n">${n}</span></button>`
-  ).join('') + '<button class="chip pick" onclick="pickDate()" title="选择任意日期">选择日期…</button>';
+  ).join('') + '<button class="chip pick" onclick="pickDate()" title="' + t('选择日期…') + '">' + t('选择日期…') + '</button>';
 }
 /* 原生日期选择器: 分类里只有一天时也能翻到别的日期 */
 function pickDate() {
@@ -1161,13 +1278,15 @@ function thumbErr(img) {
 }
 /* 日期分组小标题: 今天/昨天/M月D日 */
 function dheadLabel(d) {
-  const t = new Date(), today = t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
-  const y = new Date(t.getTime() - 864e5), yd = y.getFullYear() + '-' + String(y.getMonth() + 1).padStart(2, '0') + '-' + String(y.getDate()).padStart(2, '0');
+  const now = new Date(), today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+  const y = new Date(now.getTime() - 864e5), yd = y.getFullYear() + '-' + String(y.getMonth() + 1).padStart(2, '0') + '-' + String(y.getDate()).padStart(2, '0');
   const m = d.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return d;
-  if (d === today) return '今天';
-  if (d === yd) return '昨天';
-  return (+m[2]) + '月' + (+m[3]) + '日';
+  if (d === today) return t('今天');
+  if (d === yd) return t('昨天');
+  if (LANG === 'zh') return (+m[2]) + '月' + (+m[3]) + '日';
+  try { return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(LANG, { month: 'short', day: 'numeric' }); }
+  catch (e) { return d.slice(5); }
 }
 function render(cat) {
   const g = document.getElementById('grid'), e = document.getElementById('empty');
@@ -1179,7 +1298,7 @@ function render(cat) {
   e.style.display = evs.length ? 'none' : 'block';
   if (!evs.length) {
     e.innerHTML = (reasonFilter !== 'all' || dateFilter !== 'all')
-      ? '<div class="big">🔍</div><div>该筛选下暂无事件<br><small style="font-size:12px">换个日期或点「全部」查看本分类所有事件</small></div>'
+      ? '<div class="big">🔍</div><div>' + t('该筛选下暂无事件') + '<br><small style="font-size:12px">' + t('换个日期或点「全部」查看本分类所有事件') + '</small></div>'
       : EMPTY_HTML;
   }
   let prevDay = null;
@@ -1188,7 +1307,7 @@ function render(cat) {
     if (day && day !== prevDay) {           // 日期分组小标题 (像官方App的"下午 14:00-17:59 · 3条")
       const n = evs.filter(x => dateOf(x) === day).length;
       const h = document.createElement('div'); h.className = 'dhead';
-      h.innerHTML = '<b>' + dheadLabel(day) + '</b><span class="n">' + n + ' 条</span>';
+      h.innerHTML = '<b>' + dheadLabel(day) + '</b><span class="n">' + n + ' ' + t('条') + '</span>';
       g.appendChild(h);
       prevDay = day;
     }
@@ -1200,13 +1319,13 @@ function render(cat) {
       /* 哨兵事件: 用触发摄像头在触发那一帧当封面; 其他/回落: 前摄像头第1秒 */
       const src = sentryThumbSrc(ev, groups) ||
         (vids.find(v => v.cam === 'front') || vids[0]).url.replace('/media/', '/thumb/');
-      th = `<div class="thumb"><img loading="lazy" decoding="async" src="${src}" alt="" onerror="thumbErr(this)"><span class="cnum">${vids.length} 路</span></div>`;
+      th = `<div class="thumb"><img loading="lazy" decoding="async" src="${src}" alt="" onerror="thumbErr(this)"><span class="cnum">${vids.length} ${t('路')}</span></div>`;
     } else {
       th = `<div class="thumb"><div class="ph">🎞</div></div>`;
     }
     const mm = ev.meta || {};
     /* 标题: 触发原因·触发摄像头 (哨兵), 否则分类名 */
-    let title = CATS_NAME[cat] || cat;
+    let title = t(CATS_NAME[cat] || cat);
     if (mm.reason) {
       title = reasonLabel(mm.reason) || mm.reason;
       if (isSentryEv(mm) && mm.camera) {
@@ -1220,10 +1339,11 @@ function render(cat) {
     const dayTxt = dateFilter === 'all' && day ? day.slice(5).replace('-', '/') + ' · ' : '';
     const mb = ev.size / 1048576;
     const szTxt = mb >= 1 ? mb.toFixed(1) + ' MB' : (mb * 1024).toFixed(0) + ' KB';
-    card.innerHTML = th + `<div class="meta"><div class="l1"><span class="rt" title="${title}">${title}</span><span class="tm">${tmTxt}${extra}</span></div><div class="l2"><span>${dayTxt}${vids.length} 路画面</span><span class="sz">${szTxt}</span></div></div>`;
+    card.innerHTML = th + `<div class="meta"><div class="l1"><span class="rt" title="${title}">${title}</span><span class="tm">${tmTxt}${extra}</span></div><div class="l2"><span>${dayTxt}${vids.length} ${t('路画面')}</span><span class="sz">${szTxt}</span></div></div>`;
     card.onclick = () => openPlayer(ev);
     g.appendChild(card);
   }
+  applyLang();
 }
 
 function layoutPlayer() {
@@ -1276,14 +1396,14 @@ function renderClip() {
     vid.addEventListener('playing', clDone);
     vid.addEventListener('error', () => {
       cl.className = 'cload err';
-      cl.innerHTML = '<span>加载失败, 点其他片段再试</span>';
+      cl.innerHTML = '<span>' + t('加载失败, 点其他片段再试') + '</span>';
     });
     vid.addEventListener('waiting', () => { cl.style.display = ''; });
     /* 低清晰度首次播放需要后台转码, 缓冲时给出提示 */
     vid.addEventListener('waiting', () => {
       if (curQ !== 'orig') {
         const h = document.getElementById('qhint');
-        h.textContent = '正在缓冲 (首次播放新片段需后台转码十几秒, 转好一次后秒开)…';
+        h.textContent = t('正在缓冲 (首次播放新片段需后台转码十几秒, 转好一次后秒开)…');
         h.style.display = 'block';
       }
     });
@@ -1296,7 +1416,7 @@ function renderClip() {
     vg.appendChild(cell);
   });
   document.getElementById('ic-time').textContent = fmtFull(ev.name);
-  document.getElementById('ic-cat').textContent = CATS_NAME[currentCat] || currentCat;
+  document.getElementById('ic-cat').textContent = t(CATS_NAME[currentCat] || currentCat);
   const md0 = ev.meta || {};
   document.getElementById('ic-big').textContent =
     (md0.reason && (reasonLabel(md0.reason) || md0.reason)) || CATS_NAME[currentCat] || currentCat;
@@ -1656,7 +1776,7 @@ function startLocalStitch(sel, st, wm) {
       a.download = (cur ? cur.name : 'teslacam') + '_' + sel.length + '路.' + ext;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 30000);
-      hint.textContent = '合成完成, 已开始下载';
+      hint.textContent = t('合成完成') + ', ' + t('已开始下载');
       pct.textContent = '100%'; fill.style.width = '100%';
       setTimeout(() => st.classList.remove('open'), 2500);
     };
@@ -1679,7 +1799,7 @@ function startLocalStitch(sel, st, wm) {
 }
 function pollStitch(id) {
   fetch('/api/stitch/status?id=' + encodeURIComponent(id)).then(r => r.json()).then(d => {
-    if (d.state === 'error') { stitchFail(d.err || '合成失败'); return; }
+    if (d.state === 'error') { stitchFail(d.err || t('合成失败')); return; }
     const pct = d.pct || 0;
     document.getElementById('stfill').style.width = pct + '%';
     document.getElementById('stpct').textContent = pct + '%';
@@ -1693,7 +1813,7 @@ function pollStitch(id) {
   }).catch(() => setTimeout(() => pollStitch(id), 1500));
 }
 function stitchFail(msg) {
-  document.getElementById('sthint').textContent = '合成失败: ' + msg;
+  document.getElementById('sthint').textContent = t('合成失败') + ': ' + msg;
   document.getElementById('stpct').textContent = '';
   setTimeout(() => document.getElementById('stitch').classList.remove('open'), 5000);
 }
@@ -1795,12 +1915,16 @@ document.addEventListener('keydown', e => {
 
 /* ---------- 设置面板 ---------- */
 function toast(msg) {
-  const t = document.getElementById('toast');
-  t.textContent = msg; t.style.display = 'block';
-  setTimeout(() => t.style.display = 'none', 2500);
+  const box = document.getElementById('toast');
+  box.textContent = t(msg); box.style.display = 'block';
+  setTimeout(() => box.style.display = 'none', 2500);
+}
+function doLogout() {
+  if (!confirm(t('确定要退出登录吗？'))) return;
+  location.href = '/logout';
 }
 function stab(which) {
-  ['skin', 'audio', 'files', 'notify', 'auth', 'update'].forEach(k => {
+  ['skin', 'audio', 'files', 'notify', 'auth', 'update', 'lang'].forEach(k => {
     const b = document.getElementById('st-' + k), t = document.getElementById('tab-' + k);
     if (b) b.classList.toggle('active', k === which);
     if (t) t.style.display = k === which ? '' : 'none';
@@ -1879,12 +2003,12 @@ async function ntLoad() {
     ntSetEye(ntHidden);
     const m = document.getElementById('nt-msg');
     if (j.last && j.last.msg) {
-      m.textContent = '最近一次: ' + (j.last.ok ? '✅ ' : '❌ ') + j.last.msg + ' (' + new Date(j.last.at * 1000).toLocaleString() + ')';
+      m.textContent = t('最近一次') + ': ' + (j.last.ok ? '✅ ' : '❌ ') + j.last.msg + ' (' + new Date(j.last.at * 1000).toLocaleString() + ')';
       m.style.color = j.last.ok ? '#4cc38a' : 'var(--accent)';
-    } else if (!j.enabled) { m.textContent = '未启用'; m.style.color = ''; }
-    else if (j.dm_ready) { m.textContent = '已启用私聊推送, 等下一个哨兵事件'; m.style.color = ''; }
-    else { m.textContent = '已启用, 但接收人/应用凭据未配全'; m.style.color = 'var(--accent)'; }
-  } catch (e) { document.getElementById('nt-msg').textContent = '读取设置失败: ' + e; }
+    } else if (!j.enabled) { m.textContent = t('未启用'); m.style.color = ''; }
+    else if (j.dm_ready) { m.textContent = t('已启用私聊推送, 等下一个哨兵事件'); m.style.color = ''; }
+    else { m.textContent = t('已启用, 但接收人/应用凭据未配全'); m.style.color = 'var(--accent)'; }
+  } catch (e) { document.getElementById('nt-msg').textContent = t('读取设置失败') + ': ' + e; }
 }
 async function ntSave() {
   const body = {
@@ -1908,22 +2032,22 @@ async function ntSave() {
     if (body.mode === 'group' && !body.webhook) { toast('请先填群机器人 webhook'); return; }
   }
   const m = document.getElementById('nt-msg');
-  m.textContent = '保存中…';
+  m.textContent = t('保存中…');
   try {
     const j = await (await fetch('/api/notify/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
-    m.textContent = (j.ok ? '✅ 已保存' : '❌ ' + j.msg) + (j.warn ? ' · ' + j.warn : '');
+    m.textContent = (j.ok ? '✅ ' + t('已保存') : '❌ ' + j.msg) + (j.warn ? ' · ' + j.warn : '');
     m.style.color = j.ok ? '#4cc38a' : 'var(--accent)';
     if (j.ok) ntLoad();
-  } catch (e) { m.textContent = '保存失败: ' + e; m.style.color = 'var(--accent)'; }
+  } catch (e) { m.textContent = t('保存失败') + ': ' + e; m.style.color = 'var(--accent)'; }
 }
 async function ntTest() {
   const m = document.getElementById('nt-msg');
-  m.textContent = '正在发送测试卡片…'; m.style.color = '';
+  m.textContent = t('正在发送测试卡片…'); m.style.color = '';
   try {
     const j = await (await fetch('/api/notify/test', { method: 'POST' })).json();
     m.textContent = (j.ok ? '✅ ' : '❌ ') + j.msg;
     m.style.color = j.ok ? '#4cc38a' : 'var(--accent)';
-  } catch (e) { m.textContent = '发送失败: ' + e; m.style.color = 'var(--accent)'; }
+  } catch (e) { m.textContent = t('发送失败') + ': ' + e; m.style.color = 'var(--accent)'; }
 }
 
 function ntMediaUI() {
@@ -1937,7 +2061,7 @@ async function pwLoad() {
     const j = await (await fetch('/api/auth/info', { cache: 'no-store' })).json();
     document.getElementById('pw-user').textContent = j.user || 'admin';
     const m = document.getElementById('pw-msg');
-    if (!j.on) { m.textContent = '当前未开启登录保护, 设置密码后即开启'; m.style.color = 'var(--muted2)'; }
+    if (!j.on) { m.textContent = t('当前未开启登录保护, 设置密码后即开启'); m.style.color = 'var(--muted2)'; }
   } catch (e) {}
 }
 async function pwSave() {
@@ -1945,13 +2069,13 @@ async function pwSave() {
   const o = document.getElementById('pw-old').value;
   const n = document.getElementById('pw-new').value;
   const n2 = document.getElementById('pw-new2').value;
-  if (n.length < 6) { m.textContent = '新密码至少 6 位'; m.style.color = 'var(--accent)'; return; }
-  if (n !== n2) { m.textContent = '两次输入的新密码不一致'; m.style.color = 'var(--accent)'; return; }
-  m.textContent = '提交中…'; m.style.color = '';
+  if (n.length < 6) { m.textContent = t('新密码至少 6 位'); m.style.color = 'var(--accent)'; return; }
+  if (n !== n2) { m.textContent = t('两次输入的新密码不一致'); m.style.color = 'var(--accent)'; return; }
+  m.textContent = t('提交中…'); m.style.color = '';
   try {
     const j = await (await fetch('/api/auth/pass', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ old: o, 'new': n }) })).json();
-    if (!j.ok) { m.textContent = '❌ ' + j.msg; m.style.color = 'var(--accent)'; return; }
+    if (!j.ok) { m.textContent = '❌ ' + t(j.msg); m.style.color = 'var(--accent)'; return; }
     // 旧 cookie 已随 secret 更换失效, 用新密码立即重新登录, 保持本机不掉线
     try {
       await fetch('/login', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -1962,7 +2086,7 @@ async function pwSave() {
     document.getElementById('pw-new2').value = '';
     m.textContent = '✅ ' + j.msg;
     m.style.color = '#4cc38a';
-  } catch (e) { m.textContent = '修改失败: ' + e; m.style.color = 'var(--accent)'; }
+  } catch (e) { m.textContent = t('修改失败') + ': ' + e; m.style.color = 'var(--accent)'; }
 }
 
 /* ---------- 系统更新 (OTA) ---------- */
@@ -1970,15 +2094,15 @@ let otaInfo = null;
 function esc(s) { return String(s == null ? '' : s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
 async function otaCheck(force) {
   const tag = document.getElementById('upd-tag'), msg = document.getElementById('upd-msg');
-  tag.className = 'updtag'; tag.textContent = '检查中…';
-  msg.textContent = '正在连接 GitHub…';
+  tag.className = 'updtag'; tag.textContent = t('检查中…');
+  msg.textContent = t('正在连接 GitHub…');
   try {
     const j = await (await fetch('/api/ota/check' + (force ? '?force=1' : ''), { cache: 'no-store' })).json();
     otaInfo = j;
     document.getElementById('upd-cur').textContent = 'v' + j.current;
     document.getElementById('upd-new').textContent = j.latest ? 'v' + j.latest : '—';
     tag.className = 'updtag' + (j.has_update ? ' new' : '');
-    tag.textContent = j.error ? '检查失败' : (j.has_update ? '有新版本' : '已是最新');
+    tag.textContent = j.error ? t('检查失败') : (j.has_update ? t('有新版本') : t('已是最新'));
     const n = document.getElementById('upd-notes');
     if (j.notes && j.notes.length) {
       n.innerHTML = j.notes.map(x => '· ' + esc(x)).join('<br>');
@@ -1987,12 +2111,12 @@ async function otaCheck(force) {
     document.getElementById('upd-go').disabled = !j.has_update;
     document.getElementById('upd-rb').style.display = j.rollback_ready ? '' : 'none';
     msg.textContent = j.error
-      ? '连不上 GitHub: ' + j.error + ' (可稍后重试)'
-      : ('来源 ' + (j.source || '-') + (j.date ? ' · ' + j.date : '') + (j.has_update ? '' : ' · 已是最新'));
+      ? t('连不上 GitHub') + ': ' + j.error + ' ' + t('(可稍后重试)')
+      : (t('来源') + ': ' + (j.source || '-') + (j.date ? ' · ' + j.date : '') + (j.has_update ? '' : ' · ' + t('已是最新')));
     document.getElementById('gear').classList.toggle('hasupd', !!j.has_update);
   } catch (e) {
-    tag.className = 'updtag'; tag.textContent = '检查失败';
-    msg.textContent = '检查失败: ' + e;
+    tag.className = 'updtag'; tag.textContent = t('检查失败');
+    msg.textContent = t('检查失败') + ': ' + e;
   }
 }
 /* 服务重启期间轮询, 起来后自动刷新页面 */
@@ -2011,14 +2135,14 @@ async function otaApply() {
   if (!confirm('升级到 v' + otaInfo.latest + ' ?\n程序文件会被覆盖, 服务自动重启约 5 秒, 期间页面会短暂打不开。')) return;
   const btn = document.getElementById('upd-go'), msg = document.getElementById('upd-msg');
   btn.disabled = true;
-  msg.textContent = '正在下载并校验新版本 (约 10~30 秒)…';
+  msg.textContent = t('正在下载并校验新版本…');
   try {
     const j = await (await fetch('/api/ota/apply', { method: 'POST' })).json();
     msg.textContent = j.msg;
     if (!j.ok) { btn.disabled = false; return; }
     otaWaitBack();
   } catch (e) {
-    msg.textContent = '升级失败: ' + e;
+    msg.textContent = t('升级失败') + ': ' + e;
     btn.disabled = false;
   }
 }
@@ -2168,7 +2292,7 @@ async function usbAttach() {
 }
 async function usbDetach() {
   const j = await (await fetch('/api/usb/detach', { method: 'POST' })).json();
-  toast(j.ok ? '✅ 已恢复车机导出' : '❌ ' + j.msg);
+  toast(j.ok ? '✅ ' + t('已恢复车机导出') : '❌ ' + t(j.msg));
   document.getElementById('dir-nav').style.display = 'none';
   refreshFiles();
 }
@@ -2248,7 +2372,7 @@ async function refreshFiles(dir) {
     btnDel.onclick = () => delFile(area === 'usb' ? (curDir ? curDir + '/' + f.name : f.name) : curDir + '/' + f.name);
     d.append(n, tag, btnDl, btnDel); list.appendChild(d);
   }
-  if (empty) list.innerHTML = '<div class="hint" style="margin:0">空目录</div>';
+  if (empty) list.innerHTML = '<div class="hint" style="margin:0">' + t('空目录') + '</div>';
 }
 async function delFile(p) {
   if (!confirm('删除 ' + (area === 'usb' ? 'U盘/' : '') + p + ' ?')) return;
@@ -2263,6 +2387,7 @@ document.getElementById('anyfile-file').onchange = async function () {
 };
 
 injectSkin();
+applyLang();
 load();
 </script></body></html>"""
 
@@ -4018,7 +4143,7 @@ def fail_check(ip, inc):
 
 LOGIN_HTML = """<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>登录 · 特斯拉哨兵云盘</title>
+<title>__L_LOGIN__ · __L_BRAND__</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
@@ -4043,15 +4168,15 @@ button:active{background:#0ea472}
 </style></head><body>
 <form class="card" method="post" action="/login">
   <div class="logo"><div class="dot">🚗</div>
-    <div><h1>特斯拉哨兵云盘</h1><p class="sub">Tesla Sentry Drive</p></div></div>
-  <label>用户名</label>
+    <div><h1>__L_BRAND__</h1><p class="sub">Tesla Sentry Drive</p></div></div>
+  <label>__L_USER__</label>
   <input name="u" autocomplete="username" autocapitalize="none" autocorrect="off" value="__USER__">
-  <label>密码</label>
+  <label>__L_PASS__</label>
   <input name="p" type="password" autocomplete="current-password" autofocus>
   <input type="hidden" name="next" value="__NEXT__">
-  <button type="submit">登录</button>
+  <button type="submit">__L_LOGIN__</button>
   <div class="err">__MSG__</div>
-  <div class="foot">仅限本人访问 · 登录状态保留 __DAYS__ 天</div>
+  <div class="foot">__L_FOOT__</div>
 </form></body></html>"""
 
 
@@ -4082,10 +4207,19 @@ class Handler(BaseHTTPRequestHandler):
         return False
 
     def _login_page(self, msg="", nxt="/", code=200):
+        lang = lang_from_accept(self.headers.get("Accept-Language") or "", "zh")
+        days = str(max(1, AUTH_TTL // 86400))
+        foot = tr("仅限本人访问", lang) + " · " + tr("登录状态保留", lang) + " " + days + " " + tr("天", lang)
         html = (LOGIN_HTML.replace("__USER__", AUTH_USER)
                 .replace("__NEXT__", nxt.replace('"', "&quot;"))
-                .replace("__MSG__", msg)
-                .replace("__DAYS__", str(max(1, AUTH_TTL // 86400))))
+                .replace("__MSG__", tr(msg, lang))
+                .replace("__L_BRAND__", tr("特斯拉哨兵云盘", lang))
+                .replace("__L_USER__", tr("用户名", lang))
+                .replace("__L_PASS__", tr("密码", lang))
+                .replace("__L_LOGIN__", tr("登录", lang))
+                .replace("__L_FOOT__", foot))
+        if lang != "zh":
+            html = html.replace('<html lang="zh">', '<html lang="%s">' % lang)
         self._send(code, html.encode())
 
     def _do_login(self):
@@ -4198,7 +4332,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self._gate():
             return
         if path in ("/", "/index.html"):
-            html = HTML.replace("__CAT_NAMES__", json.dumps(CAT_NAMES, ensure_ascii=False))
+            html = (HTML.replace("__CAT_NAMES__", json.dumps(CAT_NAMES, ensure_ascii=False))
+                    .replace("__I18N__", I18N_JS).replace("__LANGS__", LANG_JS))
             self._send(200, html.encode())
         elif path == "/api/stitch/status":
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
