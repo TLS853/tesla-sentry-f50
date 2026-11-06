@@ -16,8 +16,10 @@ import subprocess
 import threading
 import time
 import urllib.parse
+import urllib.request
 import zipfile
 import tempfile
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # 路径/端口优先取环境变量 (install.sh 写入 /etc/tesla-sentry.conf, 服务单元以 EnvironmentFile 注入),
@@ -31,6 +33,214 @@ PORT = int(os.environ.get("TSF_PORT", "8080"))
 CATS = ["SentryClips", "SavedClips", "RecentClips"]
 CAT_NAMES = {"SentryClips": "哨兵告警", "SavedClips": "手动保存", "RecentClips": "行车记录"}
 MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频有自己的更小限制)
+
+# ---------------- 版本与在线升级 (OTA) ----------------
+# 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
+# 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
+APP_VERSION = "2.1.0"
+OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
+_OTA_DEFAULT = ",".join([
+    "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
+    "https://ghfast.top/https://raw.githubusercontent.com/%s/main" % OTA_REPO,
+    "https://cdn.jsdelivr.net/gh/%s@main" % OTA_REPO,
+])
+OTA_SOURCES = [s.strip().rstrip("/") for s in os.environ.get("TSF_OTA_SOURCES", _OTA_DEFAULT).split(",") if s.strip()]
+OTA_BACKUP = os.environ.get("TSF_OTA_BACKUP", "/opt/tesla-sentry/sentry-viewer.bak.py")
+OTA_STATE = os.environ.get("TSF_OTA_STATE", "/opt/tesla-sentry/ota-state.json")
+_OTA_CACHE = {"t": 0.0, "data": None}
+
+
+def _http_get(url, timeout=10, limit=8 << 20):
+    req = urllib.request.Request(url, headers={"User-Agent": "tsf-ota/" + APP_VERSION, "Cache-Control": "no-cache"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read(limit)
+
+
+def _vtuple(v):
+    out = []
+    for x in re.split(r"[.\-+]", str(v)):
+        out.append(int(x) if x.isdigit() else 0)
+    return tuple(out) or (0,)
+
+
+def ota_latest(force=False):
+    """读仓库 version.json (含版本号/日期/更新说明), 依次尝试多个源, 结果缓存 10 分钟"""
+    now = time.time()
+    if not force and _OTA_CACHE["data"] and now - _OTA_CACHE["t"] < 600:
+        return _OTA_CACHE["data"]
+    errs = []
+    for base in OTA_SOURCES:
+        try:
+            raw = _http_get(base + "/version.json?ts=%d" % int(now), timeout=8, limit=256 << 10)
+            j = json.loads(raw.decode("utf-8", "replace"))
+            ver = str(j.get("version") or "").strip()
+            if not ver:
+                raise ValueError("version.json 缺少 version 字段")
+            j["_base"] = base
+            _OTA_CACHE.update({"t": now, "data": j})
+            return j
+        except Exception as ex:
+            errs.append("%s: %s" % (urllib.parse.urlsplit(base).netloc, ex))
+    _OTA_CACHE.update({"t": now, "data": None})
+    raise RuntimeError("; ".join(errs[:2]) or "无可用下载源")
+
+
+def ota_check(force=False):
+    cur = APP_VERSION
+    out = {"ok": True, "current": cur, "latest": "", "date": "", "notes": [],
+           "has_update": False, "source": "", "error": "",
+           "rollback_ready": os.path.isfile(OTA_BACKUP)}
+    try:
+        j = ota_latest(force)
+    except Exception as ex:
+        out["error"] = str(ex)
+        return out
+    latest = str(j.get("version"))
+    out.update({"latest": latest, "date": j.get("date") or "", "notes": j.get("notes") or [],
+                "has_update": _vtuple(latest) > _vtuple(cur),
+                "source": urllib.parse.urlsplit(j["_base"]).netloc})
+    return out
+
+
+def _self_paths():
+    """需要一起覆盖的程序文件 (只认正式安装位置; 临时副本只改它自己)"""
+    here = os.path.realpath(__file__)
+    known = ("/opt/tesla-sentry/sentry-viewer.py", "/root/sentry-viewer.py")
+    paths = [here]
+    if here not in known:
+        return paths
+    for p in known:
+        try:
+            rp = os.path.realpath(p)
+        except OSError:
+            continue
+        if os.path.isfile(rp) and rp not in paths:
+            paths.append(rp)
+    return paths
+
+
+def _write_each(paths, data):
+    for p in paths:
+        d = os.path.dirname(p) or "."
+        tmp = os.path.join(d, ".ota-tmp.py")
+        with open(tmp, "wb") as f:
+            f.write(data)
+        try:
+            os.chmod(tmp, 0o644)
+        except OSError:
+            pass
+        os.replace(tmp, p)          # 原子替换, 不会出现半个文件
+
+
+def _ota_restart():
+    """优先交给 procd 的 init 脚本重启 (找不到就原地 exec)"""
+    here = os.path.realpath(__file__)
+    d = os.path.dirname(here)
+    cands = []
+    for name in ("tesla-viewer", "sentry-viewer"):
+        p = "/etc/init.d/" + name
+        if not os.path.isfile(p):
+            continue
+        try:
+            with open(p, encoding="utf-8", errors="replace") as f:
+                txt = f.read()
+        except OSError:
+            txt = ""
+        score = 2 if here in txt else (1 if d and d in txt else 0)
+        cands.append((score, p))
+    cands.sort(reverse=True)
+    if cands and cands[0][0] > 0:
+        try:
+            subprocess.Popen([cands[0][1], "restart"], stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+            return
+        except Exception:
+            pass
+    try:
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+    except Exception:
+        os._exit(1)
+
+
+def ota_apply():
+    """下载并安装最新版; 返回 (成功?, 提示/错误)"""
+    try:
+        j = ota_latest(True)
+    except Exception as ex:
+        return False, "检查更新失败: %s" % ex
+    latest = str(j.get("version"))
+    if not _vtuple(latest) > _vtuple(APP_VERSION):
+        return False, "当前已是最新版本 (%s)" % APP_VERSION
+    base = j["_base"]
+    try:
+        data = _http_get(base + "/sentry-viewer.py?ts=%d" % int(time.time()), timeout=60)
+    except Exception as ex:
+        return False, "下载失败: %s" % ex
+    # 1) 完整性校验: 大小 + 特征串 + 内嵌版本号必须与清单一致
+    if len(data) < 50000:
+        return False, "下载不完整 (%d 字节)" % len(data)
+    if b"APP_VERSION" not in data or b"--ota-check" not in data or b"/api/events" not in data:
+        return False, "文件校验失败: 不是有效的查看器程序"
+    m = re.search(rb'APP_VERSION\s*=\s*"([^"]+)"', data)
+    if not m or m.group(1).decode() != latest:
+        return False, "版本校验失败 (文件 %s / 清单 %s)" % (m.group(1).decode() if m else "?", latest)
+    # 2) 语法 + 启动自检: 新程序自己声明的 --ota-check 只做模块加载, 不启服务
+    tmp = "/tmp/tsf-ota-new.py"
+    try:
+        with open(tmp, "wb") as f:
+            f.write(data)
+        r = subprocess.run([sys.executable or "python3", "-m", "py_compile", tmp],
+                           capture_output=True, timeout=90)
+        if r.returncode != 0:
+            return False, "语法校验失败: " + r.stderr.decode("utf-8", "replace")[-160:]
+        r = subprocess.run([sys.executable or "python3", tmp, "--ota-check"],
+                           capture_output=True, timeout=90)
+        if r.returncode != 0 or b"ok" not in (r.stdout or b"").lower():
+            return False, "启动自检失败: " + (r.stderr or r.stdout).decode("utf-8", "replace")[-160:]
+        os.remove(tmp)
+    except Exception as ex:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False, "校验异常: %s" % ex
+    # 3) 备份旧版 (回滚用) 后逐份原子替换
+    here = os.path.realpath(__file__)
+    try:
+        os.makedirs(os.path.dirname(OTA_BACKUP) or ".", exist_ok=True)
+        shutil.copy2(here, OTA_BACKUP)
+    except Exception as ex:
+        return False, "备份旧版本失败: %s" % ex
+    prev = APP_VERSION
+    try:
+        _write_each(_self_paths(), data)
+    except Exception as ex:
+        return False, "写入失败: %s" % ex
+    try:
+        with open(OTA_STATE, "w", encoding="utf-8") as f:
+            json.dump({"applied": latest, "prev": prev, "at": int(time.time())}, f)
+    except OSError:
+        pass
+    threading.Timer(1.2, _ota_restart).start()
+    return True, "已升级到 %s, 服务正在重启…" % latest
+
+
+def ota_rollback():
+    if not os.path.isfile(OTA_BACKUP):
+        return False, "没有可用的备份 (还没升级过)"
+    try:
+        with open(OTA_BACKUP, "rb") as f:
+            data = f.read()
+    except OSError as ex:
+        return False, "读取备份失败: %s" % ex
+    if len(data) < 50000:
+        return False, "备份文件不完整, 已放弃回滚"
+    try:
+        _write_each(_self_paths(), data)
+    except Exception as ex:
+        return False, "写入失败: %s" % ex
+    threading.Timer(1.0, _ota_restart).start()
+    return True, "已回滚到上一版本, 服务正在重启…"
 
 HTML = r"""<!DOCTYPE html>
 <html lang="zh"><head>
@@ -246,10 +456,22 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .panel.open { display:block; }
 .panel h2 { font-size:15px; margin-bottom:12px; display:flex; align-items:center; }
 .panel h2 .x { margin-left:auto; background:none; border:none; color:var(--muted); font-size:20px; cursor:pointer; }
-.stabs { display:flex; gap:8px; margin-bottom:14px; }
-.stab { flex:1; padding:8px; border-radius:10px; background:var(--panel2); color:var(--muted); text-align:center; cursor:pointer; font-size:13px; border:none; }
+.stabs { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+.stab { flex:1 1 0; min-width:0; padding:8px 2px; border-radius:10px; background:var(--panel2); color:var(--muted); text-align:center; cursor:pointer; font-size:12.5px; border:none; white-space:nowrap; }
 .stab.active { background:var(--accent); color:#fff; }
 .hint { font-size:11.5px; color:var(--muted2); line-height:1.6; margin-bottom:10px; }
+/* 系统更新 (OTA) */
+.updrow { display:flex; align-items:baseline; gap:8px; padding:7px 0; font-size:13px; }
+.updk { color:var(--muted); min-width:64px; flex:0 0 auto; }
+.updtag { font-size:11px; padding:1px 8px; border-radius:9px; background:var(--amberbg); color:var(--amber); border:1px solid var(--amberline); white-space:nowrap; }
+.updtag.new { background:rgba(232,68,63,.14); color:var(--accent); border-color:rgba(232,68,63,.32); }
+.updnotes { display:none; background:var(--panel2); border-radius:10px; padding:9px 12px; font-size:12.5px; line-height:1.85; color:var(--muted); margin:6px 0 2px; }
+.updbtns { display:flex; gap:8px; margin:10px 0 8px; }
+.updbtns .mini { flex:1; padding:9px 0; border-radius:9px; background:var(--panel2); border:none; color:var(--text); font-size:13px; cursor:pointer; }
+.updbtns .mini.primary { background:var(--accent); color:#fff; }
+.updbtns .mini:disabled { opacity:.45; cursor:default; }
+#gear { position:relative; }
+#gear.hasupd::after { content:''; position:absolute; top:4px; right:4px; width:7px; height:7px; border-radius:50%; background:var(--accent); box-shadow:0 0 0 2px var(--headbg); }
 .upbtn { display:block; width:100%; padding:10px; border:1px dashed var(--line2); border-radius:10px; color:var(--muted); text-align:center; cursor:pointer; font-size:13px; margin-bottom:12px; background:var(--panel2); }
 .upbtn:hover { border-color:var(--accent); color:var(--text); }
 .item { display:flex; align-items:center; gap:10px; background:var(--panel2); border-radius:10px; padding:9px 12px; margin-bottom:8px; font-size:13px; }
@@ -365,6 +587,7 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
     <button class="stab active" id="st-skin" onclick="stab('skin')">🎨 页面皮肤</button>
     <button class="stab" id="st-audio" onclick="stab('audio')">🔊 锁车语音</button>
     <button class="stab" id="st-files" onclick="stab('files')">📂 文件</button>
+    <button class="stab" id="st-update" onclick="stab('update')">🔄 更新</button>
   </div>
   <div id="tab-skin">
     <div class="hint">上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 <b>/skin-media/文件名</b>。CSS 示例:<br><code>body{background:url(/skin-media/bg.jpg) center/cover}</code></div>
@@ -396,6 +619,17 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
       <label class="upbtn" id="upbtn">＋ 上传文件到当前目录 (任意类型, ≤100MB)<input type="file" id="anyfile-file" hidden></label>
       <div id="file-list"></div>
     </div>
+  </div>
+  <div id="tab-update" style="display:none">
+    <div class="updrow"><span class="updk">当前版本</span><b id="upd-cur">—</b></div>
+    <div class="updrow"><span class="updk">最新版本</span><b id="upd-new">—</b><span class="updtag" id="upd-tag">未检查</span></div>
+    <div class="updnotes" id="upd-notes"></div>
+    <div class="updbtns">
+      <button class="mini" id="upd-check" onclick="otaCheck(true)">检查更新</button>
+      <button class="mini primary" id="upd-go" onclick="otaApply()" disabled>立即升级</button>
+    </div>
+    <div class="hint" id="upd-msg">升级会从 GitHub 拉取最新程序, 覆盖本机文件并自动重启服务 (约 5 秒); 配置、录像、登录信息不受影响。</div>
+    <div class="updbtns"><button class="mini" id="upd-rb" onclick="otaRollback()" style="display:none">↩ 回滚到上一版本</button></div>
   </div>
 </div>
 <div class="toast" id="toast"></div>
@@ -1448,13 +1682,91 @@ function toast(msg) {
   setTimeout(() => t.style.display = 'none', 2500);
 }
 function stab(which) {
-  document.getElementById('st-skin').classList.toggle('active', which === 'skin');
-  document.getElementById('st-audio').classList.toggle('active', which === 'audio');
-  document.getElementById('st-files').classList.toggle('active', which === 'files');
-  document.getElementById('tab-skin').style.display = which === 'skin' ? '' : 'none';
-  document.getElementById('tab-audio').style.display = which === 'audio' ? '' : 'none';
-  document.getElementById('tab-files').style.display = which === 'files' ? '' : 'none';
+  ['skin', 'audio', 'files', 'update'].forEach(k => {
+    const b = document.getElementById('st-' + k), t = document.getElementById('tab-' + k);
+    if (b) b.classList.toggle('active', k === which);
+    if (t) t.style.display = k === which ? '' : 'none';
+  });
+  if (which === 'update') otaCheck(false);
 }
+
+/* ---------- 系统更新 (OTA) ---------- */
+let otaInfo = null;
+function esc(s) { return String(s == null ? '' : s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+async function otaCheck(force) {
+  const tag = document.getElementById('upd-tag'), msg = document.getElementById('upd-msg');
+  tag.className = 'updtag'; tag.textContent = '检查中…';
+  msg.textContent = '正在连接 GitHub…';
+  try {
+    const j = await (await fetch('/api/ota/check' + (force ? '?force=1' : ''), { cache: 'no-store' })).json();
+    otaInfo = j;
+    document.getElementById('upd-cur').textContent = 'v' + j.current;
+    document.getElementById('upd-new').textContent = j.latest ? 'v' + j.latest : '—';
+    tag.className = 'updtag' + (j.has_update ? ' new' : '');
+    tag.textContent = j.error ? '检查失败' : (j.has_update ? '有新版本' : '已是最新');
+    const n = document.getElementById('upd-notes');
+    if (j.notes && j.notes.length) {
+      n.innerHTML = j.notes.map(x => '· ' + esc(x)).join('<br>');
+      n.style.display = 'block';
+    } else { n.style.display = 'none'; n.innerHTML = ''; }
+    document.getElementById('upd-go').disabled = !j.has_update;
+    document.getElementById('upd-rb').style.display = j.rollback_ready ? '' : 'none';
+    msg.textContent = j.error
+      ? '连不上 GitHub: ' + j.error + ' (可稍后重试)'
+      : ('来源 ' + (j.source || '-') + (j.date ? ' · ' + j.date : '') + (j.has_update ? '' : ' · 已是最新'));
+    document.getElementById('gear').classList.toggle('hasupd', !!j.has_update);
+  } catch (e) {
+    tag.className = 'updtag'; tag.textContent = '检查失败';
+    msg.textContent = '检查失败: ' + e;
+  }
+}
+/* 服务重启期间轮询, 起来后自动刷新页面 */
+async function otaWaitBack() {
+  for (let i = 0; i < 40; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    try {
+      const r = await fetch('/api/live', { cache: 'no-store' });
+      if (r.ok) { location.reload(); return; }
+    } catch (e) {}
+  }
+  location.reload();
+}
+async function otaApply() {
+  if (!otaInfo || !otaInfo.has_update) return;
+  if (!confirm('升级到 v' + otaInfo.latest + ' ?\n程序文件会被覆盖, 服务自动重启约 5 秒, 期间页面会短暂打不开。')) return;
+  const btn = document.getElementById('upd-go'), msg = document.getElementById('upd-msg');
+  btn.disabled = true;
+  msg.textContent = '正在下载并校验新版本 (约 10~30 秒)…';
+  try {
+    const j = await (await fetch('/api/ota/apply', { method: 'POST' })).json();
+    msg.textContent = j.msg;
+    if (!j.ok) { btn.disabled = false; return; }
+    otaWaitBack();
+  } catch (e) {
+    msg.textContent = '升级失败: ' + e;
+    btn.disabled = false;
+  }
+}
+async function otaRollback() {
+  if (!confirm('回滚到升级前的版本?\n适合新版本出现问题时使用, 服务会自动重启。')) return;
+  const msg = document.getElementById('upd-msg');
+  msg.textContent = '正在回滚…';
+  try {
+    const j = await (await fetch('/api/ota/rollback', { method: 'POST' })).json();
+    msg.textContent = j.msg;
+    if (j.ok) otaWaitBack();
+  } catch (e) { msg.textContent = '回滚失败: ' + e; }
+}
+/* 打开首页后静默检查一次 (结果缓存 10 分钟), 有新版本时齿轮上亮红点 */
+setTimeout(() => {
+  fetch('/api/ota/check', { cache: 'no-store' }).then(r => r.json()).then(j => {
+    if (j && j.has_update) {
+      const g = document.getElementById('gear');
+      g.classList.add('hasupd');
+      g.title = '有新版本 v' + j.latest + ' · 点开设置可升级';
+    }
+  }).catch(() => {});
+}, 5000);
 document.getElementById('gear').onclick = () => {
   document.getElementById('mask').classList.add('open');
   document.getElementById('panel').classList.add('open');
@@ -3017,6 +3329,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json({"ok": True, **tel})
         elif path == "/api/live":
             self._json(live_status())
+        elif path == "/api/ota/check":
+            q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            self._json(ota_check(force=q.get("force", ["0"])[0] == "1"))
         elif path == "/api/skins":
             skins = sorted(f for f in os.listdir(SKIN_DIR)
                            if f != "active.json" and os.path.isfile(os.path.join(SKIN_DIR, f)))
@@ -3290,6 +3605,14 @@ class Handler(BaseHTTPRequestHandler):
         if not self._gate():
             return
         path = urllib.parse.unquote(self.path)
+        if path == "/api/ota/apply":
+            ok, msg = ota_apply()
+            self._json({"ok": ok, "msg": msg})
+            return
+        if path == "/api/ota/rollback":
+            ok, msg = ota_rollback()
+            self._json({"ok": ok, "msg": msg})
+            return
         if path == "/api/stitch":
             try:
                 n = int(self.headers.get("Content-Length", 0))
@@ -3461,6 +3784,10 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    # OTA 自检: 只验证模块能完整加载 (常量/函数定义无误), 不启动服务、不碰硬件
+    if "--ota-check" in sys.argv:
+        print("ok %s" % APP_VERSION)
+        sys.exit(0)
     ensure_dirs()
     # 降低自身被 OOM 杀掉的概率 (合成任务会自己调高优先级先死)
     try:

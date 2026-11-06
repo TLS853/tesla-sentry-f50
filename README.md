@@ -61,6 +61,8 @@
 | 📶 **在线清晰度切换** | 播放器可选 原画 / 720p / 480p / 360p，低码率转码缓存（360p 约为原片 1/10 体积）；公网/弱网访问默认 360p，内网默认原画；首次切换需等待十几秒转码，之后秒开 |
 | 💧 **导出可烧录水印** | 导出时勾选"叠加行车信息水印"，把时间/位置/车速/挡位/油门/刹车以**半透明单行横条**烧录到画面顶部（约占画面高 5%，基本不挡路况），单路/多路都支持 |
 | 🎨 **页面皮肤** | 上传 CSS / 背景图，即刻换肤 |
+| 🌗 **深色 / 浅色 / 自动** | 整套界面用 CSS 变量做成双主题，右上角一键循环切换（自动模式跟随系统），播放器子页面同步换肤；只有视频画面区域保持恒定深色 |
+| 🔄 **一键在线升级（OTA）** | 设置 →「更新」页签：自动比对 GitHub 仓库里的 `version.json`，有新版本时齿轮亮红点，点一下即下载新程序、语法+启动自检、备份旧版、原子替换并自动重启；出问题可一键回滚 |
 | 🔐 **全站登录保护** | 账号密码登录（cookie 记住 30 天），页面/视频流/缩略图/下载/API 全部拦截；支持 HTTP Basic 便于脚本；同 IP 连错 8 次锁 5 分钟；右上角一键退出 |
 | 🔊 **锁车音 / Boombox 音效** | 网页上传音频，自动写入车机 U 盘 `Boombox/`，车机端直接选 |
 | 📂 **U 盘文件管理** | 网页直接浏览/上传/下载/删除车机 U 盘内容（临时断开、自动恢复导出） |
@@ -154,6 +156,7 @@ sudo ./install.sh --size 200 --port 8080 --archive /archive
 | 🎨 页面皮肤 | 上传 `.css` / `.jpg` / `.png` / `.webp`；CSS 里用 `/skin-media/文件名` 引用图片 |
 | 🔊 锁车语音 | 上传 WAV/MP3，可"设为锁车音"（改名 `LockChime.wav`），归档时写入车机 U 盘 `Boombox/` |
 | 📂 文件 | **车机U盘**：浏览/上传/下载/删除 U 盘任意目录（含根目录）；**归档区**：浏览 F50 内部文件 |
+| 🔄 更新 | 查看当前/最新版本与更新说明，一键检查并升级，出问题可回滚（见 [在线升级](#在线升级ota)） |
 
 **锁车音要求**（特斯拉规范）：WAV、44.1kHz、16-bit、< 1MB、1–5 秒。车机端：Toybox → Boombox → Lock Sound → 选 USB。
 
@@ -198,7 +201,32 @@ TSF_BOX_KEEP_DAYS=14             # 保留天数, 0 = 不按天数清
 TSF_BOX_MAX_GB=12                # 单个分类体积上限 (GB), 0 = 不按体积清
                                  # 提示: 镜像高水位约 170G 时, 12G/类比较安全;
                                  # 想多留就调大, 但注意剩余空间, 兜底清理不覆盖这两个分类
+
+# 在线升级 (OTA): 默认依次尝试 GitHub 原生地址 → ghfast 镜像 → jsDelivr,
+# 哪个能通就用哪个; 想换成自己的 fork 或内网源, 改下面两个变量即可
+TSF_OTA_REPO=baicyber/tesla-sentry-f50
+# TSF_OTA_SOURCES=https://raw.githubusercontent.com/you/repo/main,https://cdn.jsdelivr.net/gh/you/repo@main
+# TSF_OTA_BACKUP=/opt/tesla-sentry/sentry-viewer.bak.py   # 升级前的备份 (回滚用)
 ```
+
+### 在线升级（OTA）
+
+网页右上角 **⚙ → 🔄 更新**：
+
+- 打开设置即自动比对仓库里的 `version.json`；有新版本时齿轮按钮上会亮红点
+- 页面显示「当前版本 / 最新版本 / 更新说明」，点 **立即升级** 完成：下载 → 校验（大小、特征串、内嵌版本号、`py_compile`、`--ota-check` 启动自检）→ 备份旧版 → 原子替换 → 自动重启服务（约 5 秒，页面自动刷新回来）
+- 万一新版有问题，同一页有 **↩ 回滚到上一版本**
+- 配置（`/etc/tesla-sentry.conf`）、`auth.conf`、录像归档都不在升级范围内，不会被动
+
+发新版本的流程（维护者）：
+
+```sh
+python3 tools/make_release.py 2.2.0 "新增 XXX" "修复 YYY"   # 改 APP_VERSION + 生成 version.json
+git add -A && git commit -m "release: v2.2.0" && git push
+```
+
+> 若仓库改到别处，记得同时改 `APP_VERSION` 所在的 `OTA_REPO` 或 `TSF_OTA_SOURCES`。
+> 设备没网 / GitHub 被墙时检查会失败，但**已安装的版本照常运行**，不影响看录像。
 
 ### 访问认证
 
@@ -271,6 +299,9 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 | `/api/upload/skin` | POST | 上传皮肤 |
 | `/api/upload/audio` | POST | 上传锁车音/音效 |
 | `/api/audio/setlockchime` | POST | 把队列中音频设为锁车音 |
+| `/api/ota/check?force=1` | GET | 比对 GitHub 仓库 `version.json`，返回 `{current, latest, notes, has_update, source}`（结果缓存 10 分钟，`force=1` 强制刷新） |
+| `/api/ota/apply` | POST | 下载最新版 → 校验 → 备份旧版 → 原子替换 → 重启服务 |
+| `/api/ota/rollback` | POST | 回滚到升级前备份的版本并重启 |
 | `/usbdl?path=` · `/dl?path=` | GET | 下载（U盘 / 归档区）；`/dl` 追加 `&q=360p/480p/720p` 返回转码副本 |
 | `/api/usb?path=` · `/api/file?path=` | DELETE | 删除（U盘 / 归档区） |
 
