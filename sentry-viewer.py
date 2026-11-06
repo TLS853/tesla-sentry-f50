@@ -39,7 +39,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.3.0"
+APP_VERSION = "2.3.1"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -519,7 +519,13 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .nrow > span:first-child { flex:0 0 auto; }
 .nrow input[type=checkbox] { width:18px; height:18px; accent-color:var(--accent); margin-left:auto; }
 .ninput.num { width:76px; margin:0; text-align:center; }
+.ninput.masked { color:var(--muted2); letter-spacing:1.5px; cursor:default; border-style:dashed; }
 select.ninput { cursor:pointer; }
+.eyebar { display:flex; align-items:center; gap:8px; margin:0 0 8px; }
+.eyebar .lbl { flex:1; font-size:11.5px; color:var(--muted2); }
+.eyebar .mini { flex:0 0 auto; padding:6px 12px; border-radius:8px; background:var(--panel2);
+  border:1px solid var(--line2); color:var(--text); font-size:12px; cursor:pointer; }
+.eyebar .mini:hover { border-color:var(--accent); }
 .hint2 { font-size:11.5px; color:var(--muted2); }
 /* 系统更新 (OTA) */
 .updrow { display:flex; align-items:baseline; gap:8px; padding:7px 0; font-size:13px; }
@@ -687,13 +693,18 @@ select.ninput { cursor:pointer; }
     <div class="hint">哨兵触发时自动把<b>时间 / 位置 / 触发原因 / 触发镜头</b>和<b>触发那一帧画面</b>推到飞书。<br>
     默认走<b>自建应用私聊</b>：只进你本人和机器人的单聊，别人看不到。做法：飞书开放平台建一个<b>企业自建应用</b> → 开<b>机器人</b>能力 → 加 <b>im:message</b>（发消息）和 <b>im:resource</b>（传图）权限 → 创建版本并发布 → 把 App ID / App Secret 和你自己的 open_id（或邮箱）填到下面。<br>
     也可以切到<b>群机器人</b>：群里加「自定义机器人」，把 webhook 填进来即可（群里所有人可见）。<br>
-    推送内容可选<b>封面卡片</b>或<b>触发摄像头那段视频</b>（视频只能用自建应用私聊发；群机器人发不了视频）。</div>
+    推送内容可选<b>封面卡片</b>或<b>触发摄像头那段视频</b>（视频只能用自建应用私聊发；群机器人发不了视频）。<br>
+    敏感字段（接收人 / App ID / Secret / webhook）默认<b>打码隐藏</b>，方便截图演示；点「👁 显示」才可编辑。</div>
     <label class="nrow"><span>启用推送</span><input type="checkbox" id="nt-en"></label>
     <label class="nrow"><span>也推手动保存</span><input type="checkbox" id="nt-saved"></label>
     <select class="ninput" id="nt-mode">
       <option value="dm">私聊推送 — 只有我本人能看到</option>
       <option value="group">群机器人 — 群里所有人都能看到</option>
     </select>
+    <div class="eyebar">
+      <span class="lbl" id="nt-eyetip">敏感信息已隐藏（截图安全）</span>
+      <button class="mini" id="nt-eye" onclick="ntToggleEye()">👁 显示</button>
+    </div>
     <input class="ninput" id="nt-to" placeholder="接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱">
     <select class="ninput" id="nt-media" onchange="ntMediaUI()">
       <option value="thumb">推送内容：封面卡片（触发那帧图 + 信息，最快）</option>
@@ -1800,6 +1811,53 @@ function stab(which) {
 }
 
 /* ---------- 飞书推送 ---------- */
+const NT_SENS = ['nt-to', 'nt-appid', 'nt-hook', 'nt-url'];
+let ntHidden = true;            // 默认隐藏, 截图安全
+function ntMask(v) {
+  v = (v || '').trim();
+  if (!v) return '';
+  if (v.length <= 8) return '•'.repeat(10);
+  return v.slice(0, 4) + '•'.repeat(Math.min(20, v.length - 7)) + v.slice(-3);
+}
+function ntMaskUrl(v) {
+  v = (v || '').trim();
+  if (!v) return '';
+  const m = /^([a-z]+:\/\/)/i.exec(v);
+  return (m ? m[1] : '') + '•'.repeat(12);
+}
+function ntClearReal() {
+  NT_SENS.forEach(id => { const el = document.getElementById(id); if (el) delete el.dataset.real; });
+}
+function ntReal(id) {
+  const el = document.getElementById(id);
+  if (!el) return '';
+  return (el.dataset.real !== undefined ? el.dataset.real : el.value || '').trim();
+}
+function ntSetEye(hide) {
+  ntHidden = !!hide;
+  NT_SENS.forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (ntHidden) {
+      if (el.dataset.real === undefined) el.dataset.real = el.value || '';
+      el.value = id === 'nt-url' ? ntMaskUrl(el.dataset.real) : ntMask(el.dataset.real);
+      el.readOnly = true;
+      el.classList.add('masked');
+    } else {
+      if (el.dataset.real !== undefined) { el.value = el.dataset.real; delete el.dataset.real; }
+      el.readOnly = false;
+      el.classList.remove('masked');
+    }
+  });
+  const sec = document.getElementById('nt-secret');
+  if (sec) sec.placeholder = ntHidden ? 'App Secret ••••••••••'
+    : (sec.dataset.has === '1' ? 'App Secret 已保存, 留空表示不修改' : 'App Secret');
+  const btn = document.getElementById('nt-eye'), tip = document.getElementById('nt-eyetip');
+  if (btn) btn.textContent = ntHidden ? '👁 显示' : '🙈 隐藏';
+  if (tip) tip.textContent = ntHidden ? '敏感信息已隐藏（截图安全）' : '敏感信息已明文显示，注意别外发';
+}
+function ntToggleEye() { ntSetEye(!ntHidden); }
+
 async function ntLoad() {
   try {
     const j = await (await fetch('/api/notify', { cache: 'no-store' })).json();
@@ -1810,13 +1868,15 @@ async function ntLoad() {
     document.getElementById('nt-quality').value = j.quality || '480p';
     document.getElementById('nt-vdur').value = j.vdur || 30;
     ntMediaUI();
+    ntClearReal();
     document.getElementById('nt-to').value = j.receive_id || '';
     document.getElementById('nt-hook').value = j.webhook || '';
     document.getElementById('nt-appid').value = j.app_id || '';
     document.getElementById('nt-secret').value = '';
-    document.getElementById('nt-secret').placeholder = j.has_secret ? 'App Secret 已保存, 留空表示不修改' : 'App Secret';
+    document.getElementById('nt-secret').dataset.has = j.has_secret ? '1' : '0';
     document.getElementById('nt-url').value = j.public_url || '';
     document.getElementById('nt-delay').value = j.delay || 20;
+    ntSetEye(ntHidden);
     const m = document.getElementById('nt-msg');
     if (j.last && j.last.msg) {
       m.textContent = '最近一次: ' + (j.last.ok ? '✅ ' : '❌ ') + j.last.msg + ' (' + new Date(j.last.at * 1000).toLocaleString() + ')';
@@ -1834,15 +1894,16 @@ async function ntSave() {
     media: document.getElementById('nt-media').value,
     quality: document.getElementById('nt-quality').value,
     vdur: +document.getElementById('nt-vdur').value || 30,
-    receive_id: document.getElementById('nt-to').value.trim(),
-    webhook: document.getElementById('nt-hook').value.trim(),
-    app_id: document.getElementById('nt-appid').value.trim(),
+    receive_id: ntReal('nt-to'),
+    webhook: ntReal('nt-hook'),
+    app_id: ntReal('nt-appid'),
     app_secret: document.getElementById('nt-secret').value.trim(),
-    public_url: document.getElementById('nt-url').value.trim(),
+    public_url: ntReal('nt-url'),
     delay: +document.getElementById('nt-delay').value || 20,
   };
   if (body.enabled) {
-    const hasApp = body.app_id && (body.app_secret || document.getElementById('nt-secret').placeholder.indexOf('已保存') > 0);
+    const secSaved = document.getElementById('nt-secret').dataset.has === '1';
+    const hasApp = body.app_id && (body.app_secret || secSaved);
     if (body.mode === 'dm' && (!hasApp || !body.receive_id)) { toast('私聊需要 App ID / Secret + 接收人'); return; }
     if (body.mode === 'group' && !body.webhook) { toast('请先填群机器人 webhook'); return; }
   }
