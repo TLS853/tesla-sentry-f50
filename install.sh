@@ -322,6 +322,15 @@ fi
 say "启动虚拟U盘 ..."
 sh "$TSF_DIR/tesla-gadget.sh" on || echo "  [警告] 虚拟U盘启动失败, 见 $TSF_DIR/tesla-gadget.log"
 
+# 中文字体: 飞书推送视频烧录行车信息水印时由 libass 使用; 缺失只影响水印, 不影响其它功能
+if ! ls "$TSF_DIR"/fonts/*.ttf >/dev/null 2>&1; then
+    say "下载中文字体 (水印用, 约 17MB) ..."
+    mkdir -p "$TSF_DIR/fonts"
+    curl -sL --max-time 600 -o "$TSF_DIR/fonts/NotoSansSC.ttf" -C - \
+        "https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/notosanssc/NotoSansSC%5Bwght%5D.ttf" \
+        || echo "  [提示] 字体下载失败, 不影响使用; 需要水印时可手动补: 见 README"
+fi
+
 say "启动查看器 ..."
 if [ -f /etc/rc.common ]; then
     /etc/init.d/sentry-viewer restart >/dev/null 2>&1 || true
