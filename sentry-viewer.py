@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.4.2"
+APP_VERSION = "2.4.3"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -690,6 +690,7 @@ select.ninput { cursor:pointer; }
   <div class="stabs">
     <button class="stab active" id="st-skin" onclick="stab('skin')">🎨 页面皮肤</button>
     <button class="stab" id="st-audio" onclick="stab('audio')">🔊 锁车语音</button>
+    <button class="stab" id="st-wraps" onclick="stab('wraps')">🚙 涂装</button>
     <button class="stab" id="st-files" onclick="stab('files')">📂 文件</button>
     <button class="stab" id="st-notify" onclick="stab('notify')">🔔 推送</button>
     <button class="stab" id="st-auth" onclick="stab('auth')">🔑 账号</button>
@@ -703,12 +704,18 @@ select.ninput { cursor:pointer; }
     <div id="skin-list"></div>
   </div>
   <div id="tab-audio" style="display:none">
-    <div class="hint">锁车音要求 WAV 44.1kHz 16-bit &lt;1MB 1~5秒；LockChime.wav 写入车机U盘根目录，其它 mp3/wav 作为 Boombox 音效写入 Boombox/ 目录。文件在归档同步时写入车机U盘。</div>
+    <div class="hint">上传的音频 (wav/mp3, &lt;1MB) 会直接写入车机U盘根目录；文件名为 LockChime.wav 的即锁车音 (特斯拉只认根目录这个文件名)。文件在归档同步时写入车机U盘。</div>
     <label class="upbtn">＋ 上传音频 (wav/mp3, &lt;1MB)<input type="file" id="audio-file" accept=".wav,.mp3" hidden></label>
     <div class="hint" style="color:#4cc38a">⏳ 待写入车机U盘:</div>
     <div id="audio-list"></div>
     <div class="hint" style="color:#4cc38a">✅ 已写入:</div>
     <div id="audio-done"></div>
+  </div>
+  <div id="tab-wraps" style="display:none">
+    <div class="hint">车机涂装/牌照图片: 上传 png/jpg/webp, 直接写入车机U盘根目录 Wraps/ (车机端设置里选)。连接时会临时断开车机读取几秒。</div>
+    <div id="wraps-status" style="margin-bottom:10px"></div>
+    <label class="upbtn" id="wraps-upbtn">＋ 上传图片到 Wraps/ (png/jpg/webp, ≤100MB)<input type="file" id="wraps-file" accept=".png,.jpg,.jpeg,.webp" hidden multiple></label>
+    <div id="wraps-grid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px"></div>
   </div>
   <div id="tab-files" style="display:none">
     <div style="display:flex;gap:8px;margin-bottom:10px">
@@ -1924,7 +1931,7 @@ function doLogout() {
   location.href = '/logout';
 }
 function stab(which) {
-  ['skin', 'audio', 'files', 'notify', 'auth', 'update', 'lang'].forEach(k => {
+  ['skin', 'audio', 'wraps', 'files', 'notify', 'auth', 'update', 'lang'].forEach(k => {
     const b = document.getElementById('st-' + k), t = document.getElementById('tab-' + k);
     if (b) b.classList.toggle('active', k === which);
     if (t) t.style.display = k === which ? '' : 'none';
@@ -1932,6 +1939,7 @@ function stab(which) {
   if (which === 'update') otaCheck(false);
   if (which === 'notify') ntLoad();
   if (which === 'auth') pwLoad();
+  if (which === 'wraps') refreshWraps();
 }
 
 /* ---------- 飞书推送 ---------- */
@@ -2262,6 +2270,71 @@ function fmtSize(n) {
   if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
   return (n / 1048576).toFixed(1) + ' MB';
 }
+/* ---------- 涂装 (Wraps) ---------- */
+function wrapStatusHtml(attached) {
+  if (!attached) {
+    return '<div style="background:#3a2a12;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#f0b429;line-height:1.6">' +
+      '⚠ U盘当前未连接管理 (车机正常读写中)<br>' +
+      '<button onclick="wrapAttach()" style="background:#e8443f;border:none;color:#fff;border-radius:8px;padding:7px 16px;font-size:12.5px;cursor:pointer;margin-top:6px">🔗 连接车机U盘 (临时断开车机读取)</button></div>';
+  }
+  return '<div style="background:#1a3325;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#4cc38a;line-height:1.6">' +
+    '🟢 已连接 — 上传的图片会直接写入车机U盘 Wraps/ 目录</div>';
+}
+async function wrapAttach() {
+  toast('⏳ 正在连接 (车机读取将断开几秒)...');
+  const j = await (await fetch('/api/usb/attach', { method: 'POST' })).json();
+  toast(j.ok ? '✅ 已连接车机U盘' : '❌ ' + j.msg);
+  refreshWraps();
+}
+async function refreshWraps() {
+  const st = document.getElementById('wraps-status');
+  const grid = document.getElementById('wraps-grid');
+  let j;
+  try {
+    j = await (await fetch('/api/usb/browse?dir=' + encodeURIComponent('Wraps'))).json();
+  } catch (e) { return; }
+  st.innerHTML = wrapStatusHtml(j.attached);
+  grid.innerHTML = '';
+  if (!j.ok) { grid.innerHTML = '<div class="hint">Wraps 目录不存在, 连接 U 盘后上传图片会自动创建</div>'; return; }
+  const files = j.files || [];
+  if (!files.length) { grid.innerHTML = '<div class="hint">Wraps 目录为空, 上传图片即可在车机上选用</div>'; return; }
+  for (const f of files) {
+    const box = document.createElement('div');
+    box.style.cssText = 'width:110px;text-align:center';
+    const img = document.createElement('img');
+    img.src = '/usbdl?path=' + encodeURIComponent('Wraps/' + f.name);
+    img.style.cssText = 'width:100px;height:68px;object-fit:contain;background:#0d1117;border-radius:8px;border:1px solid #2a3440;cursor:pointer';
+    img.onclick = () => window.open('/usbdl?path=' + encodeURIComponent('Wraps/' + f.name));
+    const cap = document.createElement('div');
+    cap.textContent = f.name;
+    cap.style.cssText = 'font-size:11px;color:#c9d1d9;margin:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    const btn = document.createElement('button');
+    btn.className = 'danger'; btn.textContent = t('删除');
+    btn.style.cssText = 'font-size:11px;padding:4px 12px';
+    btn.onclick = async () => {
+      if (!confirm(t('删除') + ' Wraps/' + f.name + ' ?')) return;
+      const r = await fetch('/api/usb?path=' + encodeURIComponent('Wraps/' + f.name), { method: 'DELETE' });
+      const rj = await r.json().catch(() => ({}));
+      toast(rj.ok ? '✅ ' + t('已删除') : '❌ ' + (rj.msg || t('删除失败')));
+      refreshWraps();
+    };
+    box.append(img, cap, btn);
+    grid.appendChild(box);
+  }
+}
+document.getElementById('wraps-file').onchange = async function () {
+  if (!this.files || !this.files.length) return;
+  for (const f of this.files) {
+    const fd = new FormData(); fd.append('file', f); fd.append('path', 'Wraps');
+    try {
+      const r = await fetch('/api/upload/usb', { method: 'POST', body: fd });
+      const j = await r.json();
+      toast((j.ok ? '✅ ' : '❌ ') + f.name + ' — ' + (j.msg || ''));
+    } catch (e) { toast('❌ ' + f.name + ' — ' + t('上传失败')); }
+  }
+  this.value = '';
+  refreshWraps();
+};
 function switchArea(a) {
   area = a;
   document.getElementById('area-usb').classList.toggle('active', a === 'usb');
@@ -2642,6 +2715,10 @@ def _proc_running(needle):
 def disk_usage():
     """存储条数据: 优先取车载U盘 (镜像内部 exFAT, 挂载时); 未挂载回落到归档盘 (loop 镜像所在)"""
     for p, usb in ((MNT, True), (ARCHIVE, False)):
+        if usb and not os.path.ismount(MNT):
+            # MNT 目录本身常驻 (tmpfs), 未挂载镜像时 statvfs 会读到 tmpfs 的
+            # 小容量 (如 0.7G), 必须跳过回落到归档盘
+            continue
         try:
             st = os.statvfs(p)
             if st.f_blocks <= 0:

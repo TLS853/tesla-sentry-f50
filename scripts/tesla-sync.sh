@@ -107,24 +107,18 @@ for cat in SentryClips SavedClips RecentClips; do
 done
 log "archived $copied new events"
 
-# 5. 把待写入的锁车音/Boombox 音效写进车机U盘
-#    锁车音 LockChime.wav -> U盘根目录 (特斯拉只认根目录这个文件名)
-#    其它音效            -> U盘 Boombox/ 目录 (车机 Toybox->Boombox 里选)
+# 5. 把待写入的音频直接写进车机U盘根目录
+#    (上传的音频全部放根目录: LockChime.wav 即锁车音, 其它文件名原样放根目录)
 pushed=0
 has_audio=0
 for f in "$AUDIO_Q"/*.wav "$AUDIO_Q"/*.mp3; do
     [ -f "$f" ] && has_audio=1 && break
 done
 if [ "$has_audio" = "1" ]; then
-    mkdir -p "$MNT/Boombox"
     for f in "$AUDIO_Q"/*.wav "$AUDIO_Q"/*.mp3; do
         [ -f "$f" ] || continue
         bn=$(basename "$f")
-        if [ "$bn" = "LockChime.wav" ]; then
-            dest="$MNT/LockChime.wav"
-        else
-            dest="$MNT/Boombox/$bn"
-        fi
+        dest="$MNT/$bn"
         if cp "$f" "$dest" 2>>"$LOG"; then
             mv "$f" "$AUDIO_DONE/" && pushed=$((pushed+1))
             log "audio -> ${dest#$MNT/}"
@@ -133,7 +127,7 @@ if [ "$has_audio" = "1" ]; then
         fi
     done
     sync
-    log "pushed $pushed audio (LockChime.wav -> USB root, others -> Boombox/)"
+    log "pushed $pushed audio -> USB root"
 fi
 
 # 6. 卸载并恢复导出
