@@ -38,7 +38,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.2.0"
+APP_VERSION = "2.3.0"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -518,6 +518,7 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .nrow > span:first-child { flex:0 0 auto; }
 .nrow input[type=checkbox] { width:18px; height:18px; accent-color:var(--accent); margin-left:auto; }
 .ninput.num { width:76px; margin:0; text-align:center; }
+select.ninput { cursor:pointer; }
 .hint2 { font-size:11.5px; color:var(--muted2); }
 /* 系统更新 (OTA) */
 .updrow { display:flex; align-items:baseline; gap:8px; padding:7px 0; font-size:13px; }
@@ -681,14 +682,19 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
     </div>
   </div>
   <div id="tab-notify" style="display:none">
-    <div class="hint">哨兵触发时自动把<b>时间 / 位置 / 触发原因 / 触发镜头</b>和<b>触发那一帧画面</b>推到飞书群。<br>
-    ① 在飞书群里添加「自定义机器人」，复制 webhook 填到下面（只需这一步就能收文字卡片）。<br>
-    ② 想附带封面图，需再填「自建应用」的 App ID / App Secret（应用要开<b>机器人</b>能力并加 <b>im:message</b> 权限），程序会自动上传图片再发卡片。</div>
+    <div class="hint">哨兵触发时自动把<b>时间 / 位置 / 触发原因 / 触发镜头</b>和<b>触发那一帧画面</b>推到飞书。<br>
+    默认走<b>自建应用私聊</b>：只进你本人和机器人的单聊，别人看不到。做法：飞书开放平台建一个<b>企业自建应用</b> → 开<b>机器人</b>能力 → 加 <b>im:message</b>（发消息）和 <b>im:resource</b>（传图）权限 → 创建版本并发布 → 把 App ID / App Secret 和你自己的 open_id（或邮箱）填到下面。<br>
+    也可以切到<b>群机器人</b>：群里加「自定义机器人」，把 webhook 填进来即可（群里所有人可见）。</div>
     <label class="nrow"><span>启用推送</span><input type="checkbox" id="nt-en"></label>
     <label class="nrow"><span>也推手动保存</span><input type="checkbox" id="nt-saved"></label>
-    <input class="ninput" id="nt-hook" placeholder="飞书机器人 webhook: https://open.feishu.cn/open-apis/bot/v2/hook/...">
-    <input class="ninput" id="nt-appid" placeholder="App ID (可选, 用于附带封面图) — cli_xxx">
-    <input class="ninput" id="nt-secret" type="password" placeholder="App Secret (可选, 已保存则留空表示不修改)">
+    <select class="ninput" id="nt-mode">
+      <option value="dm">私聊推送 — 只有我本人能看到</option>
+      <option value="group">群机器人 — 群里所有人都能看到</option>
+    </select>
+    <input class="ninput" id="nt-to" placeholder="接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱">
+    <input class="ninput" id="nt-appid" placeholder="App ID — cli_ 开头">
+    <input class="ninput" id="nt-secret" type="password" placeholder="App Secret (已保存则留空表示不修改)">
+    <input class="ninput" id="nt-hook" placeholder="群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...">
     <input class="ninput" id="nt-url" placeholder="查看链接前缀 (可选): http://你的域名:端口">
     <div class="nrow"><span>延迟推送</span><input class="ninput num" id="nt-delay" type="number" min="5" max="600"> <span class="hint2">秒 (等片段写完再推)</span></div>
     <div class="updbtns">
@@ -1774,30 +1780,40 @@ async function ntLoad() {
     const j = await (await fetch('/api/notify', { cache: 'no-store' })).json();
     document.getElementById('nt-en').checked = !!j.enabled;
     document.getElementById('nt-saved').checked = !!j.saved;
+    document.getElementById('nt-mode').value = j.mode || 'dm';
+    document.getElementById('nt-to').value = j.receive_id || '';
     document.getElementById('nt-hook').value = j.webhook || '';
     document.getElementById('nt-appid').value = j.app_id || '';
     document.getElementById('nt-secret').value = '';
-    document.getElementById('nt-secret').placeholder = j.has_secret ? 'App Secret 已保存, 留空表示不修改' : 'App Secret (可选, 用于附带封面图)';
+    document.getElementById('nt-secret').placeholder = j.has_secret ? 'App Secret 已保存, 留空表示不修改' : 'App Secret';
     document.getElementById('nt-url').value = j.public_url || '';
     document.getElementById('nt-delay').value = j.delay || 20;
     const m = document.getElementById('nt-msg');
     if (j.last && j.last.msg) {
       m.textContent = '最近一次: ' + (j.last.ok ? '✅ ' : '❌ ') + j.last.msg + ' (' + new Date(j.last.at * 1000).toLocaleString() + ')';
       m.style.color = j.last.ok ? '#4cc38a' : 'var(--accent)';
-    } else { m.textContent = j.enabled ? '已启用, 等下一个哨兵事件' : '未启用'; m.style.color = ''; }
+    } else if (!j.enabled) { m.textContent = '未启用'; m.style.color = ''; }
+    else if (j.dm_ready) { m.textContent = '已启用私聊推送, 等下一个哨兵事件'; m.style.color = ''; }
+    else { m.textContent = '已启用, 但接收人/应用凭据未配全'; m.style.color = 'var(--accent)'; }
   } catch (e) { document.getElementById('nt-msg').textContent = '读取设置失败: ' + e; }
 }
 async function ntSave() {
   const body = {
     enabled: document.getElementById('nt-en').checked,
     saved: document.getElementById('nt-saved').checked,
+    mode: document.getElementById('nt-mode').value,
+    receive_id: document.getElementById('nt-to').value.trim(),
     webhook: document.getElementById('nt-hook').value.trim(),
     app_id: document.getElementById('nt-appid').value.trim(),
     app_secret: document.getElementById('nt-secret').value.trim(),
     public_url: document.getElementById('nt-url').value.trim(),
     delay: +document.getElementById('nt-delay').value || 20,
   };
-  if (body.enabled && !body.webhook) { toast('请先填 webhook'); return; }
+  if (body.enabled) {
+    const hasApp = body.app_id && (body.app_secret || document.getElementById('nt-secret').placeholder.indexOf('已保存') > 0);
+    if (body.mode === 'dm' && (!hasApp || !body.receive_id)) { toast('私聊需要 App ID / Secret + 接收人'); return; }
+    if (body.mode === 'group' && !body.webhook) { toast('请先填群机器人 webhook'); return; }
+  }
   const m = document.getElementById('nt-msg');
   m.textContent = '保存中…';
   try {
@@ -2682,8 +2698,8 @@ NOTIFY_CONF = os.environ.get("TSF_NOTIFY_CONF", "/opt/tesla-sentry/notify.json")
 NOTIFY_STATE = os.environ.get("TSF_NOTIFY_STATE", "/opt/tesla-sentry/notify-state.json")
 FEISHU_API = "https://open.feishu.cn/open-apis"
 _NC_DEFAULT = {
-    "enabled": False, "webhook": "", "app_id": "", "app_secret": "",
-    "public_url": "", "saved": False, "delay": 20,
+    "enabled": False, "mode": "dm", "webhook": "", "app_id": "", "app_secret": "",
+    "receive_id": "", "receive_id_type": "", "public_url": "", "saved": False, "delay": 20,
 }
 _TOK = {"v": "", "exp": 0}
 CAM_NUM = {0: "前视", 3: "左B柱", 4: "右B柱", 5: "左翼子板", 6: "右翼子板", 7: "后视"}
@@ -2724,6 +2740,10 @@ def notify_save(patch):
         tmp = NOTIFY_CONF + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(c, f, ensure_ascii=False, indent=1)
+        try:
+            os.chmod(tmp, 0o600)          # 里面存着 app_secret, 只给 root 读
+        except OSError:
+            pass
         os.replace(tmp, NOTIFY_CONF)
     except OSError:
         pass
@@ -2918,11 +2938,49 @@ def _feishu_card(conf, cat, name, img_key=None, test=False):
     }
 
 
+def _dm_target(conf):
+    """返回 (receive_id, receive_id_type); 没配返回 (None, None)。
+    自动识别: ou_/on_ → open_id, oc_ → chat_id, 含 @ → email"""
+    rid = str(conf.get("receive_id") or "").strip()
+    if not rid:
+        return None, None
+    t = str(conf.get("receive_id_type") or "").strip()
+    if not t:
+        if rid.startswith("oc_"):
+            t = "chat_id"
+        elif "@" in rid:
+            t = "email"
+        else:
+            t = "open_id"
+    return rid, t
+
+
+def _dm_ready(conf):
+    rid, _t = _dm_target(conf)
+    return bool(rid and conf.get("app_id") and conf.get("app_secret"))
+
+
+def _feishu_send_dm(conf, card):
+    """用自建应用机器人给指定用户发卡片 — 只进你和机器人的单聊, 别人看不到"""
+    rid, rtype = _dm_target(conf)
+    url = FEISHU_API + "/im/v1/messages?receive_id_type=" + urllib.parse.quote(rtype)
+    payload = {"receive_id": rid, "msg_type": "interactive",
+               "content": json.dumps(card, ensure_ascii=False)}
+    j = _post_json(url, payload, timeout=20,
+                   headers={"Authorization": "Bearer " + _feishu_token(conf)})
+    if j.get("code") != 0:
+        raise RuntimeError("%s (code=%s)" % (j.get("msg") or "发送失败", j.get("code")))
+    return True
+
+
 def notify_push(cat, name, test=False):
     """推一条到飞书; 返回 (成功?, 提示)"""
     conf = notify_conf()
-    if not conf.get("webhook"):
-        return False, "未配置飞书机器人 webhook"
+    dm = _dm_ready(conf)
+    hook = str(conf.get("webhook") or "").strip()
+    use_dm = dm and (conf.get("mode") != "group" or not hook)
+    if not use_dm and not hook:
+        return False, "未配置: 需要 App ID/Secret + 接收人 (私聊), 或群机器人 webhook"
     img_key = None
     warn = ""
     if conf.get("app_id") and conf.get("app_secret"):
@@ -2938,19 +2996,22 @@ def notify_push(cat, name, test=False):
         warn = " (未配 app_id/app_secret, 只发文字卡片)"
     card = _feishu_card(conf, cat, name, img_key=img_key, test=test)
     try:
-        j = _post_json(conf["webhook"], {"msg_type": "interactive", "card": card})
+        if use_dm:
+            _feishu_send_dm(conf, card)
+            return True, "已推送到你的飞书私聊" + warn
+        j = _post_json(hook, {"msg_type": "interactive", "card": card})
         code = j.get("code", j.get("StatusCode", -1))
         if code not in (0, None):
             raise RuntimeError("%s (code=%s)" % (j.get("msg") or j.get("StatusMessage") or "发送失败", code))
     except Exception as ex:
         return False, "推送失败: %s" % str(ex)[:140]
-    return True, "已推送到飞书" + warn
+    return True, "已推送到飞书群" + warn
 
 
 def notify_scan():
     """扫一遍归档, 把新出现的哨兵事件推给飞书; 返回本轮推送条数"""
     conf = notify_conf()
-    if not conf.get("enabled") or not conf.get("webhook"):
+    if not conf.get("enabled") or not (_dm_ready(conf) or str(conf.get("webhook") or "").strip()):
         return 0
     st = _nstate_load()
     seen = st.setdefault("seen", {})
@@ -3014,11 +3075,16 @@ def notify_loop():
 def notify_status():
     conf = notify_conf()
     st = _nstate_load()
+    rid, rtype = _dm_target(conf)
     return {
         "enabled": bool(conf.get("enabled")),
+        "mode": conf.get("mode") or "dm",
         "webhook": conf.get("webhook") or "",
         "app_id": conf.get("app_id") or "",
         "has_secret": bool(conf.get("app_secret")),
+        "receive_id": rid or "",
+        "receive_id_type": rtype or "",
+        "dm_ready": _dm_ready(conf),
         "public_url": conf.get("public_url") or "",
         "saved": bool(conf.get("saved")),
         "delay": int(conf.get("delay") or 20),
@@ -4109,7 +4175,7 @@ class Handler(BaseHTTPRequestHandler):
             for k in ("enabled", "saved"):
                 if k in body:
                     patch[k] = bool(body.get(k))
-            for k in ("webhook", "app_id", "public_url"):
+            for k in ("mode", "webhook", "app_id", "receive_id", "receive_id_type", "public_url"):
                 if k in body:
                     patch[k] = str(body.get(k) or "").strip()
             if str(body.get("app_secret") or "").strip():
@@ -4120,9 +4186,13 @@ class Handler(BaseHTTPRequestHandler):
                 except (TypeError, ValueError):
                     pass
             conf = notify_save(patch)
-            self._json({"ok": True, "msg": "已保存", "status": notify_status(),
-                        "warn": "" if (conf.get("app_id") and conf.get("app_secret"))
-                        else "未配置 app_id/app_secret: 只能发文字卡片, 不会附带封面"})
+            if _dm_ready(conf):
+                warn = "" if (conf.get("public_url") or "").strip() else "私聊已可用; 填「查看链接前缀」后卡片上会有查看按钮"
+            elif str(conf.get("webhook") or "").strip():
+                warn = "私聊未就绪 (需 App ID/Secret + 接收人), 当前会推到群里"
+            else:
+                warn = "还没配接收人: 私聊需要 App ID/Secret + 接收人, 或填群机器人 webhook"
+            self._json({"ok": True, "msg": "已保存", "status": notify_status(), "warn": warn})
             return
         if path == "/api/notify/test":
             cat, name = "SentryClips", ""
