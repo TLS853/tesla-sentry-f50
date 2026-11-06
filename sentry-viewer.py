@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.4.7"
+APP_VERSION = "2.4.8"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -3038,6 +3038,49 @@ def roll_box():
     return n
 
 
+def health_logger():
+    """每分钟记一条 内存/负载/ffmpeg 进程数 到持久日志 (环形, 最多 2000 行)。
+    内核 lockup 重启会把 dmesg 清空, 这里是唯一能复盘"死前发生了什么"的证据。"""
+    fp = "/opt/tesla-sentry/health.log"
+    while True:
+        try:
+            mem = load = "?"
+            with open("/proc/meminfo", encoding="ascii") as f:
+                for ln in f:
+                    if ln.startswith("MemAvailable"):
+                        mem = "%dMB" % (int(ln.split()[1]) // 1024)
+                        break
+            with open("/proc/loadavg", encoding="ascii") as f:
+                load = " ".join(f.read().split()[:3])
+            ff = 0
+            try:
+                for pid in os.listdir("/proc"):
+                    if not pid.isdigit():
+                        continue
+                    try:
+                        with open("/proc/%s/comm" % pid, encoding="ascii") as f:
+                            if f.read().strip() == "ffmpeg":
+                                ff += 1
+                    except OSError:
+                        continue
+            except OSError:
+                pass
+            with open(fp, "a", encoding="utf-8") as f:
+                f.write("%s mem=%s load=%s ffmpeg=%d\n" % (
+                    time.strftime("%m-%d %H:%M"), mem, load, ff))
+            if os.path.getsize(fp) > 300 * 1024:      # 环形截断, 只留最近 ~2000 行
+                try:
+                    with open(fp, encoding="utf-8") as f:
+                        tail = f.readlines()[-2000:]
+                    with open(fp, "w", encoding="utf-8") as f:
+                        f.writelines(tail)
+                except OSError:
+                    pass
+        except Exception:
+            pass
+        time.sleep(60)
+
+
 def disk_guard():
     rd = os.path.join(ARCHIVE, "RecentClips")
     while True:
@@ -3454,7 +3497,8 @@ def _make_push_video(fp, off, quality="480p", dur=30):
             fc = _wm_fontconf()
             if fc:
                 env["FONTCONFIG_FILE"] = fc
-        r = subprocess.run(cmd, capture_output=True, timeout=300, env=env)
+        with Q_SEM:        # 与点播转码共用并发闸门: 设备上 ffmpeg 总数恒定, 叠加会触发内核 lockup 重启
+            r = subprocess.run(cmd, capture_output=True, timeout=300, env=env)
     except subprocess.TimeoutExpired:
         try:
             os.unlink(tmp)
@@ -3497,7 +3541,8 @@ def _transcode_push_upload(src, quality="480p"):
            "-b:v", "%dk" % kbps, "-maxrate", "%dk" % (kbps * 3 // 2), "-bufsize", "%dk" % (kbps * 3),
            "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart", "-f", "mp4", "-y", tmp]
     try:
-        r = subprocess.run(cmd, capture_output=True, timeout=900)
+        with Q_SEM:        # 与点播转码共用并发闸门, 防止多路 ffmpeg 叠加触发内核 lockup 重启
+            r = subprocess.run(cmd, capture_output=True, timeout=900)
     except subprocess.TimeoutExpired:
         try:
             os.unlink(tmp)
@@ -5269,5 +5314,6 @@ if __name__ == "__main__":
     subprocess.run([LOSETUP, "-d", LOOPDEV], capture_output=True)
     _gadget_rebind(True)
     threading.Thread(target=disk_guard, daemon=True).start()
+    threading.Thread(target=health_logger, daemon=True).start()
     threading.Thread(target=notify_loop, daemon=True).start()
     srv.serve_forever()
