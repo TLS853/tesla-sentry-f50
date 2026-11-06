@@ -18,6 +18,7 @@ import time
 import urllib.parse
 import urllib.request
 import http.client
+import ssl
 import zipfile
 import tempfile
 import sys
@@ -2880,25 +2881,54 @@ def _post_json(url, payload, timeout=12, headers=None):
     return json.loads(_http_post(url, body, h, timeout).decode("utf-8", "replace"))
 
 
-def _http_post(url, body, headers=None, timeout=12):
-    """发一个 POST, 返回响应体 bytes; HTTP 4xx/5xx 也照常返回内容 (里面有飞书的错误码)"""
-    u = urllib.parse.urlsplit(url)
-    if u.scheme == "https":
-        conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=timeout)
-    elif u.scheme == "http":
-        conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=timeout)
-    else:
-        raise RuntimeError("不支持的地址: %s" % url[:40])
-    path = (u.path or "/") + (("?" + u.query) if u.query else "")
-    try:
-        conn.request("POST", path, body=body, headers=dict(headers or {}))
-        r = conn.getresponse()
-        return r.read() or b"{}"
-    finally:
+def _tls12():
+    """给飞书 API 用的 SSLContext: 强制 TLS 1.2。
+    实测在 F50 的 4G 链路上 TLS 1.3 会随机丢/坏记录 (SSLV3_ALERT_BAD_RECORD_MAC, 约 1/3 概率),
+    同一请求降到 TLS 1.2 后 100% 成功, 所以对飞书固定用 1.2。"""
+    global _TLS_CTX
+    if _TLS_CTX is None:
+        c = ssl.create_default_context()
         try:
-            conn.close()
+            c.maximum_version = ssl.TLSVersion.TLSv1_2
         except Exception:
             pass
+        _TLS_CTX = c
+    return _TLS_CTX
+
+
+_TLS_CTX = None
+
+
+def _http_post(url, body, headers=None, timeout=12):
+    """发一个 POST, 返回响应体 bytes; HTTP 4xx/5xx 也照常返回内容 (里面有飞书的错误码)
+    TLS 抖动会自动重试 3 次 (每次新建连接)。"""
+    u = urllib.parse.urlsplit(url)
+    last = None
+    for attempt in range(3):
+        conn = None
+        try:
+            if u.scheme == "https":
+                conn = http.client.HTTPSConnection(u.hostname, u.port or 443, timeout=timeout,
+                                                   context=_tls12())
+            elif u.scheme == "http":
+                conn = http.client.HTTPConnection(u.hostname, u.port or 80, timeout=timeout)
+            else:
+                raise RuntimeError("不支持的地址: %s" % url[:40])
+            path = (u.path or "/") + (("?" + u.query) if u.query else "")
+            conn.request("POST", path, body=body, headers=dict(headers or {}))
+            r = conn.getresponse()
+            return r.read() or b"{}"
+        except (ssl.SSLError, ConnectionError, OSError) as ex:
+            last = ex
+            if attempt < 2:
+                time.sleep(0.4 * (attempt + 1))
+        finally:
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+    raise last if last else RuntimeError("POST 失败")
 
 
 def _feishu_token(conf):
