@@ -133,7 +133,9 @@ html[data-theme="light"] .tab.active { background:#17191c; color:#fff; }
 .dhead { grid-column:1/-1; display:flex; align-items:baseline; gap:8px; padding:8px 2px 0; }
 .dhead b { font-size:13px; font-weight:700; }
 .dhead .n { font-size:11.5px; color:var(--muted2); }
-.player { display:none; position:fixed; inset:0; height:100vh; height:100dvh; background:#0d1117; z-index:100; flex-direction:column; }
+.player { display:none; position:fixed; inset:0; height:100vh; height:100dvh; background:#0d1117; color:#e8eaed; z-index:100; flex-direction:column; }
+/* 播放器是独立"纯黑舞台", 不跟随全局主题: 内部所有文字固定浅色,
+   防止浅色主题下 body 的深色文字继承进来落在深色背景上看不见 */
 .player.open { display:flex; }
 .ptop { display:flex; align-items:center; gap:10px; padding:10px 14px; }
 .ptop .pdl { margin-left:auto; }
