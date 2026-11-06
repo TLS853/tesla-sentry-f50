@@ -65,6 +65,14 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 .chip:hover { color:#e8eaed; border-color:#3a4653; }
 .chip.on { background:#2f6ee0; border-color:#2f6ee0; color:#fff; }
 .chip .n { opacity:.62; margin-left:4px; font-variant-numeric:tabular-nums; }
+/* 车载U盘存储条 (参照官方App车辆卡片) */
+.storwrap { padding:10px 16px 0; }
+.storcard { background:#1a2027; border:1px solid #232b34; border-radius:12px; padding:10px 14px; }
+.storrow { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:8px; }
+.storlab { font-size:13px; color:#c3ccd5; font-weight:600; }
+.storval { font-size:12.5px; color:#8d99a5; font-variant-numeric:tabular-nums; }
+.storbar { height:4px; border-radius:2px; background:#232b34; overflow:hidden; }
+.storbar i { display:block; height:100%; width:0; background:#2f6ee0; border-radius:2px; transition:width .4s; }
 @media (max-width:640px){
   header .sub { display:none; } .tabs { order:10; width:100%; margin-left:0; } #gear { order:5; margin-left:0; } #out { order:6; margin-left:0; }
   .filters { padding-left:12px; padding-right:12px; }
@@ -243,6 +251,12 @@ header .sub { font-size:12px; color:#8d99a5; white-space:nowrap; }
 <header><h1>🚗 特斯拉哨兵查看器</h1><span class="sub" id="stat"></span>
 <span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#7d8894;background:#1a2027;border:1px solid #232b34;border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
 <nav class="tabs" id="tabs"></nav><button id="gear" title="皮肤与锁车音">⚙</button><button id="out" title="退出登录" onclick="location.href='/logout'">⏏</button></header>
+<nav class="storwrap" id="storwrap" style="display:none">
+  <div class="storcard">
+    <div class="storrow"><span class="storlab" id="storlab">车载U盘存储</span><span class="storval" id="storval"></span></div>
+    <div class="storbar"><i id="storfill"></i></div>
+  </div>
+</nav>
 <nav class="filters" id="filters"></nav>
 <nav class="filters" id="dfilters"></nav>
 <input type="date" id="dpick" class="dpick" onchange="if(this.value) setDate(this.value)">
@@ -423,15 +437,25 @@ function setQuality(q) {
   if (v0) v0.addEventListener('canplay', () => { hint.style.display = 'none'; }, { once: true });
 }
 const CATS_NAME = __CAT_NAMES__;
-/* event.json 里的 reason → 中文名 */
+/* event.json 里的 reason → 中文名 (reason 是自由文本, 新值靠前缀匹配兜底) */
 const REASON_LABEL = {
-  sentry_aware_object_detection: '哨兵 · 物体感知',
+  sentry_aware_object_detection: '哨兵警觉',
+  sentry_aware_door: '车门拉动',
+  sentry_aware_handle: '车门拉动',
+  sentry_aware_accel: '遭遇袭击',
+  sentry_panic: '遭遇袭击',
   sentry_trigger: '哨兵模式触发',
   user_interaction_dashcam_saved: '手动保存',
   user_interaction_dashcam_menu: '行车记录仪菜单保存',
   user_interaction_dashcam_launcher_action_tapped: '点击行车记录仪图标',
   user_interaction_honk: '按喇叭保存'
 };
+function reasonLabel(r) {
+  if (!r) return '';
+  if (REASON_LABEL[r]) return REASON_LABEL[r];
+  for (const k in REASON_LABEL) if (r.indexOf(k) === 0) return REASON_LABEL[k];
+  return r;
+}
 const EMPTY_HTML = document.getElementById('empty').innerHTML;
 /* Model 3/Y (HW3) 只有 4 路: front / back / left_repeater / right_repeater
    Model S/X 与 HW4 车型才有 6 路 (含 left_pillar / right_pillar)
@@ -571,6 +595,21 @@ async function refreshLive() {
     dot.style.background = '#e8443f';
     txt.textContent = '同步服务未运行';
   }
+  // 车载U盘存储条 (镜像未挂载时回落显示归档盘)
+  const sw = document.getElementById('storwrap');
+  if (live.disk && live.disk.total > 0) {
+    const GB = 1073741824, d = live.disk;
+    sw.style.display = '';
+    document.getElementById('storlab').textContent = d.src === 'usb' ? '车载U盘存储' : '盒子归档存储';
+    document.getElementById('storval').textContent =
+      (d.used / GB).toFixed(1) + 'GB / ' + (d.total / GB).toFixed(1) + 'GB';
+    const pct = Math.min(100, d.used / d.total * 100);
+    const fill = document.getElementById('storfill');
+    fill.style.width = pct.toFixed(1) + '%';
+    fill.style.background = pct >= 90 ? '#e8443f' : '#2f6ee0';
+  } else {
+    sw.style.display = 'none';
+  }
   // 事件有变化时无缝重绘 (不打断播放器)
   try {
     const d = await (await fetch('/api/events')).json();
@@ -627,27 +666,50 @@ function dateOf(ev) {
   const m = String(ev.name || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? m[1] + '-' + m[2] + '-' + m[3] : '';
 }
+/* 官方App哨兵分类: 警觉 / 车门拉动 / 遭遇袭击 (reason 前缀映射, 未知 sentry_ 值归入警觉) */
+function reasonTab(r) {
+  if (r.indexOf('sentry_panic') === 0 || r.indexOf('sentry_aware_accel') === 0) return 'panic';
+  if (r.indexOf('sentry_aware_door') === 0 || r.indexOf('sentry_aware_handle') === 0) return 'door';
+  return 'aware';
+}
+const SENTRY_TABS = [['all', '全部'], ['aware', '哨兵警觉'], ['door', '车门拉动'], ['panic', '遭遇袭击']];
+/* 筛选匹配: 哨兵分类按官方三分类的 key 匹配, 其他分类按原始 reason 精确匹配 */
+function matchReason(cat, ev) {
+  if (reasonFilter === 'all') return true;
+  if (cat === 'SentryClips') return reasonTab(reasonOf(ev)) === reasonFilter;
+  return reasonOf(ev) === reasonFilter;
+}
 /* 两行筛选: 触发原因 / 日期, 互为主次 (计数按对方的筛选结果算) */
 function renderFilters(cat) {
   const evs = data[cat] || [];
   const rbox = document.getElementById('filters'), dbox = document.getElementById('dfilters');
   const byDate = dateFilter === 'all' ? evs : evs.filter(ev => dateOf(ev) === dateFilter);
-  const byReason = reasonFilter === 'all' ? evs : evs.filter(ev => reasonOf(ev) === reasonFilter);
+  const byReason = reasonFilter === 'all' ? evs : evs.filter(ev => matchReason(cat, ev));
 
   // 原因筛选在新分类里可能不存在, 自动回落避免"空列表卡死"; 日期允许选到没有事件的那天(会显示空态提示)
-  if (reasonFilter !== 'all' && !evs.some(ev => reasonOf(ev) === reasonFilter)) reasonFilter = 'all';
+  if (reasonFilter !== 'all' && !evs.some(ev => matchReason(cat, ev))) reasonFilter = 'all';
 
-  const rcnt = {};
-  byDate.forEach(ev => { const r = reasonOf(ev); rcnt[r] = (rcnt[r] || 0) + 1; });
-  const rkeys = Object.keys(rcnt).sort((a, b) => rcnt[b] - rcnt[a]);
-  if (rkeys.length < 2) { rbox.className = 'filters'; rbox.innerHTML = ''; }
-  else {
+  if (cat === 'SentryClips') {
+    // 官方App样式: 固定分类行常驻, 计数为 0 也显示 (和车机/官方App一致)
+    const cnt = { all: byDate.length };
+    byDate.forEach(ev => { const t = reasonTab(reasonOf(ev)); cnt[t] = (cnt[t] || 0) + 1; });
     rbox.className = 'filters show';
-    const items = [['all', '全部', byDate.length]].concat(
-      rkeys.map(k => [k, REASON_LABEL[k] || '未标注原因', rcnt[k]]));
-    rbox.innerHTML = '<span class="flab">原因</span>' + items.map(([k, label, n]) =>
-      `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${label}<span class="n">${n}</span></button>`
+    rbox.innerHTML = SENTRY_TABS.map(([k, label]) =>
+      `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${label}<span class="n">${cnt[k] || 0}</span></button>`
     ).join('');
+  } else {
+    const rcnt = {};
+    byDate.forEach(ev => { const r = reasonOf(ev); rcnt[r] = (rcnt[r] || 0) + 1; });
+    const rkeys = Object.keys(rcnt).sort((a, b) => rcnt[b] - rcnt[a]);
+    if (rkeys.length < 2) { rbox.className = 'filters'; rbox.innerHTML = ''; }
+    else {
+      rbox.className = 'filters show';
+      const items = [['all', '全部', byDate.length]].concat(
+        rkeys.map(k => [k, reasonLabel(k) !== k ? reasonLabel(k) : '未标注原因', rcnt[k]]));
+      rbox.innerHTML = '<span class="flab">原因</span>' + items.map(([k, label, n]) =>
+        `<button class="chip${k === reasonFilter ? ' on' : ''}" onclick="setReason('${k}')">${label}<span class="n">${n}</span></button>`
+      ).join('');
+    }
   }
 
   const dcnt = {};
@@ -699,7 +761,7 @@ function render(cat) {
   g.innerHTML = '';
   renderFilters(cat);
   let evs = data[cat] || [];
-  if (reasonFilter !== 'all') evs = evs.filter(ev => reasonOf(ev) === reasonFilter);
+  evs = evs.filter(ev => matchReason(cat, ev));
   if (dateFilter !== 'all') evs = evs.filter(ev => dateOf(ev) === dateFilter);
   e.style.display = evs.length ? 'none' : 'block';
   if (!evs.length) {
@@ -800,7 +862,7 @@ function renderClip() {
   document.getElementById('ic-cat').textContent = CATS_NAME[currentCat] || currentCat;
   const md0 = ev.meta || {};
   document.getElementById('ic-big').textContent =
-    (md0.reason && (REASON_LABEL[md0.reason] || md0.reason)) || CATS_NAME[currentCat] || currentCat;
+    (md0.reason && (reasonLabel(md0.reason) || md0.reason)) || CATS_NAME[currentCat] || currentCat;
   const mb = (ev.size || 0) / 1048576;
   document.getElementById('ic-sub').innerHTML = clip.vids.length + ' 路画面 · <span id="ic-dur">--:--</span>' + (mb >= 0.05 ? ' · ' + (mb >= 1 ? mb.toFixed(1) + ' MB' : Math.round(mb * 1024) + ' KB') : '');
   const cb = document.getElementById('clipbar');
@@ -821,7 +883,7 @@ function renderClip() {
   if (md.city) rh += '<div data-k="city"><span class="ick">城市</span>' + md.city + '</div>';
   if (md.street) rh += '<div data-k="street"><span class="ick">位置</span>' + md.street + '</div>';
   if (md.est_lat && md.est_lon) rh += '<div data-k="coord"><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
-  if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (REASON_LABEL[md.reason] || md.reason) + '</div>';
+  if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (reasonLabel(md.reason) || md.reason) + '</div>';
   /* camera 字段只有哨兵事件有意义; 手动保存等也会带 camera:"0" */
   if (md.camera && isSentryEv(md)) { const cn = CAM_IDX[+md.camera]; rh += '<div data-k="camera"><span class="ick">触发画面</span>' + (cn ? camLabel(cn) : '摄像头') + ' #' + md.camera + '</div>'; }
   if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + md.campaign_id + '</div>';
@@ -1770,6 +1832,21 @@ def _proc_running(needle):
     return False
 
 
+def disk_usage():
+    """存储条数据: 优先取车载U盘 (镜像内部 exFAT, 挂载时); 未挂载回落到归档盘 (loop 镜像所在)"""
+    for p, usb in ((MNT, True), (ARCHIVE, False)):
+        try:
+            st = os.statvfs(p)
+            if st.f_blocks <= 0:
+                continue
+            fr = st.f_frsize
+            return {"src": "usb" if usb else "loop",
+                    "used": (st.f_blocks - st.f_bavail) * fr, "total": st.f_blocks * fr}
+        except OSError:
+            continue
+    return None
+
+
 def live_status():
     """车机在线只读同步的健康状态 (给页面显示心跳)"""
     running = _proc_running(LIVE_SCRIPT)
@@ -1794,7 +1871,7 @@ def live_status():
             last = lines[-1].split("] ", 1)[-1]
     except Exception:
         pass
-    return {"running": running, "pending": pending, "ago": ago, "last": last}
+    return {"running": running, "pending": pending, "ago": ago, "last": last, "disk": disk_usage()}
 
 
 def active_skin():
