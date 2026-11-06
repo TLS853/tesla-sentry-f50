@@ -1863,11 +1863,22 @@ def res_cleanup():
 # (8.4GB/小时), 一晚上就能吃掉几十 GB —— 这才是盒子镜像被撑爆的真正原因。
 # 现在让盒子副本按同样窗口滚动: 只留最近 ROLL_MIN 分钟, 更旧的从盒子归档里删掉。
 # 车机 U 盘那份完全不碰 (同步脚本只读 U 盘, 靠 exFAT 解析器读, 从不删源文件);
-# SentryClips / SavedClips 属于用户主动保存的录像, 永不自动删。
+# SentryClips / SavedClips 属于哨兵事件 + 用户主动保存的录像, 由下方 BOX_KEEP_DAYS /
+# BOX_MAX_GB 定期清理管理 (只删盒子归档副本, 车机 U 盘那份同样不碰)。
 RECENT_ROLL_MIN = int(os.environ.get("TSF_RECENT_ROLL_MIN", "60"))    # 归档滚动窗口(分钟), 0=关闭滚动
 FREE_MIN_MB = int(os.environ.get("TSF_FREE_MIN_MB", "4096"))          # 剩余低于此值开始兜底清理
 FREE_TARGET_MB = int(os.environ.get("TSF_FREE_TARGET_MB", "10240"))   # 兜底清理到恢复到该值为止
 RECENT_KEEP_MIN = int(os.environ.get("TSF_RECENT_KEEP_MIN", "60"))    # 兜底清理时最近 N 分钟必留
+# 盒子侧 SentryClips / SavedClips 定期清理 (方案B):
+# 哨兵开着时 4 路约 8.4GB/小时, 哨兵事件 + 手动保存的录像只增不删, 盘迟早被吃满。
+# 车机 U 盘那份永远不碰, 这里只清盒子归档副本。两个维度独立生效:
+#   1) 按天数: 只保留最新事件往前 N 天内的归档 (锚点是最新事件而不是当前时间,
+#      停车几天没新事件不会被误清空);
+#   2) 按体积: 单个分类超过 MAX_GB 就从最旧的开始删, 直到回到上限以内。
+#      teslacam.img 高水位约 170G, loop 盘 207.7G, 盒子归档预算约 12G/类比较安全。
+# 同步进行中的目录 (1 小时内有改动) 跳过, 非时间戳命名的目录一律不动。
+BOX_KEEP_DAYS = int(os.environ.get("TSF_BOX_KEEP_DAYS", "14"))        # 盒子侧哨兵/手动保存保留天数, 0=不按天数清
+BOX_MAX_GB = int(os.environ.get("TSF_BOX_MAX_GB", "12"))              # 盒子侧单个分类体积上限(GB), 0=不按体积清
 
 
 def free_mb(p):
@@ -1910,6 +1921,64 @@ def roll_recent():
     return n
 
 
+def _dir_size(p):
+    sz = 0
+    for root, _, files in os.walk(p):
+        for f in files:
+            try:
+                sz += os.path.getsize(os.path.join(root, f))
+            except OSError:
+                pass
+    return sz
+
+
+def roll_box():
+    """盒子侧 SentryClips / SavedClips 定期清理 (按天数 + 按体积), 只删盒子归档, 不碰车机 U 盘"""
+    n = 0
+    for cat in ("SentryClips", "SavedClips"):
+        base = os.path.join(ARCHIVE, cat)
+        if not os.path.isdir(base):
+            continue
+        evs = []
+        for e in os.listdir(base):
+            dt = _ev_dt(e)
+            if dt:                       # 非时间戳命名的目录一律不动
+                evs.append((dt, e))
+        if not evs:
+            continue
+        evs.sort()
+        # 目录统计 (1 小时内有改动的跳过: 可能还在同步写入)
+        sized = []
+        for dt, e in evs:
+            p = os.path.join(base, e)
+            try:
+                if time.time() - os.path.getmtime(p) < 3600:
+                    continue
+                sized.append((dt, e, p, _dir_size(p)))
+            except OSError:
+                continue
+        # 1) 按天数: 锚点 = 该分类最新事件, 只留最近 BOX_KEEP_DAYS 天
+        if BOX_KEEP_DAYS > 0:
+            cutoff = evs[-1][0] - datetime.timedelta(days=BOX_KEEP_DAYS)
+            for dt, e, p, _sz in sized:
+                if dt < cutoff and os.path.isdir(p):
+                    shutil.rmtree(p, ignore_errors=True)
+                    n += 1
+        # 2) 按体积: 超出 BOX_MAX_GB 从最旧开始删
+        if BOX_MAX_GB > 0:
+            left = [(dt, e, p, sz) for dt, e, p, sz in sized if os.path.isdir(p)]
+            left.sort()
+            total = sum(sz for _, _, _, sz in left)
+            budget = BOX_MAX_GB * (1 << 30)
+            for dt, e, p, sz in left:
+                if total <= budget:
+                    break
+                shutil.rmtree(p, ignore_errors=True)
+                total -= sz
+                n += 1
+    return n
+
+
 def disk_guard():
     rd = os.path.join(ARCHIVE, "RecentClips")
     while True:
@@ -1917,7 +1986,11 @@ def disk_guard():
             roll_recent()
         except Exception:
             pass
-        try:   # 兜底: 万一别的数据 (哨兵/手动保存) 把盘吃满, 再按空间淘汰最旧的
+        try:   # 盒子侧哨兵/手动保存归档定期清理 (方案B)
+            roll_box()
+        except Exception:
+            pass
+        try:   # 兜底: 万一别的数据把盘吃满, 再按空间淘汰最旧的
             if free_mb(ARCHIVE) < FREE_MIN_MB and os.path.isdir(rd):
                 cutoff = time.time() - RECENT_KEEP_MIN * 60
                 for e in sorted(os.listdir(rd)):   # 目录名即时间戳, 天然按时间排序
