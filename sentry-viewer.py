@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.5.3"
+APP_VERSION = "2.5.4"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -605,8 +605,9 @@ select.ninput { cursor:pointer; }
 .livep { display:none; position:fixed; inset:0; background:var(--bg, #10151c); z-index:240; flex-direction:column; }
 .livep.open { display:flex; }
 .lvtop { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; }
-.lvtitle { font-weight:600; font-size:15px; flex:1; }
-.lvstatus { font-size:12px; color:var(--muted); text-align:right; }
+.lvtitle { font-weight:600; font-size:15px; flex:1; min-width:0; line-height:1.35; }
+.lvtitle small { display:block; font-size:12px; font-weight:400; }
+.lvstatus { font-size:12px; color:var(--muted); text-align:right; max-width:42%; line-height:1.4; word-break:break-all; }
 .lvbody { flex:1; overflow:auto; padding:12px 14px 20px; display:flex; flex-direction:column; gap:10px; }
 .lvmeta { font-size:13px; color:var(--muted); }
 #lv-video { width:100%; max-height:58vh; background:#000; border-radius:12px; }
@@ -1828,7 +1829,11 @@ async function liveTick() {
   liveBusy = true;
   const st = document.getElementById('lv-status');
   try {
-    const r = await fetch('/api/live/status').then(x => x.json());
+    /* 网络抖动/上行被视频占满时响应可能为空, 解析失败就保留旧状态, 下轮自动重试 */
+    const txt = await fetch('/api/live/status').then(x => x.text());
+    let r = null;
+    try { r = JSON.parse(txt); } catch (e) {}
+    if (!r) return;
     if (r.folder && r.folder !== liveFolder) {
       liveFolder = r.folder;
       await load();
@@ -1838,7 +1843,7 @@ async function liveTick() {
     if (!r.folder) st.textContent = '归档里还没有行车片段';
     else if (typeof r.age === 'number' && r.age < 0) st.textContent = '';
     else st.textContent = '最新片段 ' + Math.max(0, Math.round(-r.age / 60)) + ' 分钟前入库';
-  } catch (e) { st.textContent = '检查失败: ' + e; }
+  } catch (e) { st.textContent = '检查暂时不可达, 下轮重试…'; }
   liveBusy = false;
 }
 function liveRestart() {
