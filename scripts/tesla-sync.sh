@@ -127,26 +127,10 @@ log "archived $copied new files"
 
 # 5. 把待写入的音频直接写进车机U盘根目录
 #    (上传的音频全部放根目录: LockChime.wav 即锁车音, 其它文件名原样放根目录)
-pushed=0
-has_audio=0
-for f in "$AUDIO_Q"/*.wav "$AUDIO_Q"/*.mp3; do
-    [ -f "$f" ] && has_audio=1 && break
-done
-if [ "$has_audio" = "1" ]; then
-    for f in "$AUDIO_Q"/*.wav "$AUDIO_Q"/*.mp3; do
-        [ -f "$f" ] || continue
-        bn=$(basename "$f")
-        dest="$MNT/$bn"
-        if cp "$f" "$dest" 2>>"$LOG"; then
-            mv "$f" "$AUDIO_DONE/" && pushed=$((pushed+1))
-            log "audio -> ${dest#$MNT/}"
-        else
-            log "audio copy fail: $bn"
-        fi
-    done
-    sync
-    log "pushed $pushed audio -> USB root"
-fi
+# Python holds the archive lock through the atomic USB copy and queue removal.
+# Uploading another LockChime.wav during sync cannot lose the newer file.
+pushed=$("${TSF_PYTHON:-python3}" "$TSF_DIR/sentry-viewer.py" --audio-flush "$MNT") || exit 1
+log "pushed $pushed audio -> USB root"
 
 # cleanup trap 卸载成功后才恢复导出
 echo "SYNC-DONE copied=$copied audio=$pushed"

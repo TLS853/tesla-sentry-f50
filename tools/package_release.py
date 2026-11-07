@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parent.parent
 FILES = ("install.sh", "install-offline.sh", "uninstall.sh", "sentry-viewer.py",
          "tesla-live-sync.py", "version.json", "dist/release.json",
          "tools/merge_config.py", "tools/check_storage.py", "tools/verify_package.py",
-         "tools/package_release.py", "tools/deploy_f50.sh", "README.md", "docs/DEPLOYMENT.md")
+         "tools/package_release.py", "tools/deploy_f50.sh", "README.md", "docs/DEPLOYMENT.md", "docs/FEATURES.md")
 
 
 def package(root=ROOT, output=None):

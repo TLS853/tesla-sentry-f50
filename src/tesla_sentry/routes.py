@@ -33,6 +33,7 @@ EXACT = {('GET', '/'): '_get_home',
  ('POST', '/api/upload/file'): '_post_api_upload_file',
  ('POST', '/api/upload/skin'): '_post_api_upload_skin',
  ('POST', '/api/upload/usb'): '_post_api_upload_usb',
+ ('POST', '/api/upload/wrap'): '_post_api_upload_wrap',
  ('POST', '/api/usb/attach'): '_post_api_usb_attach',
  ('POST', '/api/usb/detach'): '_post_api_usb_detach',
  ('POST', '/login'): '_post_login'}

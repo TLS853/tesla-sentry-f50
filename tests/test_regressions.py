@@ -22,7 +22,7 @@ def load_runtime():
         if name == "tesla_sentry" or name.startswith("tesla_sentry."):
             del sys.modules[name]
     names = ("app", "archive", "archive_policy", "assets", "auth", "cli", "config", "deployment",
-             "exfat", "feishu", "push_media", "storage", "http", "http_get", "http_post", "locking", "media", "notifications",
+             "exfat", "feishu", "qqbot", "vehicle_assets", "push_media", "storage", "http", "http_get", "http_post", "locking", "media", "notifications",
              "retention", "routes", "sync", "telemetry", "transcode", "updates", "usb")
     return types.SimpleNamespace(**{name: importlib.import_module("tesla_sentry." + name) for name in names})
 

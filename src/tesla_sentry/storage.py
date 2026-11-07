@@ -20,7 +20,8 @@ def atomic_write(path, data, mode=0o600):
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(data)
             stream.flush()
-            os.fchmod(stream.fileno(), mode)
+            if mode is not None:  # FAT/exFAT files have mount-wide permissions
+                os.fchmod(stream.fileno(), mode)
             os.fsync(stream.fileno())
         os.replace(temporary, path)
         sync_directory(parent)

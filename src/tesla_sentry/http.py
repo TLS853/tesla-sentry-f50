@@ -171,7 +171,7 @@ class Handler(http_get.GetRoutesMixin, http_post.PostRoutesMixin, BaseHTTPReques
     def _json(self, obj, code=200):
         self._send(code, json.dumps(obj, ensure_ascii=False).encode(), "application/json")
 
-    def _read_upload(self):
+    def _read_upload(self, max_bytes=None):
         """解析 multipart: 返回 (文件名, 文件数据, 普通字段dict)"""
         ctype = self.headers.get("Content-Type", "")
         mm = re.search(r'boundary=([^;]+)', ctype)
@@ -179,7 +179,7 @@ class Handler(http_get.GetRoutesMixin, http_post.PostRoutesMixin, BaseHTTPReques
             return None, None, {}
         boundary = mm.group(1).strip('"').encode()
         length = int(self.headers.get("Content-Length", 0))
-        if length > config.MAX_UPLOAD:
+        if length < 0 or length > (config.MAX_UPLOAD if max_bytes is None else max_bytes):
             return "TOOBIG", None, {}
         body = self.rfile.read(length)
         fields = {}

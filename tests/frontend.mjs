@@ -76,4 +76,35 @@ await new Promise(resolve => setImmediate(resolve));
 assert.equal(typeof context.openExport, 'function');
 assert.equal(typeof context.setExpQuality, 'function');
 assert.equal(context.curClips, undefined); // internal state is no longer a page-global variable
-console.log('Frontend modules: syntax, imports, clip grouping, theme, language and startup checks passed');
+const qqSettings = {
+  provider: 'qq', enabled: true, qq_app_id: '12345', qq_has_secret: true,
+  qq_openid: 'A'.repeat(32), qq_target_type: 'user', media: 'text', ready: true,
+};
+const savedBodies = [];
+context.fetch = async (url, options) => {
+  if (url === '/api/notify/save') savedBodies.push(JSON.parse(options.body));
+  return { ok: true, json: async () => url === '/api/notify/save' ? { ok: true } : qqSettings };
+};
+context.stab('notify');
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(element('nt-provider').value, 'qq');
+assert.equal(element('nt-qq-fields').style.display, '');
+assert.equal(element('nt-feishu-fields').style.display, 'none');
+assert.equal(element('nt-qq-secret').value, '');
+assert.equal(element('nt-qq-secret').dataset.has, '1');
+assert.notEqual(element('nt-qq-openid').value, qqSettings.qq_openid);
+context.ntToggleEye();
+assert.equal(element('nt-qq-openid').value, qqSettings.qq_openid);
+context.ntToggleEye();
+await context.ntSave();
+assert.equal(savedBodies.length, 1);
+assert.equal(savedBodies[0].provider, 'qq');
+assert.equal(savedBodies[0].qq_openid, qqSettings.qq_openid); // save original, not display mask
+assert.equal(savedBodies[0].qq_app_id, qqSettings.qq_app_id);
+assert.equal(savedBodies[0].qq_app_secret, ''); // retains server-side secret
+element('nt-provider').value = 'feishu';
+context.ntProviderUI();
+assert.equal(element('nt-qq-fields').style.display, 'none');
+assert.equal(element('nt-feishu-fields').style.display, '');
+assert.equal(typeof context.wrapDetach, 'function');
+console.log('Frontend modules: imports, grouping, theme, language, startup and QQ settings checks passed');

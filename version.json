@@ -1,12 +1,12 @@
 {
-  "version": "2.7.1",
-  "date": "2026-11-07",
+  "version": "2.8.0",
+  "date": "2026-11-08",
   "notes": [
-    "增加经过校验的离线安装包和 Mac SSH 上传脚本",
-    "离线安装不下载字体并关闭在线版本检查, F50 无需访问 GitHub",
-    "更新源默认指向 codex/modular-runtime, 支持 Mac 局域网更新源",
-    "新镜像空间不足时拒绝安装, 保留已有配置和虚拟盘"
+    "增加 QQ 官方机器人单聊/群聊推送及本地图片视频上传",
+    "车身涂装支持创建 Wraps、校验 PNG 规范及恢复车机导出",
+    "锁车音自动裁剪、转换 PCM WAV 并命名为 LockChime.wav",
+    "音效队列与 USB 同步共用锁和原子写入，避免并发丢失新上传"
   ],
   "bundle": "dist/release.json",
-  "sha256": "6248d18353b7bce07850517ddbaa304fa05a4768b70f5cebe11a49156bffa2b6"
+  "sha256": "20f9fead32068317fb5bd08307a6c942f2d18d81aabff71631141145d644dd90"
 }

@@ -65,8 +65,9 @@
 | 🔄 **一键在线升级（OTA）** | 设置 →「更新」页签：自动比对 GitHub 仓库里的 `version.json`，有新版本时齿轮亮红点，点一下即下载新程序、语法+启动自检、备份旧版、原子替换并自动重启；出问题可一键回滚。默认从本仓库的 `codex/modular-runtime` 分支获取程序，可用 `TSF_OTA_SOURCES` 指定局域网源；离线安装默认关闭在线检查 |
 | 🔐 **全站登录保护** | 账号密码登录（cookie 记住 30 天），页面/视频流/缩略图/下载/API 全部拦截；支持 HTTP Basic 便于脚本；同 IP 连错 8 次锁 5 分钟；右上角一键退出 |
 | 🔔 **飞书推送** | 哨兵触发后自动把时间 / 位置 / 触发原因 / 触发镜头 + **触发那一帧画面** 推到飞书（默认**自建应用私聊，只有本人可见**；也可用群机器人 webhook），可推**触发那一路的短视频**或封面卡片，带「查看录像」按钮 |
-| 🔊 **锁车音 / 音效** | 网页上传音频，全部直接写入 U 盘**根目录**（`LockChime.wav` 即锁车音） |
-| 🚙 **涂装管理** | 网页上传 png/jpg 到 U 盘根目录 `Wraps/`，车机端直接选用 |
+| 🔔 **QQ 官方机器人推送** | AppID / AppSecret 配置单聊或群聊，支持文字、封面及视频；本地媒体直接上传 QQ，无需公网服务 |
+| 🔊 **锁车音自动转换** | MP3/WAV/M4A 等音频自动裁剪、转换 PCM WAV、命名为 `LockChime.wav`，同步写入 USB 根目录 |
+| 🚙 **涂装管理** | 校验车型模板 PNG，自动创建 `Wraps/`、规范文件名，最多 10 个；支持预览、替换、删除及恢复导出 |
 | 📂 **U 盘文件管理** | 网页直接浏览/上传/下载/删除车机 U 盘内容（临时断开、自动恢复导出） |
 | 🛡 **断电自愈** | 车内 USB 硬断电场景友好：归档区 ext4 日志式、开机自检、服务自动拉起 |
 | 🔁 **弹出自动重挂** | 主机(车机/电脑)对 U 盘执行"弹出"会清空 mass_storage 的 LUN，`usb-selfheal.sh` 每 2 分钟检测并自动重新导出 |
@@ -158,14 +159,14 @@ sudo ./install.sh --size 200 --port 8080 --archive /archive
 | 标签 | 功能 |
 |---|---|
 | 🎨 网页背景 | 上传 `.css` / `.jpg` / `.png` / `.webp`；CSS 里用 `/skin-media/文件名` 引用图片 |
-| 🔊 锁车语音 | 上传 WAV/MP3，全部直接写入车机 U 盘**根目录**；文件名为 `LockChime.wav` 的即锁车音，可"设为锁车音"改名 |
-| 🚙 涂装 | 上传 png/jpg/webp，直接写入 U 盘根目录 `Wraps/`，车机端设置里选用（带缩略图预览与删除） |
+| 🔊 锁车语音 | 源音频最大 20 MiB，默认取前 5 秒，自动生成小于 1 MB 的 `LockChime.wav`，等待空闲同步写入 USB 根目录 |
+| 🚙 涂装 | 上传对应车型 PNG（512–1024 正方形、≤1 MB），自动创建根目录 `Wraps/`，车机端选择；支持预览与删除 |
 | 📂 文件 | **车机U盘**：浏览/上传/下载/删除 U 盘任意目录（含根目录）；**归档区**：浏览 F50 内部文件 |
-| 🔔 推送 | 飞书推送哨兵事件（私聊仅本人 / 群机器人，含触发那一帧画面），见 [飞书推送](#飞书推送) |
+| 🔔 推送 | 选择 QQ 官方机器人或飞书，推送新增事件；见 [QQ 配置及车辆文件使用说明](docs/FEATURES.md) 和 [飞书推送](#飞书推送) |
 | 🌐 **多语言** | 界面支持中/英/德/法/意/西/荷/俄/日/韩，设置 → 语言 里切换，保存在本机浏览器 |
 | 🔄 更新 | 查看当前/最新版本与更新说明，一键检查并升级，出问题可回滚（见 [在线升级](#在线升级ota)） |
 
-**锁车音要求**（特斯拉规范）：WAV、44.1kHz、16-bit、< 1MB、1–5 秒。上传的音频**全部写入 U 盘根目录**，其中 `LockChime.wav` 即锁车音（特斯拉只认根目录这个文件名）。车机端：Toybox → Boombox → Lock Sound → 选 USB。
+**锁车音转换**：项目自动输出 44.1kHz / 16-bit / 单声道 PCM WAV，最长 5 秒、小于 1 MB，保存为 USB 根目录的 `LockChime.wav`。这是本项目采用的输出配置；车机端在 Toybox → Boombox → Lock Sound 选择 USB，需要车辆支持该功能。详见 [使用说明](docs/FEATURES.md)。
 
 **U 盘文件管理模式**：点「连接车机U盘」→ 停止导出、挂载镜像 → 网页上改动直接写进车机 U 盘 → 点「恢复车机导出」或 **5 分钟无操作自动恢复**。行车/哨兵活跃时不要长时间挂着。
 
@@ -265,6 +266,10 @@ node --experimental-vm-modules tests/frontend.mjs
 ### 多语言
 
 设置 → 🌐 语言 里切换界面语言：中文 / English / Deutsch / Français / Italiano / Español / Nederlands / Русский / 日本語 / 한국어。选择保存在本机浏览器；首次打开会按浏览器语言自动选择。登录页会按浏览器 `Accept-Language` 自动匹配。
+
+### QQ 官方机器人推送
+
+网页 **⚙ → 推送 → QQ 官方机器人**，选择单聊/群聊，填写 **AppID / AppSecret / 接收 OpenID**，保存并发送测试。接收 OpenID 来自该机器人的已验证消息事件，不能填 QQ 号或群号。支持文字、封面和视频；媒体直接通过 QQ 官方接口上传，F50 不需公网域名。完整配置、OpenID 获取和平台权限说明见 [docs/FEATURES.md](docs/FEATURES.md)。
 
 ### 飞书推送
 
@@ -380,15 +385,16 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 | `/api/usb/detach` | POST | 恢复车机导出 |
 | `/api/usb/browse?dir=` | GET | 浏览车机U盘（相对路径） |
 | `/api/upload/usb` | POST | 上传到车机U盘（multipart: `file`, `path`） |
+| `/api/upload/wrap` | POST | 校验 PNG、创建 Wraps 并写入（`file`, 可选 `overwrite=1`，需 USB 管理模式） |
 | `/api/upload/file` | POST | 上传到归档区（multipart: `file`, `path`） |
 | `/api/upload/skin` | POST | 上传皮肤 |
-| `/api/upload/audio` | POST | 上传锁车音/音效 |
-| `/api/audio/setlockchime` | POST | 把队列中音频设为锁车音 |
+| `/api/upload/audio` | POST | 上传并转换锁车音（`file`, 可选 `start=0`, `duration=5`），返回文件名、时长与大小 |
+| `/api/audio/setlockchime` | POST | 将历史队列音频实际转换为 LockChime.wav |
 | `/api/ota/check?force=1` | GET | 比对 GitHub 仓库 `version.json`，返回 `{current, latest, notes, has_update, source}`（结果缓存 10 分钟，`force=1` 强制刷新） |
 | `/api/ota/apply` | POST | 下载最新版 → 校验 → 备份旧版 → 原子替换 → 重启服务 |
-| `/api/notify` | GET | 飞书推送配置与最近一次推送结果 |
-| `/api/notify/save` | POST | 保存推送配置（`enabled/webhook/app_id/app_secret/public_url/saved/delay`） |
-| `/api/notify/test` | POST | 用最新一条哨兵事件发一张测试卡片 |
+| `/api/notify` | GET | 选中渠道的配置、就绪状态与最近结果；不返回应用密钥 |
+| `/api/notify/save` | POST | 保存配置；QQ 使用 `provider=qq`, `qq_app_id`, `qq_app_secret`, `qq_target_type=user/group`, `qq_openid`；密钥留空保留 |
+| `/api/notify/test` | POST | 向已保存渠道发送测试消息；QQ 无录像时也可测试 |
 | `/api/ota/rollback` | POST | 回滚到升级前备份的版本并重启 |
 | `/usbdl?path=` · `/dl?path=` | GET | 下载（U盘 / 归档区）；`/dl` 追加 `&q=360p/480p/720p` 返回转码副本 |
 | `/api/usb?path=` · `/api/file?path=` | DELETE | 删除（U盘 / 归档区） |

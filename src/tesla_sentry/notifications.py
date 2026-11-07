@@ -6,9 +6,9 @@ import re
 import time
 import threading
 import urllib.request
-from . import config
+from . import archive, config
 from . import media
-from . import feishu, storage
+from . import feishu, qqbot, storage
 from . import push_media
 
 NOTIFY_CONF = config.get("TSF_NOTIFY_CONF", os.path.join(config.settings.install_dir, "notify.json"))
@@ -18,6 +18,8 @@ NOTIFY_STATE = config.get("TSF_NOTIFY_STATE", os.path.join(config.settings.insta
 
 
 _NC_DEFAULT = {
+    "provider": "feishu", "qq_app_id": "", "qq_app_secret": "",
+    "qq_target_type": "user", "qq_openid": "",
     "enabled": False, "mode": "dm", "webhook": "", "app_id": "", "app_secret": "",
     "receive_id": "", "receive_id_type": "", "public_url": "", "saved": False, "delay": 20,
     "media": "thumb", "quality": "480p", "vdur": 30,
@@ -109,22 +111,32 @@ def _reason_info(reason):
 
 
 def _ev_files(d):
+    if not archive.safe_archive_dir(d):
+        return []
     try:
-        return sorted(f for f in os.listdir(d) if f.lower().endswith(".mp4"))
+        return sorted(f for f in os.listdir(d) if f.lower().endswith(".mp4") and archive.safe_archive_path(os.path.join(d, f)))
     except OSError:
         return []
+
+
+def _event_meta(cat, name):
+    path = archive.safe_archive_path(os.path.join(config.settings.archive, cat, name, "event.json"))
+    if path:
+        try:
+            with open(path, encoding="utf-8") as stream:
+                meta = json.load(stream)
+            if isinstance(meta, dict):
+                return meta
+        except (OSError, ValueError):
+            pass
+    return {}
 
 
 def _pick_clip(cat, name):
     """按 event.json 的 camera + timestamp 找出触发摄像头那一路的 mp4, 返回 (文件路径, 触发偏移秒, meta);
     对不上时回落到前视。找不到任何片段返回 (None, 0, meta)。"""
     d = os.path.join(config.settings.archive, cat, name)
-    meta = {}
-    try:
-        with open(os.path.join(d, "event.json"), encoding="utf-8", errors="ignore") as f:
-            meta = json.load(f) or {}
-    except Exception:
-        meta = {}
+    meta = _event_meta(cat, name)
     files = _ev_files(d)
     if not files:
         return None, 0.0, meta
@@ -158,6 +170,13 @@ def _trigger_frame(cat, name):
 def manual_push(conf, src, cat, name, quality="480p"):
     """把一个现成的视频文件 (浏览器合成的多路画面) 推到飞书私聊; 返回 (成功?, 提示)。
     src 会被整段转码后上传, 推完发送事件卡片 (带查看按钮)。"""
+    if conf.get("provider") == "qq":
+        if not qqbot.ready(conf):
+            return False, "QQ 未就绪: 请配置 AppID / AppSecret 和接收 OpenID"
+        vid, dur = push_media._transcode_push_upload(src, quality)
+        file_info = qqbot.upload(conf, vid, 2)
+        qqbot.send(conf, _event_text(conf, cat, name), file_info)
+        return True, "已推送 %.0f 秒视频到 QQ" % dur
     if not feishu._dm_ready(conf):
         return False, "飞书私聊未就绪: 需要在「推送」里配好 App ID/Secret + 接收人 (群机器人 webhook 发不了视频)"
     vid, dur = push_media._transcode_push_upload(src, quality)
@@ -176,12 +195,7 @@ def manual_push(conf, src, cat, name, quality="480p"):
 def _feishu_card(conf, cat, name, img_key=None, test=False):
     """拼一张飞书卡片 (标题/时间/位置/原因/镜头/封面/查看按钮)"""
     d = os.path.join(config.settings.archive, cat, name)
-    meta = {}
-    try:
-        with open(os.path.join(d, "event.json"), encoding="utf-8", errors="ignore") as f:
-            meta = json.load(f) or {}
-    except Exception:
-        pass
+    meta = _event_meta(cat, name)
     cat_name, color, detail = _reason_info(meta.get("reason"))
     if cat == "SavedClips" and not str(meta.get("reason", "")).startswith("sentry_"):
         cat_name, color = "手动保存", "grey"
@@ -223,9 +237,61 @@ def _feishu_card(conf, cat, name, img_key=None, test=False):
     }
 
 
+def _event_text(conf, cat, name, test=False):
+    meta = _event_meta(cat, name)
+    title, _color, reason = _reason_info(meta.get("reason"))
+    if cat == "SavedClips" and not str(meta.get("reason", "")).startswith("sentry_"):
+        title = "手动保存"
+    lines = [("[测试] " if test else "") + "Tesla 哨兵 · " + title,
+             "时间: " + str(meta.get("timestamp") or name or datetime.datetime.now().isoformat(timespec="seconds")),
+             "位置: " + " ".join(str(meta.get(k) or "") for k in ("city", "street")).strip(),
+             "原因: " + reason]
+    if str(meta.get("camera", "")).isdigit():
+        lines.append("镜头: " + str(CAM_NUM.get(int(meta["camera"]), meta["camera"])))
+    link = str(conf.get("public_url") or "").rstrip("/")
+    if link and name:
+        lines.append("查看: %s/?ev=%s/%s" % (link, urllib.parse.quote(cat, safe=""), urllib.parse.quote(name, safe="")))
+    return "\n".join(lines)
+
+
+def _qq_push(conf, cat, name, test=False):
+    if not qqbot.ready(conf):
+        return False, "QQ 未配置完整: 需要 AppID / AppSecret 和接收 OpenID (不是 QQ 号/群号)"
+    file_info, warn = None, ""
+    content = _event_text(conf, cat, name, test)
+    try:
+        mode = conf.get("media", "thumb")
+        if mode == "video":
+            source, offset, _meta = _pick_clip(cat, name)
+            if not source:
+                raise ValueError("归档里没有可用片段")
+            video = push_media._make_push_video(source, offset, conf.get("quality") or "480p", int(conf.get("vdur") or 30))
+            file_info = qqbot.upload(conf, video, 2)
+        elif mode == "thumb":
+            jpg, _meta = _trigger_frame(cat, name)
+            if not jpg:
+                raise ValueError("未找到封面帧")
+            file_info = qqbot.upload(conf, jpg, 1)
+    except Exception as error:
+        warn = " (媒体未附上, 已发文字: %s)" % str(error)[:150]
+    try:
+        qqbot.send(conf, content, file_info)
+    except Exception as error:
+        return False, "QQ 推送失败: " + str(error)[:200]
+    return True, "已推送到 QQ" + ("群" if conf.get("qq_target_type") == "group" else "单聊") + warn
+
+
+def notify_ready(conf):
+    if conf.get("provider") == "qq":
+        return qqbot.ready(conf)
+    return feishu._dm_ready(conf) or bool(str(conf.get("webhook") or "").strip())
+
+
 def notify_push(cat, name, test=False):
-    """推一条到飞书; 返回 (成功?, 提示)"""
+    """Deliver through the selected provider; return (success, message)."""
     conf = notify_conf()
+    if conf.get("provider") == "qq":
+        return _qq_push(conf, cat, name, test)
     dm = feishu._dm_ready(conf)
     hook = str(conf.get("webhook") or "").strip()
     use_dm = dm and (conf.get("mode") != "group" or not hook)
@@ -233,7 +299,7 @@ def notify_push(cat, name, test=False):
         return False, "未配置: 需要 App ID/Secret + 接收人 (私聊), 或群机器人 webhook"
     img_key = None
     warn = ""
-    if conf.get("app_id") and conf.get("app_secret"):
+    if conf.get("media") != "text" and conf.get("app_id") and conf.get("app_secret"):
         try:
             jpg, _m = _trigger_frame(cat, name)
             if jpg:
@@ -242,7 +308,7 @@ def notify_push(cat, name, test=False):
                 warn = " (没抽到封面帧)"
         except Exception as ex:
             warn = " (封面未附上: %s)" % str(ex)[:80]
-    else:
+    elif conf.get("media") != "text":
         warn = " (未配 app_id/app_secret, 只发文字卡片)"
     # 视频模式: 先把触发摄像头那一路上传成视频消息, 再补一条精简卡片(带查看按钮)
     if use_dm and (conf.get("media") or "thumb") == "video":
@@ -287,7 +353,7 @@ def _ev_ts(name):
 def notify_scan():
     """扫一遍归档, 把新出现的哨兵事件推给飞书; 返回本轮推送条数"""
     conf = notify_conf()
-    if not conf.get("enabled") or not (feishu._dm_ready(conf) or str(conf.get("webhook") or "").strip()):
+    if not conf.get("enabled") or not notify_ready(conf):
         return 0
     st = _nstate_load()
     seen = st.setdefault("seen", {})
@@ -369,6 +435,12 @@ def notify_status():
     st = _nstate_load()
     rid, rtype = feishu._dm_target(conf)
     return {
+        "provider": conf.get("provider") or "feishu",
+        "qq_app_id": conf.get("qq_app_id") or "",
+        "qq_has_secret": bool(conf.get("qq_app_secret")),
+        "qq_target_type": conf.get("qq_target_type") or "user",
+        "qq_openid": conf.get("qq_openid") or "",
+        "ready": notify_ready(conf),
         "enabled": bool(conf.get("enabled")),
         "mode": conf.get("mode") or "dm",
         "webhook": conf.get("webhook") or "",

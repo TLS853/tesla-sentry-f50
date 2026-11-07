@@ -961,7 +961,7 @@ function uploadPushVideo(blob, push) {
   const fill = document.getElementById('stfill'), pct = document.getElementById('stpct'),
         hint = document.getElementById('sthint');
   fill.style.width = '60%'; pct.textContent = '';
-  hint.textContent = '已上传到设备, 正在转码并推送飞书 (约1-3分钟, 请保持页面打开)…';
+  hint.textContent = '已上传到设备, 正在转码并推送到已选渠道 (约1-3分钟, 请保持页面打开)…';
   fetch('/api/push/upload?cat=' + encodeURIComponent(push.cat) + '&name=' + encodeURIComponent(push.name) +
         '&q=' + encodeURIComponent(push.q),
         { method: 'POST', body: blob, headers: { 'Content-Type': blob.type || 'video/webm' } })
@@ -1194,8 +1194,8 @@ function stab(which) {
   if (which === 'wraps') refreshWraps();
 }
 
-/* ---------- 飞书推送 ---------- */
-const NT_SENS = ['nt-to', 'nt-appid', 'nt-hook', 'nt-url'];
+/* ---------- 推送设置 ---------- */
+const NT_SENS = ['nt-to', 'nt-appid', 'nt-hook', 'nt-url', 'nt-qq-appid', 'nt-qq-openid'];
 let ntHidden = true;            // 默认隐藏, 截图安全
 function ntMask(v) {
   v = (v || '').trim();
@@ -1236,15 +1236,25 @@ function ntSetEye(hide) {
   const sec = document.getElementById('nt-secret');
   if (sec) sec.placeholder = ntHidden ? 'App Secret ••••••••••'
     : (sec.dataset.has === '1' ? 'App Secret 已保存, 留空表示不修改' : 'App Secret');
+  const qqsec = document.getElementById('nt-qq-secret');
+  if (qqsec) qqsec.placeholder = qqsec.dataset.has === '1' ? 'QQ AppSecret 已保存, 留空表示不修改' : 'QQ AppSecret';
   const btn = document.getElementById('nt-eye'), tip = document.getElementById('nt-eyetip');
   if (btn) btn.textContent = ntHidden ? '👁 显示' : '🙈 隐藏';
   if (tip) tip.textContent = ntHidden ? '敏感信息已隐藏（截图安全）' : '敏感信息已明文显示，注意别外发';
 }
 function ntToggleEye() { ntSetEye(!ntHidden); }
 
+function ntProviderUI() {
+  const qq = document.getElementById('nt-provider').value === 'qq';
+  document.getElementById('nt-feishu-fields').style.display = qq ? 'none' : '';
+  document.getElementById('nt-qq-fields').style.display = qq ? '' : 'none';
+}
+
 async function ntLoad() {
   try {
     const j = await (await fetch('/api/notify', { cache: 'no-store' })).json();
+    document.getElementById('nt-provider').value = j.provider || 'feishu';
+    document.getElementById('nt-qq-type').value = j.qq_target_type || 'user';
     document.getElementById('nt-en').checked = !!j.enabled;
     document.getElementById('nt-saved').checked = !!j.saved;
     document.getElementById('nt-mode').value = j.mode || 'dm';
@@ -1258,20 +1268,30 @@ async function ntLoad() {
     document.getElementById('nt-appid').value = j.app_id || '';
     document.getElementById('nt-secret').value = '';
     document.getElementById('nt-secret').dataset.has = j.has_secret ? '1' : '0';
+    document.getElementById('nt-qq-appid').value = j.qq_app_id || '';
+    document.getElementById('nt-qq-openid').value = j.qq_openid || '';
+    document.getElementById('nt-qq-secret').value = '';
+    document.getElementById('nt-qq-secret').dataset.has = j.qq_has_secret ? '1' : '0';
     document.getElementById('nt-url').value = j.public_url || '';
     document.getElementById('nt-delay').value = j.delay || 20;
     ntSetEye(ntHidden);
+    ntProviderUI();
     const m = document.getElementById('nt-msg');
     if (j.last && j.last.msg) {
       m.textContent = t('最近一次') + ': ' + (j.last.ok ? '✅ ' : '❌ ') + j.last.msg + ' (' + new Date(j.last.at * 1000).toLocaleString() + ')';
       m.style.color = j.last.ok ? '#4cc38a' : 'var(--accent)';
     } else if (!j.enabled) { m.textContent = t('未启用'); m.style.color = ''; }
-    else if (j.dm_ready) { m.textContent = t('已启用私聊推送, 等下一个哨兵事件'); m.style.color = ''; }
+    else if (j.ready) { m.textContent = '已启用推送, 等下一个哨兵事件'; m.style.color = ''; }
     else { m.textContent = t('已启用, 但接收人/应用凭据未配全'); m.style.color = 'var(--accent)'; }
   } catch (e) { document.getElementById('nt-msg').textContent = t('读取设置失败') + ': ' + e; }
 }
 async function ntSave() {
   const body = {
+    provider: document.getElementById('nt-provider').value,
+    qq_app_id: ntReal('nt-qq-appid'),
+    qq_app_secret: document.getElementById('nt-qq-secret').value.trim(),
+    qq_target_type: document.getElementById('nt-qq-type').value,
+    qq_openid: ntReal('nt-qq-openid'),
     enabled: document.getElementById('nt-en').checked,
     saved: document.getElementById('nt-saved').checked,
     mode: document.getElementById('nt-mode').value,
@@ -1286,10 +1306,17 @@ async function ntSave() {
     delay: +document.getElementById('nt-delay').value || 20,
   };
   if (body.enabled) {
-    const secSaved = document.getElementById('nt-secret').dataset.has === '1';
-    const hasApp = body.app_id && (body.app_secret || secSaved);
-    if (body.mode === 'dm' && (!hasApp || !body.receive_id)) { toast('私聊需要 App ID / Secret + 接收人'); return; }
-    if (body.mode === 'group' && !body.webhook) { toast('请先填群机器人 webhook'); return; }
+    if (body.provider === 'qq') {
+      const saved = document.getElementById('nt-qq-secret').dataset.has === '1';
+      if (!body.qq_app_id || !(body.qq_app_secret || saved) || !body.qq_openid) {
+        toast('QQ 需要 AppID / AppSecret 和接收 OpenID'); return;
+      }
+    } else {
+      const secSaved = document.getElementById('nt-secret').dataset.has === '1';
+      const hasApp = body.app_id && (body.app_secret || secSaved);
+      if (body.mode === 'dm' && (!hasApp || !body.receive_id)) { toast('私聊需要 App ID / Secret + 接收人'); return; }
+      if (body.mode === 'group' && !body.webhook) { toast('请先填群机器人 webhook'); return; }
+    }
   }
   const m = document.getElementById('nt-msg');
   m.textContent = t('保存中…');
@@ -1302,7 +1329,7 @@ async function ntSave() {
 }
 async function ntTest() {
   const m = document.getElementById('nt-msg');
-  m.textContent = t('正在发送测试卡片…'); m.style.color = '';
+  m.textContent = '正在发送测试消息（使用已保存的设置）…'; m.style.color = '';
   try {
     const j = await (await fetch('/api/notify/test', { method: 'POST' })).json();
     m.textContent = (j.ok ? '✅ ' : '❌ ') + j.msg;
@@ -1511,8 +1538,18 @@ async function delAudio(f, isDone) {
   refreshAudio();
 }
 document.getElementById('audio-file').onchange = async function () {
-  const j = await uploadFile(this, '/api/upload/audio');
-  if (j && j.ok) refreshAudio();
+  const msg = document.getElementById('audio-msg');
+  this.disabled = true;
+  msg.textContent = '正在上传并转换锁车音…';
+  try {
+    const j = await uploadFile(this, '/api/upload/audio', {
+      start: document.getElementById('audio-start').value || '0',
+      duration: document.getElementById('audio-duration').value || '5',
+    });
+    msg.textContent = j ? j.msg : '未选择音频';
+    if (j && j.ok) refreshAudio();
+  } catch (e) { msg.textContent = '转换失败: ' + e; }
+  finally { this.disabled = false; this.value = ''; }
 };
 
 /* 文件管理器 */
@@ -1531,12 +1568,18 @@ function wrapStatusHtml(attached) {
       '<button onclick="wrapAttach()" style="background:#e8443f;border:none;color:#fff;border-radius:8px;padding:7px 16px;font-size:12.5px;cursor:pointer;margin-top:6px">🔗 连接车机U盘 (临时断开车机读取)</button></div>';
   }
   return '<div style="background:#1a3325;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#4cc38a;line-height:1.6">' +
-    '🟢 已连接 — 上传的图片会直接写入车机U盘 Wraps/ 目录</div>';
+    '🟢 已连接管理 — 上传后写入 Wraps/；管理期间车机录制暂停<br>' +
+    '<button class="mini primary" onclick="wrapDetach()">完成并恢复车机导出</button></div>';
 }
 async function wrapAttach() {
-  toast('⏳ 正在连接 (车机读取将断开几秒)...');
+  toast('⏳ 正在连接, 管理期间车机读取将暂停…');
   const j = await (await fetch('/api/usb/attach', { method: 'POST' })).json();
   toast(j.ok ? '✅ 已连接车机U盘' : '❌ ' + j.msg);
+  refreshWraps();
+}
+async function wrapDetach() {
+  const j = await (await fetch('/api/usb/detach', { method: 'POST' })).json();
+  toast((j.ok ? '✅ ' : '❌ ') + j.msg);
   refreshWraps();
 }
 async function refreshWraps() {
@@ -1547,9 +1590,10 @@ async function refreshWraps() {
     j = await (await fetch('/api/usb/browse?dir=' + encodeURIComponent('Wraps'))).json();
   } catch (e) { return; }
   st.innerHTML = wrapStatusHtml(j.attached);
+  document.getElementById('wraps-file').disabled = !j.attached;
   grid.innerHTML = '';
   if (!j.ok) { grid.innerHTML = '<div class="hint">Wraps 目录不存在, 连接 U 盘后上传图片会自动创建</div>'; return; }
-  const files = j.files || [];
+  const files = (j.files || []).filter(f => f.name.toLowerCase().endsWith('.png'));
   if (!files.length) { grid.innerHTML = '<div class="hint">Wraps 目录为空, 上传图片即可在车机上选用</div>'; return; }
   for (const f of files) {
     const box = document.createElement('div');
@@ -1578,10 +1622,15 @@ async function refreshWraps() {
 document.getElementById('wraps-file').onchange = async function () {
   if (!this.files || !this.files.length) return;
   for (const f of this.files) {
-    const fd = new FormData(); fd.append('file', f); fd.append('path', 'Wraps');
+    const fd = new FormData(); fd.append('file', f);
     try {
-      const r = await fetch('/api/upload/usb', { method: 'POST', body: fd });
-      const j = await r.json();
+      let r = await fetch('/api/upload/wrap', { method: 'POST', body: fd });
+      let j = await r.json();
+      if (j.exists && confirm(f.name + '：' + j.msg)) {
+        fd.append('overwrite', '1');
+        r = await fetch('/api/upload/wrap', { method: 'POST', body: fd });
+        j = await r.json();
+      }
       toast((j.ok ? '✅ ' : '❌ ') + f.name + ' — ' + (j.msg || ''));
     } catch (e) { toast('❌ ' + f.name + ' — ' + t('上传失败')); }
   }
@@ -1739,6 +1788,8 @@ window.addEventListener('tsf:language', () => {
 
 // Public actions referenced by static and generated HTML. All other state stays in this module.
 Object.assign(window, {
+  ntProviderUI,
+  wrapDetach,
   applySkin,
   closeExport,
   closeLive,

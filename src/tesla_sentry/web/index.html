@@ -80,10 +80,10 @@
     <button class="mini" onclick="expChk(true)">全选</button>
     <button class="mini" onclick="expChk(false)">清空</button>
     <button class="mini" onclick="doExportZip()">打包zip</button>
-    <button class="mini" onclick="doPushFeishu()">推送飞书</button>
+    <button class="mini" onclick="doPushFeishu()">推送到已选渠道</button>
     <button class="mini primary" onclick="doExport()">合成视频</button>
   </div>
-  <div class="hint" style="margin-top:8px;margin-bottom:0">单选取原文件直接下载(加水印时走本机合成)；多选合成一个多画面视频。下载/打包按所选清晰度导出(首次需等转码)。「推送飞书」按所选画面+水印合成后发到你的飞书私聊 (需已配置推送, 首次合成约1-3分钟)。</div>
+  <div class="hint" style="margin-top:8px;margin-bottom:0">单选下载原文件，多选合成多画面视频；可叠加行车信息水印。推送使用设置中保存的 QQ 或飞书渠道，首次合成可能需要 1–3 分钟。</div>
 </div>
 
 <div class="mask" id="mask" onclick="closePanel()"></div>
@@ -131,17 +131,21 @@
     <div id="skin-list"></div>
   </div>
   <div id="tab-audio" style="display:none">
-    <div class="hint">上传的音频 (wav/mp3, &lt;1MB) 会直接写入车机U盘根目录；文件名为 LockChime.wav 的即锁车音 (特斯拉只认根目录这个文件名)。文件在归档同步时写入车机U盘。</div>
-    <label class="upbtn">＋ 上传音频 (wav/mp3, &lt;1MB)<input type="file" id="audio-file" accept=".wav,.mp3" hidden></label>
+    <div class="hint">上传后自动裁剪、转换为 44.1kHz / 16-bit / 单声道 PCM WAV，并命名为 LockChime.wav。默认取前 5 秒，输出小于 1 MB；源文件最大 20 MB。支持 WAV / MP3 / M4A / AAC / FLAC / OGG / OPUS / WEBM。</div>
+    <label class="nrow"><span>从第几秒开始</span><input class="ninput num" id="audio-start" type="number" min="0" max="3600" step="0.1" value="0"></label>
+    <label class="nrow"><span>保留时长（秒）</span><input class="ninput num" id="audio-duration" type="number" min="0.1" max="5" step="0.1" value="5"></label>
+    <label class="upbtn">＋ 上传并转换锁车音<input type="file" id="audio-file" accept=".wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.webm" hidden></label>
+    <div class="hint" id="audio-msg">转换成功后替换待写入的锁车音。等待镜像空闲后的归档同步，自动写入 USB 根目录；车机内再选「玩具箱 → Boombox → 锁车音 → USB」。需要车辆支持外部扬声器及自定义锁车音。</div>
     <div class="hint" style="color:#4cc38a">⏳ 待写入车机U盘:</div>
     <div id="audio-list"></div>
     <div class="hint" style="color:#4cc38a">✅ 已写入:</div>
     <div id="audio-done"></div>
   </div>
   <div id="tab-wraps" style="display:none">
-    <div class="hint">车机涂装/牌照图片: 上传 png/jpg/webp, 直接写入车机U盘根目录 Wraps/ (车机端设置里选)。连接时会临时断开车机读取几秒。</div>
+    <div class="hint">自定义车身涂装：上传对应车型模板制作的静态 PNG，512×512–1024×1024，单文件 ≤1 MB，USB 最多 10 个。自动创建根目录 Wraps/ 并规范文件名。普通照片不能自动变成贴合车身的涂装。</div>
+    <div class="hint"><a href="https://github.com/teslamotors/custom-wraps" target="_blank" rel="noopener noreferrer">Tesla 官方车型模板</a> · 恢复导出后，在车机「玩具箱 → 喷漆车间 → 涂装」选用。请停车后管理 U 盘，管理期间车机录制暂停。</div>
     <div id="wraps-status" style="margin-bottom:10px"></div>
-    <label class="upbtn" id="wraps-upbtn">＋ 上传图片到 Wraps/ (png/jpg/webp, ≤100MB)<input type="file" id="wraps-file" accept=".png,.jpg,.jpeg,.webp" hidden multiple></label>
+    <label class="upbtn" id="wraps-upbtn">＋ 上传涂装到 Wraps/（PNG，≤1 MB）<input type="file" id="wraps-file" accept=".png,image/png" hidden multiple></label>
     <div id="wraps-grid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px"></div>
   </div>
   <div id="tab-files">
@@ -163,20 +167,41 @@
     </div>
   </div>
   <div id="tab-notify" style="display:none">
-    <div class="hint">哨兵触发时把时间/位置/触发原因和触发画面推到飞书。默认走自建应用私聊(只有你本人可见)；也可切到群机器人 webhook(群里都能看到)。视频推送只支持私聊。</div>
+    <div class="hint">新增哨兵事件时，推送时间、位置、原因及封面或视频。选择一个渠道；切换渠道会保留另一渠道的设置。</div>
+    <label for="nt-provider">推送渠道</label>
+    <select class="ninput" id="nt-provider" onchange="ntProviderUI()">
+      <option value="feishu">飞书</option>
+      <option value="qq">QQ 官方机器人（AppID / AppSecret）</option>
+    </select>
     <label class="nrow"><span>启用推送</span><input type="checkbox" id="nt-en"></label>
     <label class="nrow"><span>也推手动保存</span><input type="checkbox" id="nt-saved"></label>
-    <select class="ninput" id="nt-mode">
-      <option value="dm">私聊推送 — 只有我本人能看到</option>
-      <option value="group">群机器人 — 群里所有人都能看到</option>
-    </select>
     <div class="eyebar">
       <span class="lbl" id="nt-eyetip">敏感信息已隐藏（截图安全）</span>
       <button class="mini" id="nt-eye" onclick="ntToggleEye()">👁 显示</button>
     </div>
-    <input class="ninput" id="nt-to" placeholder="接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱">
+    <div id="nt-feishu-fields">
+      <select class="ninput" id="nt-mode">
+        <option value="dm">私聊推送 — 只有我本人能看到</option>
+        <option value="group">群机器人 — 群里所有人都能看到</option>
+      </select>
+      <input class="ninput" id="nt-to" placeholder="接收人: 你的 open_id (ou_ 开头) 或飞书登录邮箱">
+      <input class="ninput" id="nt-appid" placeholder="App ID — cli_ 开头">
+      <input class="ninput" id="nt-secret" type="password" autocomplete="new-password" placeholder="App Secret (已保存则留空表示不修改)">
+      <input class="ninput" id="nt-hook" placeholder="群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...">
+    </div>
+    <div id="nt-qq-fields" style="display:none">
+      <select class="ninput" id="nt-qq-type">
+        <option value="user">QQ 单聊 — 发给自己</option>
+        <option value="group">QQ 群聊 — 群内成员可见</option>
+      </select>
+      <input class="ninput" id="nt-qq-appid" placeholder="QQ 机器人 AppID">
+      <input class="ninput" id="nt-qq-secret" type="password" autocomplete="new-password" placeholder="QQ AppSecret (已保存则留空表示不修改)">
+      <input class="ninput" id="nt-qq-openid" placeholder="接收 user_openid 或 group_openid（不是 QQ 号码或群号）">
+      <div class="hint">从该机器人的 C2C_MESSAGE_CREATE 事件取 author.user_openid；群聊取 GROUP_AT_MESSAGE_CREATE 的 group_openid。需先添加机器人并允许主动消息，应用应具备对应权限。图片和视频直接上传 QQ，无需公网地址。详见仓库 docs/FEATURES.md。</div>
+    </div>
     <select class="ninput" id="nt-media" onchange="ntMediaUI()">
-      <option value="thumb">推送内容：封面卡片（触发那帧图 + 信息，最快）</option>
+      <option value="text">推送内容：仅文字（时间 / 位置 / 原因）</option>
+      <option value="thumb">推送内容：封面图片 + 事件信息</option>
       <option value="video">推送内容：触发摄像头视频（可回放）</option>
     </select>
     <div id="nt-vwrap" style="display:none">
@@ -187,9 +212,6 @@
       </select>
       <div class="nrow"><span>视频时长</span><input class="ninput num" id="nt-vdur" type="number" min="10" max="60"> <span class="hint2">秒（从触发前 5 秒开始截）</span></div>
     </div>
-    <input class="ninput" id="nt-appid" placeholder="App ID — cli_ 开头">
-    <input class="ninput" id="nt-secret" type="password" placeholder="App Secret (已保存则留空表示不修改)">
-    <input class="ninput" id="nt-hook" placeholder="群机器人 webhook (仅群推送需要): https://open.feishu.cn/open-apis/bot/v2/hook/...">
     <input class="ninput" id="nt-url" placeholder="查看链接前缀 (可选): http://你的域名:端口">
     <div class="nrow"><span>延迟推送</span><input class="ninput num" id="nt-delay" type="number" min="5" max="600"> <span class="hint2">秒 (等片段写完再推)</span></div>
     <div class="updbtns">

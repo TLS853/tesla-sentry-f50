@@ -57,6 +57,12 @@ def main(argv=None, entrypoint="viewer"):
                 raise ValueError("archive-copy requires a mount path and USB lock ownership")
             print(archive_policy.copy_mounted_archive(args[1]))
             return 0
+        if args[:1] == ["--audio-flush"]:
+            from . import locking, vehicle_assets
+            if len(args) != 2 or locking.inherited_usb_lock() is None:
+                raise ValueError("audio-flush requires a mount path and USB lock ownership")
+            print(vehicle_assets.flush_audio(args[1]))
+            return 0
         if args[:1] == ["--install-release"]:
             from .deployment import install_release
             if len(args) != 2:

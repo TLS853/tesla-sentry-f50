@@ -5,9 +5,10 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 import urllib.parse
 import urllib.request
-from . import archive, auth, config, notifications, transcode, updates, usb
+from . import archive, auth, config, notifications, qqbot, transcode, updates, usb, vehicle_assets
 
 class PostRoutesMixin:
 
@@ -27,7 +28,11 @@ class PostRoutesMixin:
     def _post_api_notify_save(self, path):
         try:
             n = int(self.headers.get("Content-Length", 0))
+            if not 0 <= n <= 65536:
+                raise ValueError("invalid settings size")
             body = json.loads(self.rfile.read(n).decode("utf-8", "ignore") or "{}")
+            if not isinstance(body, dict):
+                raise ValueError("settings must be an object")
         except Exception:
             self._json({"ok": False, "msg": "参数错误"}, 400)
             return
@@ -35,12 +40,17 @@ class PostRoutesMixin:
         for k in ("enabled", "saved"):
             if k in body:
                 patch[k] = bool(body.get(k))
-        for k in ("mode", "media", "quality", "webhook", "app_id", "receive_id",
-                  "receive_id_type", "public_url"):
+        for k in ("mode", "media", "quality", "webhook", "app_id", "receive_id", "provider",
+                  "receive_id_type", "public_url", "qq_app_id", "qq_target_type", "qq_openid"):
             if k in body:
                 patch[k] = str(body.get(k) or "").strip()
-        if str(body.get("app_secret") or "").strip():
-            patch["app_secret"] = str(body["app_secret"]).strip()
+        for key in ("app_secret", "qq_app_secret"):
+            if str(body.get(key) or "").strip():
+                patch[key] = str(body[key]).strip()
+        for key, allowed in (("provider", ("feishu", "qq")), ("qq_target_type", ("user", "group"))):
+            if key in patch and patch[key] not in allowed:
+                self._json({"ok": False, "msg": "推送渠道或接收类型无效"}, 400)
+                return
         if "delay" in body:
             try:
                 patch["delay"] = max(5, min(600, int(body["delay"])))
@@ -53,10 +63,13 @@ class PostRoutesMixin:
                 pass
         if str(patch.get("quality") or "") not in ("360p", "480p", "720p"):
             patch.pop("quality", None)
-        if str(patch.get("media") or "") not in ("thumb", "video"):
+        if str(patch.get("media") or "") not in ("thumb", "video", "text"):
             patch.pop("media", None)
         conf = notifications.notify_save(patch)
-        if feishu._dm_ready(conf):
+        if conf.get("provider") == "qq":
+            warn = ("QQ 已就绪; 请确保接收方允许主动消息, 点击「发送测试」验证平台权限"
+                    if qqbot.ready(conf) else "QQ 需要 AppID / AppSecret 和接收 OpenID, 不能填写 QQ 号或群号")
+        elif feishu._dm_ready(conf):
             warn = "" if (conf.get("public_url") or "").strip() else "私聊已可用; 填「查看链接前缀」后卡片上会有查看按钮"
         elif str(conf.get("webhook") or "").strip():
             warn = "私聊未就绪 (需 App ID/Secret + 接收人), 当前会推到群里"
@@ -75,7 +88,7 @@ class PostRoutesMixin:
             name = cands[-1] if cands else ""
         except OSError:
             pass
-        if not name:
+        if not name and notifications.notify_conf().get("provider") != "qq":
             self._json({"ok": False, "msg": "归档里还没有哨兵事件, 无法生成测试卡片"}, 400)
             return
         ok, msg = notifications.notify_push(cat, name, test=True)
@@ -101,9 +114,9 @@ class PostRoutesMixin:
         if not evdir or not os.path.isdir(evdir):
             self._json({"ok": False, "msg": "事件不存在"}, 400)
             return
-        tmp = "/tmp/tsf-push-upload.%d" % os.getpid()
+        descriptor, tmp = tempfile.mkstemp(prefix="tsf-push-upload-")
         try:
-            with open(tmp, "wb") as f:
+            with os.fdopen(descriptor, "wb") as f:
                 rem = length
                 while rem > 0:
                     chunk = self.rfile.read(min(1 << 20, rem))
@@ -111,6 +124,8 @@ class PostRoutesMixin:
                         break
                     f.write(chunk)
                     rem -= len(chunk)
+            if rem:
+                raise ValueError("视频上传不完整, 请重试")
             ok, msg = notifications.manual_push(notifications.notify_conf(), tmp, cat, name, quality)
         except Exception as ex:
             ok, msg = False, "推送失败: %s" % str(ex)[:160]
@@ -170,20 +185,41 @@ class PostRoutesMixin:
 
 
     def _post_api_upload_audio(self, path):
-        fn, data, _f = self._read_upload()
+        fn, data, fields = self._read_upload(vehicle_assets.MAX_AUDIO + 65536)
         if fn == "TOOBIG":
-            self._json({"ok": False, "msg": "文件超过 3MB (车机要求 <1MB)"}, 400)
+            self._json({"ok": False, "msg": "原始音频超过 20 MB"}, 400)
             return
-        fn = archive.safe_name(fn)
-        if not fn or not data or not fn.lower().endswith((".wav", ".mp3")):
-            self._json({"ok": False, "msg": "仅支持 wav/mp3"}, 400)
+        try:
+            converted, duration = vehicle_assets.lock_chime(fn, data, fields.get("start", 0), fields.get("duration", 5))
+            vehicle_assets.queue_chime(converted)
+        except ValueError as error:
+            self._json({"ok": False, "msg": str(error)}, 400)
             return
-        if len(data) > 1024 * 1024:
-            self._json({"ok": False, "msg": "车机要求单个音频 <1MB, 请裁剪后重试"}, 400)
+        self._json({"ok": True, "name": "LockChime.wav", "duration": duration, "size": len(converted),
+                    "msg": "已转换为 LockChime.wav (%.1f 秒 / %d KB), 归档同步时自动写入 USB 根目录" % (duration, len(converted) // 1024)})
+
+
+    @usb.usb_operation
+    def _post_api_upload_wrap(self, path):
+        fn, data, fields = self._read_upload(vehicle_assets.MAX_WRAP + 65536)
+        if fn == "TOOBIG":
+            self._json({"ok": False, "msg": "涂装 PNG 不得超过 1 MB"}, 400)
             return
-        with open(os.path.join(config.settings.audio_queue, fn), "wb") as f:
-            f.write(data)
-        self._json({"ok": True, "msg": "已加入队列, 归档同步时写入车机U盘"})
+        if not usb.usb_attached or not os.path.ismount(usb.MNT):
+            self._json({"ok": False, "msg": "请先连接车机 U 盘进入管理模式"}, 400)
+            return
+        try:
+            if not fn:
+                raise ValueError("请选择 PNG 涂装文件")
+            name, width, height = vehicle_assets.write_wrap(usb.MNT, fn, data, fields.get("overwrite") == "1")
+        except FileExistsError as error:
+            self._json({"ok": False, "msg": str(error), "exists": True}, 409)
+            return
+        except ValueError as error:
+            self._json({"ok": False, "msg": str(error)}, 400)
+            return
+        self._json({"ok": True, "name": name, "width": width, "height": height,
+                    "msg": "已写入 Wraps/%s; 恢复车机导出后, 在玩具箱 → 喷漆车间 → 涂装选择" % name})
 
 
     def _post_api_usb_attach(self, path):
@@ -263,16 +299,11 @@ class PostRoutesMixin:
             name = json.loads(self.rfile.read(length)).get("name")
         except Exception:
             name = None
-        name = archive.safe_name(name)
-        src = os.path.join(config.settings.audio_queue, name) if name else ""
-        if name and os.path.isfile(src):
-            with open(src, "rb") as f:
-                data = f.read()
-            if not name.lower().endswith(".wav"):
-                self._json({"ok": False, "msg": "锁车音必须是 WAV (mp3 只能当喇叭音效)"})
-                return
-            with open(os.path.join(config.settings.audio_queue, "LockChime.wav"), "wb") as f:
-                f.write(data)
-            self._json({"ok": True})
-        else:
-            self._json({"ok": False, "msg": "文件不存在"}, 404)
+        try:
+            data = vehicle_assets.queued_audio(name)
+            converted, duration = vehicle_assets.lock_chime(name, data)
+            vehicle_assets.queue_chime(converted)
+        except ValueError as error:
+            self._json({"ok": False, "msg": str(error)}, 400)
+            return
+        self._json({"ok": True, "name": "LockChime.wav", "duration": duration, "size": len(converted)})

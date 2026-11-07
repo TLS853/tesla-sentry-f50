@@ -20,6 +20,8 @@
 | `auth.py` | 认证凭据、会话和登录失败限制 |
 | `notifications.py` | 推送配置、事件选择和调度 |
 | `feishu.py` | HTTP 传输、按应用凭据隔离的令牌缓存、飞书接口 |
+| `qqbot.py` | QQ 官方凭据缓存、单聊/群聊主动消息、本地媒体分片上传 |
+| `vehicle_assets.py` | 锁车音转换与队列同步、PNG 涂装校验及原子写入 |
 | `push_media.py` | 推送附件转码与行车信息水印 |
 | `storage.py` | 临时文件、fsync、原子替换等持久化操作 |
 | `deployment.py`、`updates.py` | 程序包验证、版本切换、检查更新与回滚 |
