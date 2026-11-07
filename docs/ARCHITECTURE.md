@@ -54,8 +54,8 @@ Linux 内核的 USB Gadget 框架允许设备扮演 USB 外设。通过 configfs
   4. 解绑 UDC（U盘从车机消失）
   5. losetup 显式绑定 loop → mount -t exfat (读写)
   6. 遍历 TeslaCam/{SentryClips,SavedClips,RecentClips}/*/
-     目标目录已存在 → 跳过；否则整目录 cp -r 到 /archive/<cat>/<事件名>/
-  7. 把 boombox-queue/ 里的音频拷到 <镜像>/Boombox/，成功后移到 boombox-done/
+     共用归档策略过滤 .pruned 和滚动窗口；逐文件补全到 /archive/<cat>/<事件名>/，完成后原子替换
+  7. 把 boombox-queue/ 里的音频拷到 <镜像> 根目录，成功后移到 boombox-done/
   8. umount → losetup -d → 重新绑定 UDC（U盘回来）
 ```
 
@@ -70,7 +70,7 @@ Linux 内核的 USB Gadget 框架允许设备扮演 USB 外设。通过 configfs
 | 风险 | 缓解 |
 |---|---|
 | 正在写镜像时断电 → exFAT 损坏 | 镜像只由车机写（车机的写入是它自己的事）；Linux 侧只在归档窗口内挂载，且挂载前先解绑 UDC，避免双写 |
-| 归档拷贝中断 → 半个事件目录 | 先拷到目标目录，失败则 `rm -rf` 回滚；下次重跑 |
+| 归档拷贝中断 → 半个事件目录 | 先拷到临时文件，成功后原子替换；下次逐文件补全 |
 | 归档区断电损坏 | 归档区用 ext4（日志式），掉电后 fsck 自愈 |
 | 镜像彻底损坏 | 删掉镜像重建即可（车机会重新格式化，历史事件已在归档区） |
 
@@ -154,7 +154,7 @@ Tesla 在**车辆行驶中录制**的片段里，会把行车数据作为 SEI（
 需要把归档内容反向写回镜像（做演示盘、恢复数据）时，必须走 `scripts/tesla-img.sh`：
 
 ```sh
-sh tesla-img.sh exec 'cp -r /archive/SentryClips/2026-11-04_12-30-00 /tmp/imgrw/TeslaCam/SentryClips/'
+sh tesla-img.sh exec 'cp -r /archive/SentryClips/2026-11-04_12-30-00 /tmp/teslamnt/TeslaCam/SentryClips/'
 ```
 
 脚本会先 detach LUN 再挂载镜像写入，避免主机侧 FAT / 目录缓存与设备侧写入互相覆盖。
@@ -164,6 +164,16 @@ sh tesla-img.sh exec 'cp -r /archive/SentryClips/2026-11-04_12-30-00 /tmp/imgrw/
 - 编码实测为 **H.264 High 1280×960**（2022 Model Y / 本仓库开发车）；部分新车型或新固件改用 HEVC，浏览器需相应解码支持（Edge/Chrome 需系统 HEVC 扩展，Safari 原生支持）
 - SEI 遥测并非每段都有：**行驶中录制**的片段基本每帧都有，**停车状态**的哨兵片段大多没有。没有时遥测面板隐藏，属数据源缺失而非解析失败
 - 刹车只有布尔量（没有踏板开度），面板只给「刹车」状态徽章不给百分比；方向盘、油门为真实连续值
-- 单线程 HTTP 服务器（`ThreadingHTTPServer`），并发播放多路视频会吃 CPU；遥测解码首次约 0.3–0.5s/段（24s 片段），命中 eMMC 缓存后毫秒级
-- 归档以"事件目录"为单位，未做增量文件级同步
+- 多线程 HTTP 服务器（`ThreadingHTTPServer`），并发播放多路视频会吃 CPU；遥测解码首次约 0.3–0.5s/段（24s 片段），命中 eMMC 缓存后毫秒级
+- 两条归档路径共享过滤规则；已存在事件会按文件大小检查并补全，未对同大小文件计算内容哈希
 - USB 3.0 总带宽与 eMMC 写入速度决定录制稳定性；实测 eMMC 写 80–130MB/s，哨兵写入峰值仅 20–40MB/s
+
+## 11. 源码组织、并发和发布
+
+开发入口见 README「开发与构建」。HTTP GET/POST 的路由分发和各接口处理分开，公用认证在分发前执行。HTML、CSS、原生 ES 模块、登录页和翻译数据来自 `src/tesla_sentry/web/`。模块层次和运行方式见 [MODULES.md](MODULES.md)。
+
+所有镜像访问方使用同一 `TSF_USB_LOCK` 文件的 `flock(2)` 锁：网页持锁到管理会话结束，实时同步按轮持锁，Shell 工具通过 Python 启动器继承锁文件描述符。锁文件不删除，以避免并发进程锁住不同 inode。USB 文件操作还持有线程锁，防止空闲定时器在校验路径和读写之间卸载镜像。卸载失败保留断开状态；网页会保留锁并安排重试。
+
+归档写入和清理共用 `/archive/.archive.lock`，锁顺序为 USB → 归档。清理和重新同步不会同时操作同一个事件目录。
+
+发布清单使用固定文件白名单、逐文件 SHA-256 和完整程序包 SHA-256；SHA-256 用于核对清单与下载包的一致性，发布源仍须可信。新版本在 `releases/` 暂存并完成自检后才切换 `current`。上个版本路径保存在 `previous-release.json`，可整包回滚。首次平铺安装迁移会先保留原文件快照，再替换稳定入口。旧版本目录暂不自动清理，以保留回滚与排障依据。

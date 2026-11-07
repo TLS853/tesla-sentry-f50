@@ -7,7 +7,17 @@
 #
 # 安全: 网页"U盘管理"模式(镜像已挂载)期间不干预, 避免抢 loop/UDC。
 
-[ -f /etc/tesla-sentry.conf ] && . /etc/tesla-sentry.conf
+set -a
+[ ! -f "${TSF_CONF:-/etc/tesla-sentry.conf}" ] || . "${TSF_CONF:-/etc/tesla-sentry.conf}"
+set +a
+
+if [ -z "${TSF_USB_LOCK_FD:-}" ]; then
+    SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    VIEWER="${TSF_DIR:-/opt/tesla-sentry}/sentry-viewer.py"
+    [ -f "$VIEWER" ] || VIEWER="$SCRIPT_DIR/../sentry-viewer.py"
+    exec "${TSF_PYTHON:-python3}" "$VIEWER" --usb-lock-exec /bin/sh "$0" "$@"
+fi
+
 
 : "${TSF_DIR:=/opt/tesla-sentry}"
 : "${TSF_IMG:=$TSF_DIR/teslacam.img}"
@@ -37,4 +47,4 @@ grep -q " $MNT " /proc/mounts && exit 0
 [ -n "$(cat "$LUN" 2>/dev/null)" ] && exit 0
 
 echo "[$(date +%Y-%m-%d\ %H:%M:%S)] selfheal: LUN empty (host ejected?), re-exporting" >> "$LOG"
-setsid sh "$GADGET_SH" on </dev/null >>"$LOG" 2>&1 &
+sh "$GADGET_SH" on >>"$LOG" 2>&1

@@ -12,6 +12,13 @@ SIZE_GB=64
 PORT=8080
 ARCHIVE=/archive
 TSF_DIR=/opt/tesla-sentry
+CONF=/etc/tesla-sentry.conf
+# Reinstall preserves configured paths and optional policy settings; flags still override paths.
+set -a
+[ ! -f "$CONF" ] || . "$CONF"
+set +a
+PORT=${TSF_PORT:-$PORT}
+ARCHIVE=${TSF_ARCHIVE:-$ARCHIVE}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -25,7 +32,6 @@ while [ $# -gt 0 ]; do
 done
 
 IMG="$TSF_DIR/teslacam.img"
-CONF=/etc/tesla-sentry.conf
 
 say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -86,14 +92,7 @@ else echo "  [提示] 未找到 ffmpeg, 列表缩略图会缺失 (装一个即�
 # ---------------- 1. 目录与文件 ----------------
 say "安装到 $TSF_DIR ..."
 mkdir -p "$TSF_DIR"
-cp "$SRC_DIR/sentry-viewer.py"      "$TSF_DIR/sentry-viewer.py"
-cp "$SRC_DIR/tesla-live-sync.py"    "$TSF_DIR/tesla-live-sync.py"
-cp "$SRC_DIR/scripts/tesla-gadget.sh" "$TSF_DIR/tesla-gadget.sh"
-cp "$SRC_DIR/scripts/tesla-sync.sh"   "$TSF_DIR/tesla-sync.sh"
-cp "$SRC_DIR/scripts/usb-selfheal.sh" "$TSF_DIR/usb-selfheal.sh"
-cp "$SRC_DIR/scripts/tesla-img.sh"    "$TSF_DIR/tesla-img.sh"
-cp "$SRC_DIR/scripts/tsf-check.sh"    "$TSF_DIR/tsf-check.sh"
-chmod +x "$TSF_DIR"/*.sh "$TSF_DIR"/*.py
+TSF_DIR="$TSF_DIR" "$PYTHON" "$SRC_DIR/sentry-viewer.py" --install-release "$SRC_DIR/dist/release.json"
 
 mkdir -p "$ARCHIVE"/SentryClips "$ARCHIVE"/SavedClips "$ARCHIVE"/RecentClips \
          "$ARCHIVE"/.skins "$ARCHIVE"/boombox-queue "$ARCHIVE"/boombox-done "$ARCHIVE"/files
@@ -122,7 +121,9 @@ ls -lh "$IMG"
 
 # ---------------- 3. 配置 ----------------
 say "写入配置 $CONF ..."
-cat > "$CONF" <<EOF
+CONF_TMP=$(mktemp "$CONF.XXXXXX")
+trap 'rm -f "$CONF_TMP"' EXIT
+cat > "$CONF_TMP" <<EOF
 # Tesla Sentry F50 配置 (由 install.sh 生成)
 TSF_DIR=$TSF_DIR
 TSF_IMG=$IMG
@@ -132,12 +133,18 @@ TSF_LOOP=/dev/loop3
 TSF_PORT=$PORT
 TSF_IDLE=600
 TSF_USB_TIMEOUT=300
+TSF_RECENT_ROLL_MIN=60
+TSF_BOX_KEEP_DAYS=14
+TSF_BOX_MAX_GB=12
+TSF_OTA_REPO=TLS853/tesla-sentry-f50
 TSF_LOSETUP=
 TSF_GADGET=$GADGET
 TSF_CACHE=$CACHE_DIR
 TSF_FFMPEG=$FFMPEG
 TSF_FFPROBE=$FFPROBE
 EOF
+"$PYTHON" "$SRC_DIR/tools/merge_config.py" "$CONF" "$CONF_TMP"
+trap - EXIT
 
 # ---------------- 3.5 访问认证 ----------------
 AUTH_CONF="$TSF_DIR/auth.conf"
@@ -164,11 +171,15 @@ if [ -f /etc/rc.common ]; then
 START=99
 USE_PROCD=1
 start_service() {
+    set -a
     [ -f /etc/tesla-sentry.conf ] && . /etc/tesla-sentry.conf
+    set +a
     setsid /bin/sh "$TSF_DIR/tesla-gadget.sh" on </dev/null >/dev/null 2>&1 &
 }
 stop_service() {
+    set -a
     [ -f /etc/tesla-sentry.conf ] && . /etc/tesla-sentry.conf
+    set +a
     setsid /bin/sh "$TSF_DIR/tesla-gadget.sh" off </dev/null >/dev/null 2>&1 &
 }
 EOF
@@ -177,11 +188,13 @@ EOF
 START=99
 USE_PROCD=1
 start_service() {
+    set -a
     [ -f $CONF ] && . $CONF
+    set +a
     export TSF_DIR TSF_IMG TSF_ARCHIVE TSF_MNT TSF_LOOP TSF_PORT TSF_IDLE TSF_USB_TIMEOUT
     export TSF_GADGET TSF_LOSETUP TSF_CACHE TSF_FFMPEG TSF_FFPROBE
     procd_open_instance
-    procd_set_param command $PYTHON "\$TSF_DIR/sentry-viewer.py"
+    procd_set_param command /bin/sh -c 'set -a; [ ! -f "\$1" ] || . "\$1"; exec "\$2" "\$3"' sh "$CONF" "$PYTHON" "\$TSF_DIR/sentry-viewer.py"
     procd_set_param respawn 3600 5 0
     procd_set_param stdout 1
     procd_set_param stderr 1
@@ -198,10 +211,12 @@ EOF
 START=99
 USE_PROCD=1
 start_service() {
+    set -a
     [ -f $CONF ] && . $CONF
+    set +a
     export TSF_DIR TSF_IMG TSF_ARCHIVE TSF_MNT TSF_LIVE_INTERVAL
     procd_open_instance
-    procd_set_param command $PYTHON "\$TSF_DIR/tesla-live-sync.py"
+    procd_set_param command /bin/sh -c 'set -a; [ ! -f "\$1" ] || . "\$1"; exec "\$2" "\$3"' sh "$CONF" "$PYTHON" "\$TSF_DIR/tesla-live-sync.py"
     procd_set_param respawn 3600 5 0
     procd_set_param stdout 1
     procd_set_param stderr 1
@@ -274,7 +289,9 @@ else
     cat > "$TSF_DIR/tsf-start.sh" <<EOF
 #!/bin/sh
 # 通用启动入口 (rc.local / 手动 / supervisor 均可调用)
-[ -f $CONF ] && . $CONF
+set -a
+    [ -f $CONF ] && . $CONF
+    set +a
 export TSF_DIR TSF_IMG TSF_ARCHIVE TSF_MNT TSF_LOOP TSF_PORT TSF_GADGET TSF_LOSETUP TSF_CACHE TSF_FFMPEG TSF_FFPROBE
 sh "\$TSF_DIR/tesla-gadget.sh" on >/dev/null 2>&1
 pgrep -f tesla-live-sync.py >/dev/null 2>&1 || setsid $PYTHON "\$TSF_DIR/tesla-live-sync.py" </dev/null >>"\$TSF_DIR/tesla-live.log" 2>&1 &

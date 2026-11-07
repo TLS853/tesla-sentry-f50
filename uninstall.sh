@@ -20,11 +20,18 @@ if [ -f /etc/rc.common ]; then
     [ -x /etc/init.d/sentry-viewer ] && /etc/init.d/sentry-viewer disable 2>/dev/null || true
     [ -x /etc/init.d/tesla-gadget ] && /etc/init.d/tesla-gadget stop 2>/dev/null || true
     [ -x /etc/init.d/tesla-gadget ] && /etc/init.d/tesla-gadget disable 2>/dev/null || true
-    sed -i '/tesla-sync.sh/d' /etc/crontabs/root 2>/dev/null || true
+    sed -i '/tesla-sync.sh/d;/usb-selfheal.sh/d' /etc/crontabs/root 2>/dev/null || true
 else
     systemctl disable --now sentry-viewer.service 2>/dev/null || true
     systemctl disable --now tesla-gadget.service 2>/dev/null || true
     rm -f /etc/cron.d/tesla-sentry
+fi
+
+if [ -f /etc/rc.common ]; then
+    /etc/init.d/tesla-live stop 2>/dev/null || true
+    /etc/init.d/tesla-live disable 2>/dev/null || true
+else
+    systemctl disable --now tesla-live.service 2>/dev/null || true
 fi
 
 echo "==> 恢复 USB 导出 (移除 mass_storage)"
@@ -33,10 +40,14 @@ echo "==> 恢复 USB 导出 (移除 mass_storage)"
 umount "$TSF_MNT" 2>/dev/null || true
 
 echo "==> 删除程序文件"
-rm -f /etc/init.d/tesla-gadget /etc/init.d/sentry-viewer
-rm -f /etc/systemd/system/tesla-gadget.service /etc/systemd/system/sentry-viewer.service
-[ -f /etc/systemd/system/tesla-gadget.service ] && systemctl daemon-reload || true
-rm -f "$TSF_DIR/sentry-viewer.py" "$TSF_DIR/tesla-gadget.sh" "$TSF_DIR/tesla-sync.sh"
+rm -f /etc/init.d/tesla-gadget /etc/init.d/sentry-viewer /etc/init.d/tesla-live
+rm -f /etc/systemd/system/tesla-gadget.service /etc/systemd/system/sentry-viewer.service /etc/systemd/system/tesla-live.service
+[ ! -d /run/systemd/system ] || systemctl daemon-reload || true
+for name in sentry-viewer.py tesla-live-sync.py tesla-gadget.sh tesla-sync.sh usb-selfheal.sh tesla-img.sh tsf-check.sh; do
+    rm -f "$TSF_DIR/$name"
+done
+rm -f "$TSF_DIR/current" "$TSF_DIR/previous-release.json"
+rm -rf "$TSF_DIR/releases"
 rm -f /etc/tesla-sentry.conf
 
 if [ "$PURGE" = "1" ]; then

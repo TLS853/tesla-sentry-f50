@@ -1,0 +1,61 @@
+#!/usr/bin/env python3
+"""Generated standalone launcher; edit src/tesla_sentry and run tools/build.py.
+Legacy OTA markers: /api/events --ota-check
+"""
+import base64
+import importlib.abc
+import importlib.util
+import io
+import os
+import sys
+import zipfile
+
+APP_VERSION = "@@VERSION@@"
+ENTRYPOINT = "@@ENTRYPOINT@@"
+_PAYLOAD = (
+@@PAYLOAD@@
+)
+
+
+class _BundleImporter(importlib.abc.MetaPathFinder, importlib.abc.SourceLoader):
+    """Load actual package modules and resources directly from the embedded ZIP."""
+    def __init__(self):
+        self.archive = zipfile.ZipFile(io.BytesIO(base64.b85decode(_PAYLOAD)))
+        self.root = os.path.abspath(__file__) + "/__bundle__/"
+        self.names = set(self.archive.namelist())
+
+    def _name(self, fullname):
+        path = fullname.replace(".", "/")
+        return path + "/__init__.py" if path + "/__init__.py" in self.names else path + ".py"
+
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname != "tesla_sentry" and not fullname.startswith("tesla_sentry."):
+            return None
+        name = self._name(fullname)
+        if name not in self.names:
+            return None
+        return importlib.util.spec_from_loader(fullname, self, is_package=name.endswith("/__init__.py"))
+
+    def get_filename(self, fullname):
+        return self.root + self._name(fullname)
+
+    def get_data(self, path):
+        name = path[len(self.root):] if path.startswith(self.root) else path
+        try:
+            return self.archive.read(name)
+        except KeyError:
+            raise FileNotFoundError(path) from None
+
+    def get_code(self, fullname):
+        filename = self.get_filename(fullname)
+        return compile(self.get_data(filename), filename, "exec", dont_inherit=True)
+
+
+if __name__ == "__main__":
+    sys.meta_path.insert(0, _BundleImporter())
+    try:
+        from tesla_sentry.cli import main
+        raise SystemExit(main(entrypoint=ENTRYPOINT))
+    except (OSError, ValueError) as error:
+        print("Configuration error: %s" % error, file=sys.stderr)
+        raise SystemExit(2)

@@ -7,7 +7,17 @@
 #  - 绑定失败自动回滚, 避免设备从 USB 上消失
 #  - 所有设备路径自动探测, 不写死
 
-[ -f /etc/tesla-sentry.conf ] && . /etc/tesla-sentry.conf
+set -a
+[ ! -f "${TSF_CONF:-/etc/tesla-sentry.conf}" ] || . "${TSF_CONF:-/etc/tesla-sentry.conf}"
+set +a
+
+if [ -z "${TSF_USB_LOCK_FD:-}" ]; then
+    SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    VIEWER="${TSF_DIR:-/opt/tesla-sentry}/sentry-viewer.py"
+    [ -f "$VIEWER" ] || VIEWER="$SCRIPT_DIR/../sentry-viewer.py"
+    exec "${TSF_PYTHON:-python3}" "$VIEWER" --usb-lock-exec /bin/sh "$0" "$@"
+fi
+
 
 : "${TSF_DIR:=/opt/tesla-sentry}"
 : "${TSF_IMG:=$TSF_DIR/teslacam.img}"
@@ -51,6 +61,7 @@ status() {
 }
 
 do_on() {
+    grep -qs " ${TSF_MNT:-/tmp/teslamnt} " /proc/mounts && { echo "BUSY: image mounted"; exit 75; }
     [ -f "$IMG" ] || { echo "ERROR: 镜像不存在: $IMG"; exit 1; }
     if [ -e "$FUNC_DIR" ] && [ "$(cat "$FUNC_DIR/lun.0/file" 2>/dev/null)" = "$IMG" ]; then
         echo "ALREADY-ON"; exit 0
@@ -91,6 +102,7 @@ do_off() {
 
 # 只重新绑定 UDC (镜像管理模式结束后用)
 do_restore() {
+    grep -qs " ${TSF_MNT:-/tmp/teslamnt} " /proc/mounts && exit 75
     bind; sleep 2
     log "restore bind, state=$(state)"
     echo "RESTORED (state=$(state))"

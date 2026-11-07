@@ -7,7 +7,17 @@
 #  3. 网页处于"U盘管理"模式(镜像已被挂载)时自动跳过, 不抢 loop/UDC
 #  4. 全程日志
 
-[ -f /etc/tesla-sentry.conf ] && . /etc/tesla-sentry.conf
+set -a
+[ ! -f "${TSF_CONF:-/etc/tesla-sentry.conf}" ] || . "${TSF_CONF:-/etc/tesla-sentry.conf}"
+set +a
+
+if [ -z "${TSF_USB_LOCK_FD:-}" ]; then
+    SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    VIEWER="${TSF_DIR:-/opt/tesla-sentry}/sentry-viewer.py"
+    [ -f "$VIEWER" ] || VIEWER="$SCRIPT_DIR/../sentry-viewer.py"
+    exec "${TSF_PYTHON:-python3}" "$VIEWER" --usb-lock-exec /bin/sh "$0" "$@"
+fi
+
 
 : "${TSF_DIR:=/opt/tesla-sentry}"
 : "${TSF_IMG:=$TSF_DIR/teslacam.img}"
@@ -45,9 +55,28 @@ log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
 restore() {
     [ -n "$UDC" ] || return 0
     echo "$UDC" > "$GADGET/UDC"
-    sleep 2
-    log "export restored, state=$(cat /sys/class/udc/$UDC/state 2>/dev/null)"
+    log "export restored"
 }
+LB=""
+DETACHED=0
+cleanup() {
+    rc=$?
+    trap - EXIT HUP INT TERM
+    if [ "$DETACHED" = 1 ]; then
+        if grep -qs " $MNT " /proc/mounts; then
+            sync
+            if ! umount "$MNT" 2>>"$LOG"; then
+                log "ERROR: umount failed; USB export stays detached"
+                exit 1
+            fi
+        fi
+        [ -z "$LB" ] || $BB -d "$LB" 2>/dev/null
+        restore || rc=1
+    fi
+    exit "$rc"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
 
 # 0. 网页 U 盘管理模式占用中则跳过
 if grep -qs " $MNT " /proc/mounts; then
@@ -74,7 +103,8 @@ fi
 log "=== sync start (idle ${age}s) ==="
 
 # 2. 短暂停止导出
-echo "" > "$GADGET/UDC"
+echo "" > "$GADGET/UDC" || exit 1
+DETACHED=1
 sleep 1
 
 # 3. 显式 losetup + 读写挂载 (归档要读, 音频要写)
@@ -83,29 +113,17 @@ LB=$($BB -f 2>/dev/null)
 [ -z "$LB" ] && LB=/dev/loop3
 if ! $BB "$LB" "$IMG" 2>>"$LOG"; then
     log "ERROR: losetup $LB failed"
-    restore; exit 1
+    exit 1
 fi
 if ! mount -t exfat "$LB" "$MNT" 2>>"$LOG"; then
     log "ERROR: mount image failed (镜像不是 exFAT?)"
     $BB -d "$LB" 2>/dev/null
-    restore; exit 1
+    exit 1
 fi
 
-# 4. 归档新事件 (已存在的目录跳过)
-copied=0
-for cat in SentryClips SavedClips RecentClips; do
-    mkdir -p "$ARCHIVE/$cat"
-    [ -d "$MNT/TeslaCam/$cat" ] || continue
-    for ev in "$MNT"/TeslaCam/"$cat"/*/; do
-        [ -d "$ev" ] || continue
-        name=$(basename "$ev")
-        [ -d "$ARCHIVE/$cat/$name" ] && continue
-        mkdir -p "$ARCHIVE/$cat/$name"
-        cp -r "$ev". "$ARCHIVE/$cat/$name/" 2>>"$LOG" && copied=$((copied+1)) \
-            || { log "copy fail: $cat/$name"; rm -rf "$ARCHIVE/$cat/$name"; }
-    done
-done
-log "archived $copied new events"
+# 4. 与在线同步共用墓碑/滚动窗口策略, 合并部分归档的目录
+copied=$("${TSF_PYTHON:-python3}" "$TSF_DIR/sentry-viewer.py" --archive-copy "$MNT") || exit 1
+log "archived $copied new files"
 
 # 5. 把待写入的音频直接写进车机U盘根目录
 #    (上传的音频全部放根目录: LockChime.wav 即锁车音, 其它文件名原样放根目录)
@@ -130,9 +148,5 @@ if [ "$has_audio" = "1" ]; then
     log "pushed $pushed audio -> USB root"
 fi
 
-# 6. 卸载并恢复导出
-umount "$MNT" 2>>"$LOG"
-$BB -d "$LB" 2>/dev/null
-sleep 1
-restore
+# cleanup trap 卸载成功后才恢复导出
 echo "SYNC-DONE copied=$copied audio=$pushed"

@@ -209,9 +209,9 @@ TSF_BOX_MAX_GB=12                # 单个分类体积上限 (GB), 0 = 不按体�
 
 # 在线升级 (OTA): 默认依次尝试 GitHub 原生地址 → ghfast 镜像 → jsDelivr,
 # 哪个能通就用哪个; 想换成自己的 fork 或内网源, 改下面两个变量即可
-TSF_OTA_REPO=baicyber/tesla-sentry-f50
+TSF_OTA_REPO=TLS853/tesla-sentry-f50
 # TSF_OTA_SOURCES=https://raw.githubusercontent.com/you/repo/main,https://cdn.jsdelivr.net/gh/you/repo@main
-# TSF_OTA_BACKUP=/opt/tesla-sentry/sentry-viewer.bak.py   # 升级前的备份 (回滚用)
+# TSF_USB_LOCK=/tmp/tesla-sentry-usb.lock  # 所有访问镜像的进程必须使用同一锁路径
 ```
 
 ### 在线升级（OTA）
@@ -219,19 +219,45 @@ TSF_OTA_REPO=baicyber/tesla-sentry-f50
 网页右上角 **⚙ → 🔄 更新**：
 
 - 打开设置即自动比对仓库里的 `version.json`；有新版本时齿轮按钮上会亮红点
-- 页面显示「当前版本 / 最新版本 / 更新说明」，点 **立即升级** 完成：下载 → 校验（大小、特征串、内嵌版本号、`py_compile`、`--ota-check` 启动自检）→ 备份旧版 → 原子替换 → 自动重启服务（约 5 秒，页面自动刷新回来）
+- 页面显示「当前版本 / 最新版本 / 更新说明」，点 **立即升级** 完成：下载完整程序包 → 校验 SHA-256、文件清单和版本 → 两个 Python 入口自检 → 原子切换版本目录 → 重启查看器和同步服务（约 5 秒，页面自动刷新回来）
 - 万一新版有问题，同一页有 **↩ 回滚到上一版本**
 - 配置（`/etc/tesla-sentry.conf`）、`auth.conf`、录像归档都不在升级范围内，不会被动
 
 发新版本的流程（维护者）：
 
 ```sh
-python3 tools/make_release.py 2.2.0 "新增 XXX" "修复 YYY"   # 改 APP_VERSION + 生成 version.json
-git add -A && git commit -m "release: v2.2.0" && git push
+python3 tools/make_release.py 2.6.2 "新增 XXX" "修复 YYY"   # 更新源码版本并构建脚本、整包、清单
+git add -A && git commit -m "release: v2.6.2" && git push
 ```
 
 > 若仓库改到别处，记得同时改 `APP_VERSION` 所在的 `OTA_REPO` 或 `TSF_OTA_SOURCES`。
 > 设备没网 / GitHub 被墙时检查会失败，但**已安装的版本照常运行**，不影响看录像。
+
+### 开发与构建
+
+源码是可直接导入的 Python 包 `src/tesla_sentry/`，前端资源放在 `src/tesla_sentry/web/`。两个根目录 Python 文件是构建产物，设备仍只依赖 Python 3.7+ 标准库。
+
+```sh
+# 从源码启动，方便调试；只查看归档时不需要 USB 硬件
+PYTHONPATH=src python3 -m tesla_sentry serve --host 127.0.0.1 --port 8080 --archive /path/to/archive
+PYTHONPATH=src python3 -m tesla_sentry check
+PYTHONPATH=src python3 -m tesla_sentry sync --once
+
+# 生成并核对可独立部署的入口和完整程序包
+python3 tools/build.py
+python3 tools/build.py --check
+python3 -m unittest discover -s tests -v
+# 可选：前端模块测试，无需 npm 依赖
+node --experimental-vm-modules tests/frontend.mjs
+```
+
+构建器将原始模块、HTML、CSS、JavaScript 和翻译表压缩进独立入口。运行时保持每个模块自己的命名空间和显式导入，开发与设备部署使用相同的包。浏览器使用原生 ES 模块，不需要 Node.js 构建工具。[模块与依赖说明](docs/MODULES.md) 记录了各层职责和兼容边界。
+
+`config.py` 统一读取配置：环境变量优先于 `TSF_CONF`（默认 `/etc/tesla-sentry.conf`），再使用默认值。配置文件采用 `TSF_NAME=value`，含空格的值须加引号；Python 入口不会执行文件中的 Shell 命令。启动时校验端口、轮询间隔和并发限制，错误配置会给出具体提示。
+
+`dist/release.json` 包含查看器、实时同步程序与五个 Shell 工具，须与 `version.json` 一起提交。安装后程序入口指向 `current/`，升级与回滚通过一次替换符号链接切换整个版本；配置、镜像和录像保存在版本目录之外。旧客户端只更新查看器时，新入口会使用内嵌配套脚本迁移完整程序包。
+
+首次部署此修复建议重新运行 `install.sh`，以更新 OpenWrt 的配置加载方式；仅下载程序无法修改已生成的服务文件。通用 rc.local 安装从旧版升级后应重新启动设备，确保旧实时同步进程退出。测试操作临时目录和本机 HTTP 服务，不操作真实 USB 硬件。
 
 ### 多语言
 

@@ -13,6 +13,17 @@
 #
 # 可用环境变量覆盖: TSF_IMG / TSF_GADGET / TSF_LOOP / TSF_MNT
 
+set -a
+[ ! -f "${TSF_CONF:-/etc/tesla-sentry.conf}" ] || . "${TSF_CONF:-/etc/tesla-sentry.conf}"
+set +a
+
+if [ -z "${TSF_USB_LOCK_FD:-}" ]; then
+    SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+    VIEWER="${TSF_DIR:-/opt/tesla-sentry}/sentry-viewer.py"
+    [ -f "$VIEWER" ] || VIEWER="$SCRIPT_DIR/../sentry-viewer.py"
+    exec "${TSF_PYTHON:-python3}" "$VIEWER" --usb-lock-exec /bin/sh "$0" "$@"
+fi
+
 BB=/opt/mu300/busybox-bin
 LOSETUP=$BB/losetup
 [ -x "$LOSETUP" ] || LOSETUP=losetup
@@ -34,11 +45,13 @@ IMG="${TSF_IMG:-$(cat "$LUN/file" 2>/dev/null)}"
 [ -n "$IMG" ] || IMG=/root/teslacam.img
 [ -f "$IMG" ] || { echo "ERROR: 镜像不存在: $IMG"; exit 1; }
 
-LOOP="${TSF_LOOP:-/dev/loop7}"
-MNT="${TSF_MNT:-/tmp/imgrw}"
+LOOP="${TSF_LOOP:-/dev/loop3}"
+MNT="${TSF_MNT:-/tmp/teslamnt}"
 
 detach() { echo '' > "$LUN/file" 2>/dev/null; sleep 1; }
 attach() { echo "$IMG" > "$LUN/file" 2>/dev/null; sleep 1; }
+
+grep -qs " $MNT " /proc/mounts && { echo "BUSY: image mounted"; exit 75; }
 
 case "$1" in
 detach)
@@ -51,23 +64,33 @@ attach)
     ;;
 exec)
     [ -z "$2" ] && { echo "usage: $0 exec '<cmd>'"; exit 1; }
-    detach
+    cleanup() {
+        rc=$?
+        trap - EXIT HUP INT TERM
+        if grep -qs " $MNT " /proc/mounts; then
+            sync
+            if ! umount "$MNT" 2>/dev/null; then
+                echo "UNMOUNT-FAILED: export stays detached"
+                exit 1
+            fi
+        fi
+        $LOSETUP -d "$LOOP" 2>/dev/null
+        attach || rc=1
+        exit "$rc"
+    }
+    trap cleanup EXIT
+    trap 'exit 1' HUP INT TERM
+    detach || exit 1
     mkdir -p "$MNT"
-    $LOSETUP "$LOOP" "$IMG" 2>/dev/null
+    $LOSETUP "$LOOP" "$IMG" 2>/dev/null || exit 1
     if ! mount -t exfat -o rw "$LOOP" "$MNT" 2>/dev/null; then
         if ! mount -t vfat -o rw "$LOOP" "$MNT" 2>/dev/null; then
             echo "MOUNT-FAILED"
-            $LOSETUP -d "$LOOP" 2>/dev/null
-            attach
             exit 1
         fi
     fi
     sh -c "$2"
     RC=$?
-    sync
-    umount "$MNT" 2>/dev/null
-    $LOSETUP -d "$LOOP" 2>/dev/null
-    attach
     echo "DONE rc=$RC"
     exit $RC
     ;;

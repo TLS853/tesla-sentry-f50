@@ -1,0 +1,37 @@
+<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>__L_LOGIN__ · __L_BRAND__</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+ background:#0d1219;color:#e8eef4;font:15px/1.5 -apple-system,"SF Pro Text","PingFang SC","Microsoft YaHei",sans-serif;
+ padding:24px}
+.card{width:100%;max-width:340px;background:#161d26;border:1px solid #232c36;border-radius:18px;
+ padding:26px 22px 22px;box-shadow:0 18px 50px rgba(0,0,0,.45)}
+.logo{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.dot{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#10b981,#059669);
+ display:flex;align-items:center;justify-content:center;font-size:17px}
+h1{font-size:16px;margin:0;font-weight:600;letter-spacing:.2px}
+p.sub{margin:2px 0 0;font-size:12px;color:#7d8894}
+label{display:block;font-size:12px;color:#97a3af;margin:12px 0 6px}
+input{width:100%;padding:11px 12px;border-radius:11px;border:1px solid #2b3540;background:#0f151d;
+ color:#e8eef4;font-size:15px;outline:none}
+input:focus{border-color:#10b981;box-shadow:0 0 0 3px rgba(16,185,129,.15)}
+button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:11px;cursor:pointer;
+ background:#10b981;color:#fff;font-size:15px;font-weight:600}
+button:active{background:#0ea472}
+.err{margin-top:12px;font-size:13px;color:#f87171;min-height:18px}
+.foot{margin-top:16px;font-size:11px;color:#5f6b78;text-align:center}
+</style></head><body>
+<form class="card" method="post" action="/login">
+  <div class="logo"><div class="dot">🚗</div>
+    <div><h1>__L_BRAND__</h1><p class="sub">Tesla Sentry Drive</p></div></div>
+  <label>__L_USER__</label>
+  <input name="u" autocomplete="username" autocapitalize="none" autocorrect="off" value="__USER__">
+  <label>__L_PASS__</label>
+  <input name="p" type="password" autocomplete="current-password" autofocus>
+  <input type="hidden" name="next" value="__NEXT__">
+  <button type="submit">__L_LOGIN__</button>
+  <div class="err">__MSG__</div>
+  <div class="foot">__L_FOOT__</div>
+</form></body></html>
