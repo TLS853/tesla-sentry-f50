@@ -1,12 +1,12 @@
 # 特斯拉哨兵云盘 · Tesla Sentry Drive
 
-**虚拟哨兵 U 盘 · 多路同步回放 · SEI 行车遥测 · 水印导出 —— 跑在任意 USB Gadget 设备上。**
+**虚拟哨兵 U 盘 · 多路同步回放 · QQ / 飞书推送 · 自定义涂装 · 锁车音自动转换**
 
 > 拿一台带 USB 口的小 Linux 设备（随身 WiFi、开发板、电视盒子、OpenWrt 路由器……）顶替原车 U 盘插进手套箱：车机照常录制，手机 / 电脑远程回看四路、六路画面，还能逐帧读出**视频码流里的 SEI 遥测**——挡位、车速、油门 / 刹车、方向盘角度、转向灯、AP 状态、坐标，导出视频时可一并烧成水印。
 >
-> 没有 USB Device 模式的机器（绝大多数 x86 / NAS / 软路由）也不会白跑：把 `TeslaCam/` 放到本机跑 `TSF_ARCHIVE=/path python3 sentry-viewer.py`，就是一个纯网页查看器。**A 完整部署 / B 半自动归档 / C 仅网页**，三档按设备能力裁剪，见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
+> 没有 USB Device 模式的机器也可运行纯网页查看器：把 `TSF_ARCHIVE` 指向包含 `SentryClips/`、`SavedClips/`、`RecentClips/` 的目录，例如 `TSF_ARCHIVE=/path/to/TeslaCam python3 sentry-viewer.py --host 127.0.0.1`。完整部署、手动复制归档和仅网页三种用法见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
 
-> 仓库名 `tesla-sentry-f50` 来自参考硬件**中兴 F50 存储版**（全功能实测机型），但项目本身不绑机型。
+> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前功能版本 **2.8.0**，开发和发布分支为 **`codex/modular-runtime`**，更新源也指向此分支。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-aarch64%20%7C%20armv7%20%7C%20x86-blue.svg)](#硬件要求)
@@ -15,9 +15,26 @@
 
 ---
 
+## 使用导航
+
+- [F50 无法访问 GitHub：从 Mac 离线部署](#方式-a从-mac-离线部署)
+- [设备能访问 GitHub：直接安装](#方式-b在设备上直接安装)
+- [QQ 官方机器人配置](#qq-官方机器人推送)
+- [车身涂装上传](#车身涂装)
+- [锁车音自动转换](#锁车音自动转换)
+- [已有安装升级](#已有安装升级)
+- [部署细节](docs/DEPLOYMENT.md) · [新增功能完整说明](docs/FEATURES.md) · [模块结构](docs/MODULES.md)
+
+## 2.8.0 更新
+
+- QQ 官方机器人支持单聊、群聊、文字、封面及视频；本地媒体直接上传 QQ，无需公开 F50 的文件地址。
+- 涂装专用上传会校验 PNG、尺寸、大小及数量，自动创建 `Wraps/`，规范文件名，并提供恢复车机导出按钮。
+- 锁车音上传会实际解码、裁剪、转为 PCM WAV 并命名为 `LockChime.wav`，不再只修改扩展名。
+- 音频上传与同步使用共同的归档锁和原子写入，防止旧同步任务移走刚上传的新锁车音。
+
 ## 它是什么
 
-特斯拉的哨兵模式会把摄像头告警片段写入手套箱里的 U 盘（Model 3/Y 为 4 路：前视/后视/左右 B 柱；Model S/X 及 HW4 车型为 6 路）（`TeslaCam/SentryClips/`）。官方 App 不能远程看这些视频，必须拔盘插电脑——很麻烦。
+车机将摄像头录像写入 USB 存储的 `TeslaCam/` 目录，其中 `SentryClips` 为哨兵事件、`SavedClips` 为手动保存、`RecentClips` 为近期录像。项目从设备侧同步这些文件，并在网页中按实际摄像头数量显示，支持常见的四路、六路布局。
 
 这个项目让一台小 Linux 设备**伪装成那个 U 盘**：
 
@@ -38,7 +55,7 @@
                                     手机/电脑浏览器访问
 ```
 
-**核心思路**：镜像文件（exFAT）通过 USB Gadget 的 `mass_storage` 功能导出给车机，车机以为那是真实 U 盘；Linux 侧在车闲置时短暂断开导出、挂载镜像、把新片段拷贝到独立的 ext4 归档区，再恢复导出。网页只读归档区，因此**永远不会和车机同时读写同一个 exFAT**。
+**核心思路**：exFAT 镜像通过 USB Gadget 的 `mass_storage` 导出给车机，网页播放独立归档区中的副本。在线同步直接只读解析镜像，等文件连续两轮扫描保持稳定后复制；空闲归档和 U 盘管理需要先停止车机导出再挂载。镜像访问使用共同的进程锁，避免 Linux 挂载写入与车机导出同时进行。
 
 ---
 
@@ -46,11 +63,11 @@
 
 | 功能 | 说明 |
 |---|---|
-| 🗂 **虚拟 U 盘** | 容量任意（默认 64G），稀疏镜像不占实际空间，随写入增长 |
-| 🔌 **车机零改造** | 插上就当普通 U 盘，车机会提示"格式化 USB 设备"，点确认即可 |
-| 📦 **自动归档** | 镜像空闲 N 秒后自动把哨兵/保存/行车片段拷到 ext4 归档区，断电不丢 |
-| 🔁 **归档滚动窗口** | 盒子侧 `RecentClips` 副本跟随车机的滚动缓冲，只留最近 60 分钟（可调），更旧的自动覆盖；车机 U 盘那份不受影响（同步全程只读），`SentryClips`/`SavedClips` 永不自动删。停车开哨兵时车整夜不睡，4 路约 8.4GB/小时，靠这个才不会撑爆盒子镜像 |
-| ⚡ **实时查看（车机无感）** | 不挂载镜像，直接按字节解析 exFAT，车机一边写、网页十几秒内就能看到新片段；USB 全程不断开 |
+| 🗂 **虚拟 U 盘** | 默认 64 GiB 稀疏镜像，实际占用随写入增长；创建前检查完整镜像容量及 20 GiB 余量 |
+| 🔌 **USB 存储模拟** | 设备作为 USB U 盘供车机录制；仅首次新建的空镜像需要车机初始化，已有录像的镜像沿用 |
+| 📦 **自动归档** | 在线只读同步稳定文件；镜像空闲后也可暂停导出、挂载并补充归档 |
+| 🔁 **录像保留策略** | `RecentClips` 默认保留最近 60 分钟；`SentryClips` / `SavedClips` 默认各按 14 天及 12 GiB 清理，详见配置；仅清理归档副本 |
+| ⚡ **在线只读同步** | 不挂载镜像，直接解析 exFAT；默认每 15 秒扫描，需连续两轮稳定及有效文件长度，出现录像的时间取决于车机文件写入状态 |
 | 🎬 **多路合成导出** | 勾选任意几路 → **浏览器本机实时合成一个多画面视频**（2×2/3×2 布局，webm 为主、Safari 为 mp4），设备只出文件流不参与转码；单路直接下载原文件，也可打包 zip；**下载/打包zip可选清晰度**（原画/720p/480p/360p，默认跟随播放清晰度）
 | 🖼 **静态缩略图** | 服务端 ffmpeg 抽帧 + eMMC 缓存，列表秒开；事件内每分钟一组片段自动分组，默认播最新一组，可切换
 | 🎬 **多路同步播放** | 按事件实际路数自适应布局（4 路 2×2、6 路 3×2），带摄像头名称，帧级同步校正、统一进度条、0.5x–4x 倍速 |
@@ -58,18 +75,18 @@
 | 🗺 **事件元数据** | 读取车机 `event.json`：时间 / 城市 / 街道 / 坐标 / 触发原因 / 触发画面 / 活动 ID，列表卡片与播放器同步展示 |
 | 🔍 **按触发原因筛选** | 手动保存、按喇叭、点击图标、物体感知⋯⋯分类下按原因一键筛选，带数量；分类切换自动重置 |
 | 📅 **按日期筛选** | 触发原因下方再列一行日期胶囊（当天有事件才出现），可与原因筛选叠加；支持 `?date=2026-11-03` 深链 |
-| 📶 **在线清晰度切换** | 播放器可选 原画 / 720p / 480p / 360p，低码率转码缓存（360p 约为原片 1/10 体积）；公网/弱网访问默认 360p，内网默认原画；首次切换需等待十几秒转码，之后秒开 |
+| 📶 **在线清晰度切换** | 播放器可选原画 / 720p / 480p / 360p，首次转码后缓存；大小与等待时间取决于素材和设备，转码需要 ffmpeg |
 | 💧 **导出可烧录水印** | 导出时勾选"叠加行车信息水印"，把时间/位置/车速/挡位/油门/刹车以**半透明单行横条**烧录到画面顶部（约占画面高 5%，基本不挡路况），单路/多路都支持 |
 | 🎨 **网页背景** | 上传 CSS / 背景图，即刻换肤 |
 | 🌗 **深色 / 浅色 / 自动** | 整套界面用 CSS 变量做成双主题，右上角一键循环切换（自动模式跟随系统），播放器子页面同步换肤；只有视频画面区域保持恒定深色 |
-| 🔄 **一键在线升级（OTA）** | 设置 →「更新」页签：自动比对 GitHub 仓库里的 `version.json`，有新版本时齿轮亮红点，点一下即下载新程序、语法+启动自检、备份旧版、原子替换并自动重启；出问题可一键回滚。默认从本仓库的 `codex/modular-runtime` 分支获取程序，可用 `TSF_OTA_SOURCES` 指定局域网源；离线安装默认关闭在线检查 |
+| 🔄 **升级与回滚** | 完整程序包校验后切换版本目录，保留上一版供回滚；在线源指向 `codex/modular-runtime`，也可使用 Mac 局域网源或离线包 |
 | 🔐 **全站登录保护** | 账号密码登录（cookie 记住 30 天），页面/视频流/缩略图/下载/API 全部拦截；支持 HTTP Basic 便于脚本；同 IP 连错 8 次锁 5 分钟；右上角一键退出 |
 | 🔔 **飞书推送** | 哨兵触发后自动把时间 / 位置 / 触发原因 / 触发镜头 + **触发那一帧画面** 推到飞书（默认**自建应用私聊，只有本人可见**；也可用群机器人 webhook），可推**触发那一路的短视频**或封面卡片，带「查看录像」按钮 |
-| 🔔 **QQ 官方机器人推送** | AppID / AppSecret 配置单聊或群聊，支持文字、封面及视频；本地媒体直接上传 QQ，无需公网服务 |
+| 🔔 **QQ 官方机器人推送** | AppID / AppSecret + 接收 OpenID，支持单聊、群聊、文字、封面及视频；本地媒体直接上传 QQ，无需公网服务 |
 | 🔊 **锁车音自动转换** | MP3/WAV/M4A 等音频自动裁剪、转换 PCM WAV、命名为 `LockChime.wav`，同步写入 USB 根目录 |
 | 🚙 **涂装管理** | 校验车型模板 PNG，自动创建 `Wraps/`、规范文件名，最多 10 个；支持预览、替换、删除及恢复导出 |
 | 📂 **U 盘文件管理** | 网页直接浏览/上传/下载/删除车机 U 盘内容（临时断开、自动恢复导出） |
-| 🛡 **断电自愈** | 车内 USB 硬断电场景友好：归档区 ext4 日志式、开机自检、服务自动拉起 |
+| 🛡 **持久化与恢复** | 配置、车辆文件和版本切换采用原子写入；开机恢复服务与 USB 导出，重要录像仍应另行备份 |
 | 🔁 **弹出自动重挂** | 主机(车机/电脑)对 U 盘执行"弹出"会清空 mass_storage 的 LUN，`usb-selfheal.sh` 每 2 分钟检测并自动重新导出 |
 | 🚀 **开机自启** | OpenWrt `procd` 服务，USB 网卡 / 串口 / 虚拟 U 盘可共存 |
 
@@ -82,11 +99,12 @@
 | 设备 | 支持 **USB Device (Gadget)** 模式的 Linux 设备（USB 口能当"设备"被主机识别） |
 | 内核 | `CONFIG_USB_F_MASS_STORAGE=y`（configfs 方式）或 `g_mass_storage` 模块 |
 | 文件系统 | 内核支持 `exfat`（`/proc/filesystems` 里有 `exfat`） |
-| 存储 | ≥ 32G（建议 128G+，镜像 + 归档各占一部分） |
-| 系统 | OpenWrt（procd）、systemd 系发行版，或任意带 `rc.local` 的 Linux（已在 **OpenWrt 25.12.5 / 主线内核 7.2.9** 验证） |
+| 存储 | 安装目录、镜像和归档放在大容量持久化存储；新建默认镜像时，镜像所在文件系统至少需要 84 GiB 空闲空间 |
+| 系统 | 安装器适配 OpenWrt（procd）、systemd，以及使用 `rc.local` / cron 的通用 Linux；实际支持取决于固件和 USB 内核能力 |
 | Python | 3.7+，**查看器零第三方依赖**（纯标准库） |
+| 媒体工具 | ffmpeg / ffprobe 用于缩略图、设备端转码和音频格式转换；中文水印还需中文字体 |
 
-> 本项目在**中兴 F50 存储版**（紫光展锐 T760、8 核、eMMC 256G、USB 3.0、无电池纯 USB 供电）上完整验证。
+> 中兴 F50 不同固件和存储布局可能不同。离线包包含本项目程序，不包含固件、Python、USB / exFAT 内核模块、ffmpeg 或字体。
 
 **先自检再动手**：在候选设备上跑 `sh scripts/tsf-check.sh`，它会逐项告出 UDC / configfs / exFAT / Python / init 系统是否满足，并给出结论。完整设备清单（随身 WiFi、开发板、电视盒子、x86 为何不行、各系统适配度、功能降级矩阵）见 **[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)**。
 
@@ -96,45 +114,48 @@
 
 ## 快速开始
 
-F50 访问不了 GitHub 时，使用[离线部署脚本](docs/DEPLOYMENT.md)：在 Mac 上运行 `sh tools/deploy_f50.sh root@设备IP`，即可上传并后台启动安装。设备无需 git、SFTP 或访问 GitHub。
+先确认设备具备 root SSH、Python 3.7+、USB Gadget 和 exFAT 支持。默认安装目录为 `/opt/tesla-sentry`，归档为 `/archive`，端口为 `8080`；两个存储路径都应位于大容量持久化分区。已有安装请先看[升级步骤](#已有安装升级)。
 
-### 1. 部署（在设备 SSH 里执行）
+### 方式 A：从 Mac 离线部署
+
+**F50 访问 GitHub 受阻时使用此方式。** 在可访问 GitHub 的 Mac 上取得本分支，Mac 还需有 Python 3 和 SSH 客户端：
 
 ```sh
 git clone --branch codex/modular-runtime --single-branch https://github.com/TLS853/tesla-sentry-f50.git
 cd tesla-sentry-f50
-sudo ./install.sh              # 默认 64G 镜像 + 归档区 /archive
+sh tools/deploy_f50.sh root@设备IP
 ```
 
-装之前可以先看这台设备够不够格（不改动任何东西）：
+替换设备 IP，并按提示输入设备 SSH 密码。脚本在 Mac 上生成离线包，通过 SSH 标准输入上传，随后在 F50 后台启动安装。**F50 无需 git、SFTP 或访问 GitHub。**
+
+上传结束会打印 `INSTALL_LOG`。重新 SSH 登录 F50，执行输出中的 `tail -n 80 .../install.log` 查看结果；“已上传”只说明安装已启动，不代表安装成功。
+
+需要指定实际存储分区时，在 Mac 执行，替换示例路径：
 
 ```sh
+sh tools/deploy_f50.sh root@设备IP --dir /大容量分区/tesla-sentry --archive /大容量分区/archive --size 64 --port 8080
+```
+
+非默认 SSH 端口使用 `SSH_PORT=2222 sh tools/deploy_f50.sh root@设备IP`。也可用 `python3 tools/package_release.py` 单独生成 `dist/tesla-sentry-f50-2.8.0-offline.tar.gz`；手动上传、校验及安装步骤见[离线部署说明](docs/DEPLOYMENT.md)。
+
+离线安装跳过字体下载，并设置 `TSF_OTA_ENABLED=0` 关闭在线更新检查。QQ / 飞书推送仍需 F50 能访问各自官方服务，与能否访问 GitHub 无关。
+
+### 方式 B：在设备上直接安装
+
+设备可访问 GitHub 且已安装 git 时，用 root SSH 登录设备后执行：
+
+```sh
+git clone --branch codex/modular-runtime --single-branch https://github.com/TLS853/tesla-sentry-f50.git
+cd tesla-sentry-f50
 sh scripts/tsf-check.sh
+sh install.sh --size 64 --port 8080 --archive /archive
 ```
 
-自定义参数：
+安装器检查依赖与空间，保留已有镜像及配置，安装完整程序包，注册查看器、在线同步和 USB 服务，并设置定时归档。只有不存在镜像时才新建稀疏文件；`--size` 不会调整已有镜像的容量。非 root 用户需用 `sudo sh install.sh ...`。
 
-```sh
-sudo ./install.sh --size 200 --port 8080 --archive /archive
-```
+### 接入车机与首次登录
 
-安装脚本会做这些事：
-
-1. 检查内核 gadget / exFAT / Python 依赖，缺什么直接报错退出
-2. 创建稀疏镜像 `teslacam.img`
-3. 安装脚本到 `/opt/tesla-sentry/`，配置到 `/etc/tesla-sentry.conf`
-4. 注册三个 OpenWrt 服务：`tesla-gadget`（虚拟U盘）、`sentry-viewer`（网页）、cron（归档）
-5. 立即启动，并打印当前状态
-
-### 2. 插到车上
-
-把设备插进手套箱 USB 口 → 车机屏幕提示"**格式化 USB 设备**" → 点确认。
-
-车机会自己建好 `TeslaCam/{SentryClips,SavedClips,RecentClips}` 目录，之后哨兵事件自动写入。
-
-> 也可以在电脑上手动把这块盘格式化成 exFAT（卷标随意）。
-
-### 3. 打开网页
+把设备接到车机具备数据传输能力的 USB 口。**仅首次新建的空镜像**需要按车机提示初始化；已有录像的镜像无需重新格式化。车机随后在 `TeslaCam/` 下录制。
 
 浏览器访问 `http://<设备IP>:8080`：
 
@@ -142,13 +163,16 @@ sudo ./install.sh --size 200 --port 8080 --archive /archive
 - 设备 USB 网卡直连电脑，或
 - 自行加 Tailscale / frp 等实现公网访问（**本项目不包含内网穿透**）
 
-归档任务每 10 分钟检查一次，镜像空闲 10 分钟才动手——所以录完约 10–20 分钟后视频出现在网页上。
+安装器首次生成 `admin` 账号和随机密码，在安装日志中显示；升级保留原账号。登录后可在 **设置 → 账号** 修改密码。
+
+正常情况下在线同步按稳定文件复制，不必等待定时归档。定时归档每 10 分钟检查，镜像空闲达到 `TSF_IDLE`（默认 600 秒）才挂载补充归档并写入音频。录制中的文件可能尚未稳定，不承诺固定显示延迟。
 
 ---
 
 ## 网页功能
 
 ### 主界面
+
 - 三个分类：**哨兵告警 / 手动保存 / 行车记录**，带事件计数
 - 每张卡片按事件实际路数显示拼图缩略，按时间线倒序
 - 点开进入**多路同步播放器**：4 路自动 2×2、6 路自动 3×2，每格标注摄像头名称；帧级同步（偏差 > 0.35s 自动对齐）、统一进度条、倍速
@@ -186,9 +210,8 @@ TSF_PORT=8080                    # 网页端口
 TSF_IDLE=600                     # 镜像空闲多少秒才归档
 TSF_LIVE_INTERVAL=15             # 在线只读同步轮询间隔 (秒)
 
-# 归档滚动窗口: 盒子侧的 RecentClips 副本跟随车机的滚动缓冲 (车机自己只留最近 ~1 小时),
-# 只保留最近 N 分钟的片段, 更旧的从盒子归档里删掉; 车机 U 盘那份不受影响 (同步为只读);
-# 停车开哨兵时车整夜不睡, 4 路约 8.4GB/小时, 不开滚动窗口很快就撑爆盒子镜像
+# 归档滚动窗口: 只保留归档区最近 N 分钟的 RecentClips 副本,
+# 不删除车机镜像里的文件; 实际空间增长取决于录制时长、码率及摄像头数量
 TSF_RECENT_ROLL_MIN=60           # 滚动窗口 (分钟), 0 = 关闭滚动、永久归档
                                  # 注意: tesla-live-sync.py 与 sentry-viewer.py 都读这个变量,
                                  # 两边必须一致 —— 同步端在"抄之前"就按窗口过滤, 查看器端负责清掉
@@ -201,8 +224,7 @@ TSF_FREE_MIN_MB=4096             # 触发阈值 (MB)
 TSF_FREE_TARGET_MB=10240         # 清理目标 (MB)
 TSF_RECENT_KEEP_MIN=60           # 兜底清理时最近 N 分钟的片段无论如何保留
 
-# 盒子侧哨兵/手动保存归档定期清理: 哨兵事件 + 手动保存的录像只增不删, 盘迟早被吃满,
-# 这里只清盒子归档副本, 车机 U 盘那份不受影响。两个维度独立生效:
+# 哨兵/手动保存归档定期清理: 只清归档副本, 不改动车机镜像。两个维度独立生效:
 #   按天数 —— 只保留该分类最新事件往前 N 天内的归档 (锚点是最新事件而非当前时间,
 #             停车几天没新事件不会被误清空); 按体积 —— 单个分类超过 MAX_GB 就从最旧的删
 TSF_BOX_KEEP_DAYS=14             # 保留天数, 0 = 不按天数清
@@ -218,24 +240,37 @@ TSF_OTA_ENABLED=1
 # TSF_USB_LOCK=/tmp/tesla-sentry-usb.lock  # 所有访问镜像的进程必须使用同一锁路径
 ```
 
+### 已有安装升级
+
+1. 停车并停止车机录制，备份重要录像与配置，在网页退出 U 盘管理模式。
+2. 从 Mac 更新本地分支，重新运行离线部署脚本；或在设备上取得本分支并重跑安装器。OpenWrt 升级前先停止旧查看器和在线同步：
+
+```sh
+/etc/init.d/sentry-viewer stop
+/etc/init.d/tesla-live stop
+```
+
+3. 检查安装日志，再打开网页确认功能。安装器沿用已配置或正在导出的镜像，不需要通过卸载、格式化来升级；镜像被占用时会拒绝版本切换，等待占用结束后重试。
+
+从旧版首次升级到模块化版本应重跑安装器，以更新服务的配置加载方式。只更新 Python 文件不会重写既有的服务定义。通用 `rc.local` 部署需确保旧进程退出，必要时重启设备。详细步骤见[部署文档](docs/DEPLOYMENT.md)。
+
 ### 在线升级（OTA）
 
 网页右上角 **⚙ → 🔄 更新**：
 
-- 打开设置即自动比对仓库里的 `version.json`；有新版本时齿轮按钮上会亮红点
+- `TSF_OTA_ENABLED=1` 时检查仓库的 `version.json`；离线安装默认关闭此检查
 - 页面显示「当前版本 / 最新版本 / 更新说明」，点 **立即升级** 完成：下载完整程序包 → 校验 SHA-256、文件清单和版本 → 两个 Python 入口自检 → 原子切换版本目录 → 重启查看器和同步服务（约 5 秒，页面自动刷新回来）
 - 万一新版有问题，同一页有 **↩ 回滚到上一版本**
 - 配置（`/etc/tesla-sentry.conf`）、`auth.conf`、录像归档都不在升级范围内，不会被动
 
-发新版本的流程（维护者）：
+F50 无法访问 GitHub 时，可继续离线部署，或在可信局域网内由 Mac 提供文件：
 
 ```sh
-python3 tools/make_release.py 2.6.2 "新增 XXX" "修复 YYY"   # 更新源码版本并构建脚本、整包、清单
-git add -A && git commit -m "release: v2.6.2" && git push
+# Mac：在完整仓库根目录运行，服务目录仅包含准备提供给设备的项目文件
+python3 -m http.server 8765 --bind Mac的局域网IP
 ```
 
-> 若仓库改到别处，记得同时改 `APP_VERSION` 所在的 `OTA_REPO` 或 `TSF_OTA_SOURCES`。
-> 设备没网 / GitHub 被墙时检查会失败，但**已安装的版本照常运行**，不影响看录像。
+在 F50 的 `/etc/tesla-sentry.conf` 设置 `TSF_OTA_SOURCES=http://Mac的局域网IP:8765`、`TSF_OTA_ENABLED=1` 并重启查看器，再使用网页更新。Mac 与 F50 需互通。更新检查失败不影响已安装版本的本地回放。
 
 ### 开发与构建
 
@@ -257,11 +292,13 @@ node --experimental-vm-modules tests/frontend.mjs
 
 构建器将原始模块、HTML、CSS、JavaScript 和翻译表压缩进独立入口。运行时保持每个模块自己的命名空间和显式导入，开发与设备部署使用相同的包。浏览器使用原生 ES 模块，不需要 Node.js 构建工具。[模块与依赖说明](docs/MODULES.md) 记录了各层职责和兼容边界。
 
+`sentry-viewer.py`、`tesla-live-sync.py`、`dist/release.json` 为生成文件；修改 `src/tesla_sentry/` 后运行构建器，不直接修改生成的入口。发布新版本时用 `python3 tools/make_release.py 2.8.1 "更新说明"` 修改源码版本、生成入口和清单，再生成离线包。仅提交并推送到 `codex/modular-runtime`，不合并到 `main`。
+
 `config.py` 统一读取配置：环境变量优先于 `TSF_CONF`（默认 `/etc/tesla-sentry.conf`），再使用默认值。配置文件采用 `TSF_NAME=value`，含空格的值须加引号；Python 入口不会执行文件中的 Shell 命令。启动时校验端口、轮询间隔和并发限制，错误配置会给出具体提示。
 
 `dist/release.json` 包含查看器、实时同步程序与五个 Shell 工具，须与 `version.json` 一起提交。安装后程序入口指向 `current/`，升级与回滚通过一次替换符号链接切换整个版本；配置、镜像和录像保存在版本目录之外。旧客户端只更新查看器时，新入口会使用内嵌配套脚本迁移完整程序包。
 
-首次部署此修复建议重新运行 `install.sh`，以更新 OpenWrt 的配置加载方式；仅下载程序无法修改已生成的服务文件。通用 rc.local 安装从旧版升级后应重新启动设备，确保旧实时同步进程退出。测试操作临时目录和本机 HTTP 服务，不操作真实 USB 硬件。
+2.8.0 已通过 54 项 Python 自动化测试、前端模块及 QQ 设置交互检查，并使用实际 ffmpeg 验证 WAV / MP3 转换。测试使用临时目录、回环 HTTP 和模拟 QQ 接口，不代表真实 QQ 账号收发或 F50 / 车机效果已验证。
 
 ### 多语言
 
@@ -269,7 +306,39 @@ node --experimental-vm-modules tests/frontend.mjs
 
 ### QQ 官方机器人推送
 
-网页 **⚙ → 推送 → QQ 官方机器人**，选择单聊/群聊，填写 **AppID / AppSecret / 接收 OpenID**，保存并发送测试。接收 OpenID 来自该机器人的已验证消息事件，不能填 QQ 号或群号。支持文字、封面和视频；媒体直接通过 QQ 官方接口上传，F50 不需公网域名。完整配置、OpenID 获取和平台权限说明见 [docs/FEATURES.md](docs/FEATURES.md)。
+1. 在 [QQ 开放平台](https://q.qq.com/) 创建机器人，取得 **AppID / AppSecret**，按平台要求配置消息权限、测试成员或发布状态。
+2. 添加机器人为好友，或将机器人加入目标群，允许其发送主动消息。
+3. 从该机器人的已验证事件中取得接收 ID：单聊为 `C2C_MESSAGE_CREATE` 的 `d.author.user_openid`，群聊为 `GROUP_AT_MESSAGE_CREATE` 的 `d.group_openid`。**不能填 QQ 号或群号**；不同 AppID 对应的 OpenID 不通用。
+4. 网页 **设置 → 推送 → QQ 官方机器人**，选择单聊或群聊，填写 AppID、AppSecret、OpenID。先选「仅文字」，保存并发送测试；没有归档录像也可测试 QQ。
+5. 测试成功后启用推送，并按需选择封面或触发摄像头视频，再保存设置。
+
+本项目负责出站推送，不启动事件接收服务；没有现成 OpenID 时，需先通过已有机器人服务或[官方事件接入方式](https://bot.q.qq.com/wiki/develop/api-v2/)接收一次消息。凭据、OpenID 和界面截图不要公开提交到仓库。
+
+图片及视频通过官方接口直接上传，无需公开 F50 的文件、域名或端口。「查看链接前缀」可选，仅用于消息中的网页链接。AppSecret 不回传到页面；保存其他设置时留空即保留。主动推送仍受平台权限、接收方开关、频控及网络限制。
+
+| 推送内容 | 行为 |
+| --- | --- |
+| 仅文字 | 时间、位置、原因、镜头及可选查看链接 |
+| 封面图片 | 抽取触发画面并附事件信息；无法取帧或上传失败时回落文字 |
+| 触发摄像头视频 | 截取 10–60 秒，可选 360p / 480p / 720p；图片限 20 MiB、视频限 30 MiB |
+
+QQ 和飞书当前只向**选中的一个渠道**发送，切换渠道保留另一渠道配置。手动导出的「推送到已选渠道」也支持 QQ。完整说明见 [docs/FEATURES.md](docs/FEATURES.md)。
+
+### 车身涂装
+
+1. 从 [Tesla 官方模板仓库](https://github.com/teslamotors/custom-wraps) 取得对应车型及年款的模板或成品，上传制作好的**静态 PNG**；普通照片不会自动生成车身 UV 布局。
+2. 文件须为 **512×512 至 1024×1024 的正方形、≤1,000,000 字节**；USB 最多 10 个涂装。改 JPG / WebP 的扩展名不会转换图片。
+3. 停车后进入 **设置 → 涂装 → 连接车机 U 盘**，管理期间车机读写及录制暂停。上传后自动创建 USB 根目录 `Wraps/`，规范文件名；同名替换需要确认。
+4. 点击 **完成并恢复车机导出**，再到车机 **玩具箱 → 喷漆车间 → 涂装** 选用。需要车型及车机软件支持；网页上传不能代替车机选择。
+
+### 锁车音自动转换
+
+1. 打开 **设置 → 锁车语音**，上传 WAV / MP3 / M4A / AAC / FLAC / OGG / OPUS / WEBM，源文件最大 **20 MiB**。
+2. 可指定起始时间和 0.1–5 秒时长，默认取前 5 秒。自动解码、裁剪、降混为单声道、重采样为 **44.1 kHz / 16-bit PCM WAV**，命名为 **`LockChime.wav`**；5 秒约 441 KB，低于 1 MB。
+3. 转换成功后进入待写入队列，在镜像空闲后的归档同步中写到 **USB 根目录**。管理模式未退出、镜像持续写入时会等待；「已写入」只表示文件已复制，不代表车机已选用。
+4. 在车机 **玩具箱 → Boombox → 锁车音 → USB** 选择。需要外部行人警示扬声器及兼容软件。
+
+转换失败保留之前的队列文件。历史队列的 WAV / MP3 可点击「设为锁车音」，现在也会实际转换。其他格式依赖设备的 ffmpeg；缺少 ffmpeg 时，仅已符合上述 PCM 规格的 WAV 可直接裁剪、命名。输出规格为本项目选择的转换配置，不应将所有参数都理解为 Tesla 的官方强制要求。
 
 ### 飞书推送
 
@@ -305,9 +374,9 @@ node --experimental-vm-modules tests/frontend.mjs
 | 封面卡片 | 触发那一帧 + 时间/位置/原因/镜头，最快（转码 0 秒） |
 | 触发摄像头视频 | 从**触发点前 5 秒**起截一段（默认 30 秒，可调 10–60），先在本机用 ffmpeg 压到 360p / 480p / 720p 再上传，附一条精简卡片方便点回网页看多路 |
 
-实测（F50 / T760）：30 秒 480p 约 2.9MB，转码+上传约 16 秒；飞书视频消息上限 30MB，三个清晰度都远低于上限。
+视频大小和处理耗时取决于内容、设备及网络；项目会检查上传大小，超限时需缩短片段或降低清晰度。
 
-**推送规则**
+**QQ / 飞书共用的自动推送规则**
 
 - 只在**新增**哨兵事件时推（首次启用不补历史，避免一开就刷屏；超过 6 小时的旧事件也不补）
 - 事件新旧按**目录名里的时间**判定，不按文件 mtime：车机 U 盘循环覆盖后，定时归档会把旧片段重新抄进 `/archive`，复制出来的文件 mtime 是"抄写时刻"，只看 mtime 会把几天前的录像当成新事件连推
@@ -329,7 +398,7 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 ```
 
 - 除登录页外**全部路径都要认证**：页面、`/media` 视频流、`/thumb` 缩略图、`/dl` 下载、`/api/*` 接口、`/api/export` 打包
-- 登录后写 HMAC 签名 cookie，所以 `<video>` 和下载这些子请求不会反复弹窗；改密码或点右上角 ⏏ 即失效
+- 登录后写 HMAC 签名 cookie，供视频、下载和 API 使用；改密码使旧会话失效，退出登录清除当前浏览器的 cookie
 - 同时支持 HTTP Basic（`curl -u admin:密码`），方便脚本调用
 - 网页 **⚙ → 🔑 账号** 里可以改密码和**退出登录**：改完本机自动用新密码重新登录，其它设备上的登录状态立即失效（`auth.conf` 里的 `secret` 会换新）
 - 同一 IP 10 分钟内连错 8 次锁 5 分钟
@@ -337,11 +406,11 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 - ⚠️ 认证本身走 HTTP 明文传输，公网穿透时请务必套一层 HTTPS（或用 FRP 的 TLS/stcp），否则密码可被中间人看到
 
 
-改完重启服务生效：
+手工修改配置文件后重启对应服务；网页改密与推送设置保存后直接生效。OpenWrt 例如：
 
 ```sh
 /etc/init.d/sentry-viewer restart
-/etc/init.d/tesla-gadget restart
+/etc/init.d/tesla-live restart
 ```
 
 ---
@@ -350,14 +419,21 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 
 ```
 /opt/tesla-sentry/
-├── teslacam.img         # 虚拟U盘镜像 (exFAT, 稀疏文件)
-├── tesla-gadget.sh      # 虚拟U盘开关脚本: on|off|status
-├── tesla-sync.sh        # 归档同步 + 音频写入
-├── tesla-img.sh         # 安全写镜像 (自动 detach LUN, 避免主机缓存错乱)
-├── usb-selfheal.sh      # LUN 被电脑"弹出"后自动挂回
-├── tsf-start.sh         # 通用启动入口 (非 procd/systemd 系统用)
-├── cache/               # 缩略图 / 遥测缓存 (仅非 F50 设备, F50 用 /opt/mu300)
-└── sentry-viewer.py     # Web 查看器 (纯标准库)
+├── current -> releases/release-.../   # 当前完整版本
+├── releases/                         # 已校验的程序版本
+├── sentry-viewer.py -> current/...   # 网页入口
+├── tesla-live-sync.py -> current/... # 在线只读同步入口
+├── tesla-gadget.sh -> current/...    # USB on|off|status
+├── tesla-sync.sh -> current/...      # 空闲归档及音频写入
+├── tesla-img.sh -> current/...       # 镜像管理
+├── usb-selfheal.sh -> current/...    # 被弹出后的导出恢复
+├── tsf-check.sh -> current/...       # 设备自检
+├── previous-release.json            # 上一版本位置
+├── teslacam.img                      # 默认镜像位置，也可能沿用其它路径
+├── auth.conf                         # 登录凭据
+├── notify.json                       # QQ / 飞书推送配置
+├── notify-state.json                 # 自动推送状态与去重
+└── cache/                            # 非 F50 默认缓存；存在 /opt/mu300 时使用该目录
 
 /archive/                # 归档区 (ext4)
 ├── SentryClips/         # 哨兵告警归档
@@ -369,6 +445,15 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 └── files/               # 通用文件中转
 ```
 
+车机可见的 USB 镜像内：
+
+```text
+USB 根目录/
+├── TeslaCam/            # 车机录像，不是查看器的程序目录
+├── Wraps/               # 通过涂装页上传的 PNG
+└── LockChime.wav        # 队列同步完成后写入的锁车音
+```
+
 ---
 
 ## API
@@ -376,7 +461,10 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 | 接口 | 方法 | 说明 |
 |---|---|---|
 | `/api/events` | GET | 归档事件列表（按分类，含 `event.json` 元数据） |
-| `/login` · `/logout` | GET/POST | 登录页（`POST u/p/next`，成功后种 30 天签名 cookie）· 退出登录 |
+| `/login` | GET / POST | 登录页；POST 表单 `u/p/next`，成功后设置签名 cookie |
+| `/logout` | GET | 清除当前浏览器登录 cookie |
+| `/api/auth/info` · `/api/auth/pass` | GET / POST | 认证状态与改密（POST JSON `old/new`） |
+| `/api/live` | GET | 在线同步健康状态及存储信息 |
 | `/media/<cat>/<event>/<file>` | GET | 视频流（支持 Range）；追加 `?q=360p/480p/720p` 返回按需转码的低码率副本（缓存于 `TSF_CACHE/res-cache`，单任务串行转码，失败自动回退原文件） |
 | `/thumb/<cat>/<event>/<file>` | GET | 缩略图（服务端抽帧 + eMMC 缓存，空文件自动重建） |
 | `/api/telemetry?path=` | GET | 解析该片段内嵌 SEI 遥测，返回逐帧 `frames[]` 与最高/平均车速、刹车占比；无 SEI 返回 `{ok:false}`，结果缓存在 eMMC |
@@ -389,12 +477,14 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 | `/api/upload/file` | POST | 上传到归档区（multipart: `file`, `path`） |
 | `/api/upload/skin` | POST | 上传皮肤 |
 | `/api/upload/audio` | POST | 上传并转换锁车音（`file`, 可选 `start=0`, `duration=5`），返回文件名、时长与大小 |
+| `/api/audio` | GET | 待写入和已写入的音频列表 |
 | `/api/audio/setlockchime` | POST | 将历史队列音频实际转换为 LockChime.wav |
 | `/api/ota/check?force=1` | GET | 比对 GitHub 仓库 `version.json`，返回 `{current, latest, notes, has_update, source}`（结果缓存 10 分钟，`force=1` 强制刷新） |
 | `/api/ota/apply` | POST | 下载最新版 → 校验 → 备份旧版 → 原子替换 → 重启服务 |
-| `/api/notify` | GET | 选中渠道的配置、就绪状态与最近结果；不返回应用密钥 |
+| `/api/notify` | GET | 推送渠道配置、就绪状态与最近结果；不返回应用密钥 |
 | `/api/notify/save` | POST | 保存配置；QQ 使用 `provider=qq`, `qq_app_id`, `qq_app_secret`, `qq_target_type=user/group`, `qq_openid`；密钥留空保留 |
 | `/api/notify/test` | POST | 向已保存渠道发送测试消息；QQ 无录像时也可测试 |
+| `/api/push/upload?cat=&name=&q=` | POST | 原始视频作为请求体，转码后发往已选渠道，最大 300 MiB |
 | `/api/ota/rollback` | POST | 回滚到升级前备份的版本并重启 |
 | `/usbdl?path=` · `/dl?path=` | GET | 下载（U盘 / 归档区）；`/dl` 追加 `&q=360p/480p/720p` 返回转码副本 |
 | `/api/usb?path=` · `/api/file?path=` | DELETE | 删除（U盘 / 归档区） |
@@ -404,14 +494,14 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 ## 工作原理（给想改的人）
 
 1. **USB Gadget**：设备的 USB 控制器（UDC）通过 configfs 暴露一个复合设备 = `ncm`（USB 网卡）+ `acm`（串口）+ `mass_storage`（U 盘）。厂商固件通常已建好前两个，本项目只往现有 gadget 里**加**一个 `mass_storage` 功能并重新绑定，所以网卡/串口不会丢。
-2. **镜像 vs 归档**：镜像（exFAT）只给车机用；归档区（ext4）给 Linux 用。两者物理隔离，归档区是日志式文件系统，硬断电不丢数据。
+2. **镜像与归档**：exFAT 镜像供车机录制，网页使用独立归档目录中的副本。它们可以位于同一物理存储，归档使用持久化文件系统；原子写入和日志式文件系统不等于断电时不会丢失任何数据。
 3. **归档时机**：以镜像文件的 `mtime` 判断"车是否在写"。空闲超过 `TSF_IDLE` 秒才动手，避免打断行车录制。
-4. **短暂断开**：归档全过程 5–15 秒，期间 U 盘从车机视角消失。车机正在写的时候不会触发（mtime 新）。
+4. **挂载归档**：镜像满足空闲条件时暂停导出，完成复制并卸载后恢复。耗时取决于待复制数据量；判断依据是镜像时间戳，不是与车机协商的录制状态。
 5. **断电自愈**：开机时 `tesla-gadget` 自启重新导出镜像；`sentry-viewer` 启动时若发现残留挂载会自动卸载并恢复导出。
 6. **文件管理互斥**：网页 U 盘管理模式挂载镜像期间，归档任务检测到挂载点被占用会自动跳过，避免抢 loop/UDC。
-7. **在线只读同步（实时查看的关键）**：exFAT 同一时间只能被一方挂载，双挂载会互相踩坏元数据。但 gadget 导出期间，镜像文件本身仍可被只读打开 —— `tesla-live-sync.py` 于是**不挂载**，直接按 exFAT 规范解析引导扇区、FAT 表与目录项，沿簇链把车机新写的片段读出来。全程 `pread` 只读，车机完全无感知。
+7. **在线只读同步**：`tesla-live-sync.py` 不挂载正在导出的镜像，直接解析 exFAT 引导扇区、FAT 表和目录项，沿簇链读取稳定的文件内容；这一同步路径不停止 USB 导出。
    - **"写完"判定**：exFAT 目录项的 `DataLength` 要文件关闭才落最终值，所以要求「长度 > 0 且连续两轮扫描签名一致」才拷贝，避免搬出半截 mp4（缺 `moov` 头放不了）。
-   - **性能**：只读目录项，不扫全盘；64G 镜像每轮扫描毫秒级，新片段通常在 15–30 秒内出现在网页。
+   - **扫描间隔**：默认 15 秒，连续两轮稳定才复制，具体延时还受车机文件长度及落盘时机影响。
    - **兜底**：`tesla-live-sync` 不可用时，`tesla-sync.sh` 会在镜像空闲后照旧挂载归档（此时才会短暂断开 U 盘）。
 
 更多细节见 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)、[docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)、[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)。
@@ -421,19 +511,28 @@ secret=               # 可选: 签名密钥, 留空则由密码派生, 改密�
 ## 常见问题
 
 **Q：车机不认盘 / 提示无法读取？**
-先确认 `/sys/class/udc/` 有控制器、`/proc/filesystems` 有 exfat，再跑 `/opt/tesla-sentry/tesla-gadget.sh status`。新盘第一次插车一般会提示格式化，确认即可。
+先确认 `/sys/class/udc/` 有控制器、`/proc/filesystems` 有 exfat，再跑 `sh /opt/tesla-sentry/tesla-gadget.sh status`。仅首次新建空镜像按车机提示初始化；已有录像的镜像先检查日志与导出状态。
 
 **Q：网页有事件但播放黑屏？**
 视频是 **H.265/HEVC**。Windows 用 Edge/Chrome（需系统 HEVC 解码器），iPhone Safari 原生支持；部分安卓浏览器不支持，可自行加 ffmpeg 转码（注意内存）。
 
 **Q：归档不触发？**
-看 `/var/log/tesla-sync.log`（或安装目录下日志）。常见原因：镜像一直被写（车没休眠）、`mtime` 解析失败（设备缺 `stat`，脚本已用 `ls --full-time` 兜底）、归档任务未启用。
+先看 `$TSF_DIR/tesla-live.log`（在线同步）和 `$TSF_DIR/tesla-sync.log`（空闲归档），默认在 `/opt/tesla-sentry/`。挂载归档未触发常见于镜像持续写入、管理会话占用或定时任务未启用；在线同步还要等待文件稳定。
 
 **Q：U 盘连接模式点了没反应？**
-说明停止导出/挂载失败，多半是 loop 设备被占用或镜像不是 exFAT。跑 `losetup -a` 看占用，`umount /tmp/teslamnt` 后再试。
+查看页面错误和日志，确认没有其它管理会话或同步进程占用镜像，镜像文件系统为 exFAT。优先通过网页「恢复车机导出」正常结束会话，不在车机仍导出时手工挂载同一镜像。
 
 **Q：会不会影响车的哨兵录制？**
-归档只在车闲置时进行，每次几秒；U 盘管理模式下会中断（所以有 5 分钟自动恢复）。只要能接受"偶尔几秒 U 盘不可见"，就完全不影响正常使用。
+在线同步只读镜像，不停止导出。挂载归档、文件管理和涂装上传会暂时停止车机访问，可能造成录制空窗；管理会话默认 5 分钟无操作后尝试恢复，操作完成应主动恢复导出。
+
+**Q：F50 访问不了 GitHub，还能使用和更新吗？**
+使用 Mac 离线部署脚本。安装完成后，本地录制、归档、回放和下载不依赖 GitHub；QQ / 飞书推送需要各自服务可达。离线安装默认关闭在线版本检查。
+
+**Q：QQ 测试失败或收不到消息？**
+检查当前选择的渠道和已保存配置，确认填的是该 AppID 对应的 OpenID，并检查机器人状态、主动消息开关及平台权限。先用「仅文字」测试，依据页面返回的 QQ 错误码排查；无法联网时不会发送成功。
+
+**Q：锁车音上传后没有立即变化？**
+查看是否仍在待写入队列。退出 U 盘管理、等待镜像满足空闲条件后同步；写入完成后，还需要车机选择 USB 锁车音。缺少 ffmpeg 或源文件无法解码时页面会提示转换失败。
 
 **Q：设备发热/耗电？**
 5G 模组 + 视频写入负载较高。建议：锁 4G、加散热片、车内避免暴晒。
@@ -449,11 +548,12 @@ sudo ./uninstall.sh --purge      # 连镜像和归档一起删（不可恢复）
 
 ---
 
-## 安全提示
+## 认证与数据边界
 
-- 查看器**没有身份认证**，请只在内网/可信网络暴露，公网请自行加反向代理认证（或 VPN）。
-- 上传接口限制 100MB，路径被限制在归档区/镜像挂载点内，不可逃逸到系统目录。
-- 本项目只操作 USB gadget、镜像和指定目录，不碰系统其他部分。
+- 安装器默认生成登录凭据，页面、视频、下载和 API 都经统一认证；直接运行源码且未配置凭据时不会自动生成登录密码。
+- 上传限制按功能区分：通用文件最多 100 MiB、锁车音源文件最多 20 MiB、涂装 PNG 最多 1,000,000 字节。路径限制在指定归档区或 USB 挂载目录。
+- `auth.conf`、`notify.json` 以及包含凭据的日志属于设备数据，不应提交到 GitHub。通过公网访问需自行配置 HTTPS 或可信网络通道；项目不内置内网穿透。
+- 安装器会修改服务定义、定时任务和项目配置；程序版本、镜像及录像分开存放。录像会受保留策略和手动删除操作影响，重要片段应导出备份。
 
 ---
 
