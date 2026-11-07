@@ -5,10 +5,12 @@
 #   --port PORT      网页端口, 默认 8080
 #   --archive DIR    归档区路径, 默认 /archive
 #   --dir DIR        安装目录, 默认 /opt/tesla-sentry
+#   --offline        不下载字体, 关闭在线检查更新
 #   -h, --help       显示帮助
 set -e
 
 SIZE_GB=64
+OFFLINE=0
 PORT=8080
 ARCHIVE=/archive
 TSF_DIR=/opt/tesla-sentry
@@ -19,6 +21,7 @@ set -a
 set +a
 PORT=${TSF_PORT:-$PORT}
 ARCHIVE=${TSF_ARCHIVE:-$ARCHIVE}
+OTA_ENABLED=${TSF_OTA_ENABLED:-1}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -26,12 +29,13 @@ while [ $# -gt 0 ]; do
         --port)    PORT="$2"; shift 2 ;;
         --archive) ARCHIVE="$2"; shift 2 ;;
         --dir)     TSF_DIR="$2"; shift 2 ;;
+        --offline) OFFLINE=1; OTA_ENABLED=0; shift ;;
         -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
         *) echo "未知参数: $1 (用 --help 查看)"; exit 1 ;;
     esac
 done
 
-IMG="$TSF_DIR/teslacam.img"
+IMG="${TSF_IMG:-$TSF_DIR/teslacam.img}"
 
 say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 die() { printf '\033[1;31m[ERROR]\033[0m %s\n' "$*" >&2; exit 1; }
@@ -43,6 +47,7 @@ SRC_DIR=$(cd "$(dirname "$0")" && pwd)
 
 PYTHON=$(command -v python3 || true)
 [ -n "$PYTHON" ] || die "需要 python3 (OpenWrt: opkg install python3-light)"
+"$PYTHON" "$SRC_DIR/sentry-viewer.py" --ota-check || die "Python 依赖不完整, 请先补齐自检提示的模块"
 
 say "检查 USB Gadget 支持..."
 GADGET=""
@@ -51,6 +56,20 @@ for d in /sys/kernel/config/usb_gadget/*/; do
 done
 [ -n "$GADGET" ] || die "未发现 USB gadget (configfs 未挂载或设备不支持 Device 模式)"
 [ -n "$(ls /sys/class/udc/ 2>/dev/null | head -1)" ] || die "未发现 UDC 控制器"
+
+CUR_EXPORT=""
+for f in "$GADGET"/functions/mass_storage*/lun.0/file; do
+    [ -f "$f" ] || continue
+    CUR_EXPORT=$(cat "$f" 2>/dev/null)
+    [ -n "$CUR_EXPORT" ] && break
+done
+if [ -n "$CUR_EXPORT" ] && [ -f "$CUR_EXPORT" ]; then
+    IMG="$CUR_EXPORT"
+    say "检测到已在导出的镜像, 沿用它: $IMG"
+fi
+
+
+"$PYTHON" "$SRC_DIR/tools/check_storage.py" "$IMG" "$SIZE_GB" || die "存储位置不合适, 安装已停止"
 
 if ! grep -qw exfat /proc/filesystems 2>/dev/null; then
     modprobe exfat 2>/dev/null || true
@@ -64,20 +83,9 @@ fi
 
 FREE_MB=$(df -Pm "$(dirname "$TSF_DIR")" 2>/dev/null | awk 'NR==2{print $4}')
 [ -z "$FREE_MB" ] && FREE_MB="?"
-say "存储空闲: ${FREE_MB}MB, 计划镜像 ${SIZE_GB}G (稀疏文件, 按实际写入占用)"
+say "存储空闲: ${FREE_MB}MB, 新镜像默认 ${SIZE_GB}G (已有镜像保留原容量)"
 
-# 兼容性保护: 车机首次使用会格式化整个虚拟U盘, 稀疏文件会被写成实占
-# (镜像标称多大就实占多大)。镜像 + 归档 + 系统必须留出余量, 否则磁盘写满后
-# 块设备返回 I/O 错误, 车机会把 U 盘判为"读不出/需要格式化"。
-# 经验值: 64G 镜像在哨兵 4 路约 8.4G/小时下可滚动录制 7 小时以上, 足够日常使用。
-if [ "$FREE_MB" != "?" ]; then
-    NEED_MB=$((SIZE_GB * 1024 + 20480))    # 镜像满容量 + 至少 20G 归档/系统余量
-    if [ "$FREE_MB" -lt "$NEED_MB" ]; then
-        echo "  [警告] 空闲 ${FREE_MB}MB 可能放不下 ${SIZE_GB}G 镜像+归档余量(约 ${NEED_MB}MB)"
-        echo "         车机格式化后镜像会按容量实占; 空间紧张请降低容量, 例如:"
-        echo "           sudo ./install.sh --size 32"
-    fi
-fi
+# 新镜像已由 check_storage.py 检查完整容量及 20GiB 归档余量。
 
 # 缓存目录 (缩略图/遥测/合成临时文件): F50 沿用 /opt/mu300, 其它设备放安装目录下
 if [ -d /opt/mu300 ]; then CACHE_DIR=/opt/mu300; else CACHE_DIR="$TSF_DIR/cache"; fi
@@ -99,16 +107,6 @@ mkdir -p "$ARCHIVE"/SentryClips "$ARCHIVE"/SavedClips "$ARCHIVE"/RecentClips \
 
 # ---------------- 2. 镜像 ----------------
 # 已经在跑的设备: 复用当前正在导出的镜像, 避免重装后车机看到一块空盘
-CUR_EXPORT=""
-for f in "$GADGET"/functions/mass_storage*/lun.0/file; do
-    [ -f "$f" ] || continue
-    CUR_EXPORT=$(cat "$f" 2>/dev/null)
-    [ -n "$CUR_EXPORT" ] && break
-done
-if [ -n "$CUR_EXPORT" ] && [ -f "$CUR_EXPORT" ]; then
-    IMG="$CUR_EXPORT"
-    say "检测到已在导出的镜像, 沿用它: $IMG"
-fi
 
 if [ -f "$IMG" ]; then
     say "镜像已存在, 跳过创建: $IMG"
@@ -137,6 +135,8 @@ TSF_RECENT_ROLL_MIN=60
 TSF_BOX_KEEP_DAYS=14
 TSF_BOX_MAX_GB=12
 TSF_OTA_REPO=TLS853/tesla-sentry-f50
+TSF_OTA_REF=codex/modular-runtime
+TSF_OTA_ENABLED=$OTA_ENABLED
 TSF_LOSETUP=
 TSF_GADGET=$GADGET
 TSF_CACHE=$CACHE_DIR
@@ -340,7 +340,9 @@ say "启动虚拟U盘 ..."
 sh "$TSF_DIR/tesla-gadget.sh" on || echo "  [警告] 虚拟U盘启动失败, 见 $TSF_DIR/tesla-gadget.log"
 
 # 中文字体: 飞书推送视频烧录行车信息水印时由 libass 使用; 缺失只影响水印, 不影响其它功能
-if ! ls "$TSF_DIR"/fonts/*.ttf >/dev/null 2>&1; then
+if [ "$OFFLINE" = 1 ]; then
+    say "离线模式: 跳过字体下载, 在线检查更新已关闭"
+elif ! ls "$TSF_DIR"/fonts/*.ttf >/dev/null 2>&1; then
     say "下载中文字体 (水印用, 约 17MB) ..."
     mkdir -p "$TSF_DIR/fonts"
     curl -sL --max-time 600 -o "$TSF_DIR/fonts/NotoSansSC.ttf" -C - \

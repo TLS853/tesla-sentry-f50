@@ -3,17 +3,19 @@
 from pathlib import Path
 import os
 import re
+import shlex
 import sys
 
 SELECTED = {"TSF_DIR", "TSF_IMG", "TSF_ARCHIVE", "TSF_PORT", "TSF_GADGET", "TSF_CACHE",
-            "TSF_FFMPEG", "TSF_FFPROBE"}
+            "TSF_FFMPEG", "TSF_FFPROBE", "TSF_OTA_ENABLED"}
 
 
 def merge(existing, defaults):
     def key(line):
         match = re.match(r"(?:export\s+)?(TSF_\w+)=", line)
         return match.group(1) if match else None
-    new = {key(line): line for line in defaults.splitlines() if key(line)}
+    new = {key(line): key(line) + "=" + shlex.quote(line.split("=", 1)[1])
+           for line in defaults.splitlines() if key(line)}
     seen = set()
     out = []
     for line in existing.splitlines():

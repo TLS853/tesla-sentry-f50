@@ -13,3 +13,7 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# Generated offline installers
+/dist/*.tar.gz
+/dist/*.tar.gz.sha256

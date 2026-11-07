@@ -17,10 +17,9 @@ from . import __version__
 
 APP_VERSION = __version__
 OTA_REPO = config.get("TSF_OTA_REPO", "TLS853/tesla-sentry-f50")
+OTA_REF = config.get("TSF_OTA_REF", "codex/modular-runtime")
 _OTA_DEFAULT = ",".join([
-    "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
-    "https://ghfast.top/https://raw.githubusercontent.com/%s/main" % OTA_REPO,
-    "https://cdn.jsdelivr.net/gh/%s@main" % OTA_REPO,
+    "https://raw.githubusercontent.com/%s/%s" % (OTA_REPO, OTA_REF),
 ])
 OTA_SOURCES = [s.strip().rstrip("/") for s in config.get("TSF_OTA_SOURCES", _OTA_DEFAULT).split(",") if s.strip()]
 OTA_BACKUP = config.get("TSF_OTA_BACKUP", os.path.join(config.settings.install_dir, "sentry-viewer.bak.py"))
@@ -93,6 +92,8 @@ def _vtuple(v):
 
 def ota_latest(force=False):
     """读仓库 version.json (含版本号/日期/更新说明), 并发竞速多个源, 结果缓存 10 分钟"""
+    if config.get("TSF_OTA_ENABLED", "1") == "0":
+        raise RuntimeError("离线更新模式: 请从电脑上传安装包更新")
     now = time.time()
     if not force and _OTA_CACHE["data"] and now - _OTA_CACHE["t"] < 600:
         return _OTA_CACHE["data"]

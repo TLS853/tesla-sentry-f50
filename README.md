@@ -62,7 +62,7 @@
 | 💧 **导出可烧录水印** | 导出时勾选"叠加行车信息水印"，把时间/位置/车速/挡位/油门/刹车以**半透明单行横条**烧录到画面顶部（约占画面高 5%，基本不挡路况），单路/多路都支持 |
 | 🎨 **网页背景** | 上传 CSS / 背景图，即刻换肤 |
 | 🌗 **深色 / 浅色 / 自动** | 整套界面用 CSS 变量做成双主题，右上角一键循环切换（自动模式跟随系统），播放器子页面同步换肤；只有视频画面区域保持恒定深色 |
-| 🔄 **一键在线升级（OTA）** | 设置 →「更新」页签：自动比对 GitHub 仓库里的 `version.json`，有新版本时齿轮亮红点，点一下即下载新程序、语法+启动自检、备份旧版、原子替换并自动重启；出问题可一键回滚。检查与下载均为**多源并发竞速**（GitHub → ghfast → jsDelivr，哪个快用哪个，被墙自动切换并记住最快源），可用 `TSF_OTA_SOURCES` 自定义 |
+| 🔄 **一键在线升级（OTA）** | 设置 →「更新」页签：自动比对 GitHub 仓库里的 `version.json`，有新版本时齿轮亮红点，点一下即下载新程序、语法+启动自检、备份旧版、原子替换并自动重启；出问题可一键回滚。默认从本仓库的 `codex/modular-runtime` 分支获取程序，可用 `TSF_OTA_SOURCES` 指定局域网源；离线安装默认关闭在线检查 |
 | 🔐 **全站登录保护** | 账号密码登录（cookie 记住 30 天），页面/视频流/缩略图/下载/API 全部拦截；支持 HTTP Basic 便于脚本；同 IP 连错 8 次锁 5 分钟；右上角一键退出 |
 | 🔔 **飞书推送** | 哨兵触发后自动把时间 / 位置 / 触发原因 / 触发镜头 + **触发那一帧画面** 推到飞书（默认**自建应用私聊，只有本人可见**；也可用群机器人 webhook），可推**触发那一路的短视频**或封面卡片，带「查看录像」按钮 |
 | 🔊 **锁车音 / 音效** | 网页上传音频，全部直接写入 U 盘**根目录**（`LockChime.wav` 即锁车音） |
@@ -95,10 +95,12 @@
 
 ## 快速开始
 
+F50 访问不了 GitHub 时，使用[离线部署脚本](docs/DEPLOYMENT.md)：在 Mac 上运行 `sh tools/deploy_f50.sh root@设备IP`，即可上传并后台启动安装。设备无需 git、SFTP 或访问 GitHub。
+
 ### 1. 部署（在设备 SSH 里执行）
 
 ```sh
-git clone https://github.com/baicyber/tesla-sentry-f50.git
+git clone --branch codex/modular-runtime --single-branch https://github.com/TLS853/tesla-sentry-f50.git
 cd tesla-sentry-f50
 sudo ./install.sh              # 默认 64G 镜像 + 归档区 /archive
 ```
@@ -207,10 +209,11 @@ TSF_BOX_MAX_GB=12                # 单个分类体积上限 (GB), 0 = 不按体�
                                  # 提示: 12G/类按 64G 镜像 + 常见存储空间设计;
                                  # 想多留就调大, 但注意剩余空间, 兜底清理不覆盖这两个分类
 
-# 在线升级 (OTA): 默认依次尝试 GitHub 原生地址 → ghfast 镜像 → jsDelivr,
-# 哪个能通就用哪个; 想换成自己的 fork 或内网源, 改下面两个变量即可
+# 在线升级: 默认从自己的重构分支读取; 离线安装会将 ENABLED 设置为 0
 TSF_OTA_REPO=TLS853/tesla-sentry-f50
-# TSF_OTA_SOURCES=https://raw.githubusercontent.com/you/repo/main,https://cdn.jsdelivr.net/gh/you/repo@main
+TSF_OTA_REF=codex/modular-runtime
+TSF_OTA_ENABLED=1
+# TSF_OTA_SOURCES=http://Mac的局域网IP:8765
 # TSF_USB_LOCK=/tmp/tesla-sentry-usb.lock  # 所有访问镜像的进程必须使用同一锁路径
 ```
 
