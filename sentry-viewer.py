@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.4.8"
+APP_VERSION = "2.5.0"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -602,10 +602,22 @@ select.ninput { cursor:pointer; }
 .stfill { height:100%; width:0; background:linear-gradient(90deg,#3b82f6,#60a5fa); border-radius:5px; transition:width .4s; }
 .stpct { font-size:13px; color:var(--muted); margin-top:8px; }
 .sthint { font-size:11.5px; color:var(--muted2); margin-top:4px; line-height:1.5; }
+.livep { display:none; position:fixed; inset:0; background:var(--bg, #10151c); z-index:240; flex-direction:column; }
+.livep.open { display:flex; }
+.lvtop { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); flex:0 0 auto; }
+.lvtitle { font-weight:600; font-size:15px; flex:1; }
+.lvstatus { font-size:12px; color:var(--muted); text-align:right; }
+.lvbody { flex:1; overflow:auto; padding:12px 14px 20px; display:flex; flex-direction:column; gap:10px; }
+.lvmeta { font-size:13px; color:var(--muted); }
+#lv-video { width:100%; max-height:58vh; background:#000; border-radius:12px; }
+.lvrow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.lvbtn { padding:7px 14px; border-radius:9px; border:1px solid var(--line2); background:var(--panel2); color:var(--text); font-size:13px; cursor:pointer; }
+.lvbtn.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+.lvrow select { padding:7px 10px; border-radius:9px; border:1px solid var(--line2); background:var(--panel2); color:var(--text); font-size:13px; }
 </style></head><body>
 <header><h1>🚗 特斯拉哨兵查看器</h1><span class="sub" id="stat"></span>
 <span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
-<nav class="tabs" id="tabs"></nav><button id="theme" title="主题: 自动/浅色/深色" onclick="cycleTheme()">🌗</button><button id="gear" title="设置">⚙</button></header>
+<nav class="tabs" id="tabs"></nav><button id="livebtn" title="准实时预览" onclick="openLive()">📡</button><button id="theme" title="主题: 自动/浅色/深色" onclick="cycleTheme()">🌗</button><button id="gear" title="设置">⚙</button></header>
 <nav class="storwrap" id="storwrap" style="display:none">
   <div class="storcard">
     <div class="storrow"><span class="storlab" id="storlab">车载U盘存储</span><span class="storval" id="storval"></span></div>
@@ -686,6 +698,30 @@ select.ninput { cursor:pointer; }
 </div>
 
 <div class="mask" id="mask" onclick="closePanel()"></div>
+
+<div class="livep" id="livep">
+  <div class="lvtop">
+    <button class="pback" onclick="closeLive()">‹ 返回</button>
+    <span class="lvtitle">📡 准实时预览 <small style="color:#7d8894;font-weight:400">延时约 1~2 分钟</small></span>
+    <span class="lvstatus" id="lv-status"></span>
+  </div>
+  <div class="lvbody">
+    <div class="lvmeta" id="lv-name">—</div>
+    <video id="lv-video" controls playsinline muted></video>
+    <div class="lvrow" id="lv-cams"></div>
+    <div class="lvrow">
+      <span style="font-size:13px;color:var(--muted)">刷新检查</span>
+      <select id="lv-iv" onchange="liveRestart()">
+        <option value="15">15 秒</option>
+        <option value="30">30 秒</option>
+        <option value="60">1 分钟</option>
+        <option value="0">仅手动</option>
+      </select>
+      <button class="lvbtn" onclick="liveTick()">检查更新</button>
+    </div>
+    <div class="hint">原理: 车机循环录制 1 分钟一段; 后台的只读同步 (不打断车机) 把刚写完的片段持续收进归档, 这里自动发现并播放最新片段, 即约 1 分钟延时的"直播"。刚停车/刚触发录像的片段要等写完才会出现。</div>
+  </div>
+</div>
 <div class="panel" id="panel">
   <h2>⚙ 个性化 <button class="x" onclick="closePanel()">✕</button></h2>
   <div class="stabs">
@@ -1673,6 +1709,65 @@ function updateHud(t) {
   renderHud(ans);
 }
 window.addEventListener('resize', () => { if (document.getElementById('player').classList.contains('open')) layoutPlayer(); });
+
+/* ---------- 准实时预览 ---------- */
+let liveCam = localStorage.getItem('tsflivecam') || 'front';
+let liveFolder = '', liveTimer = null, liveBusy = false;
+function latestLiveEv() { const arr = (data && data.RecentClips) || []; return arr[0] || null; }
+function openLive() {
+  document.getElementById('livep').classList.add('open');
+  const ev = latestLiveEv();
+  if (ev) { liveFolder = ev.name; renderLive(ev); }
+  liveTick();
+  liveRestart();
+}
+function closeLive() {
+  document.getElementById('livep').classList.remove('open');
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  const v = document.getElementById('lv-video');
+  try { v.pause(); v.removeAttribute('src'); v.load(); } catch (err) {}
+}
+function renderLive(ev) {
+  document.getElementById('lv-name').textContent = '最新片段: ' + ev.name.replace(/_/g, ' ');
+  const vids = camSort(ev.videos || []);
+  if (!vids.length) return;
+  if (!vids.find(v => v.cam === liveCam)) liveCam = vids[0].cam;
+  const row = document.getElementById('lv-cams');
+  row.innerHTML = '';
+  vids.forEach(v => {
+    const b = document.createElement('button');
+    b.className = 'lvbtn' + (v.cam === liveCam ? ' on' : '');
+    b.textContent = camLabel(v.cam);
+    b.onclick = () => { liveCam = v.cam; localStorage.setItem('tsflivecam', liveCam); renderLive(ev); };
+    row.appendChild(b);
+  });
+  const v = vids.find(x => x.cam === liveCam) || vids[0];
+  const vid = document.getElementById('lv-video');
+  if (v && vid.src.indexOf(v.url) === -1) { vid.src = v.url; vid.play().catch(() => {}); }
+}
+async function liveTick() {
+  if (liveBusy || !document.getElementById('livep').classList.contains('open')) return;
+  liveBusy = true;
+  const st = document.getElementById('lv-status');
+  try {
+    const r = await fetch('/api/live/status').then(x => x.json());
+    if (r.folder && r.folder !== liveFolder) {
+      liveFolder = r.folder;
+      await load();
+      const ev = latestLiveEv();
+      if (ev) renderLive(ev);
+    }
+    if (!r.folder) st.textContent = '归档里还没有行车片段';
+    else if (typeof r.age === 'number' && r.age < 0) st.textContent = '';
+    else st.textContent = '最新片段 ' + Math.max(0, Math.round(-r.age / 60)) + ' 分钟前入库';
+  } catch (e) { st.textContent = '检查失败: ' + e; }
+  liveBusy = false;
+}
+function liveRestart() {
+  if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  const iv = +document.getElementById('lv-iv').value;
+  if (iv > 0) liveTimer = setInterval(liveTick, iv * 1000);
+}
 
 /* ---------- 导出 ---------- */
 let expQ = 'orig';
@@ -2674,6 +2769,35 @@ def usb_detach_safe():
         print("auto detach:", ok, msg)
     except Exception as e:
         print("auto detach error:", e)
+
+
+def usb_img_age():
+    """车机最后一次写U盘镜像距今的秒数; 读不到返回 -1"""
+    try:
+        return time.time() - os.path.getmtime(IMG)
+    except OSError:
+        return -1
+
+
+def live_latest():
+    """归档里最新的 RecentClips 片段组与其入库时间 (秒); 没有返回 ("", 0)。
+    片段由 tesla-live-sync.py 在后台持续只读同步进归档 (不打断车机), 延时约 1~2 分钟。"""
+    base = os.path.join(ARCHIVE, "RecentClips")
+    try:
+        cands = sorted((n for n in os.listdir(base)
+                        if re.match(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", n)
+                        and os.path.isdir(os.path.join(base, n))), reverse=True)
+    except OSError:
+        return "", 0.0
+    if not cands:
+        return "", 0.0
+    newest = 0.0
+    try:
+        for f in os.listdir(os.path.join(base, cands[0])):
+            newest = max(newest, os.path.getmtime(os.path.join(base, cands[0], f)))
+    except OSError:
+        pass
+    return cands[0], newest
 
 
 def usb_real(p):
@@ -4749,6 +4873,11 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         elif path == "/api/events":
             self._json(list_events())
+        elif path == "/api/live/status":
+            folder, newest = live_latest()
+            self._json({"ok": True, "folder": folder,
+                        "age": round(newest - time.time(), 1) if newest else -1,
+                        "car_age": round(usb_img_age(), 1)})
         elif path == "/api/telemetry":
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             p = q.get("path", [""])[0]
