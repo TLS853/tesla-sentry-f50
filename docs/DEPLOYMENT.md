@@ -1,6 +1,6 @@
 # F50 离线部署
 
-F50 不需要访问 GitHub。Mac 持有完整安装包后，通过 SSH 把程序传过去；设备端只读取包内文件。离线模式不下载字体，也不发起在线版本检查。
+F50 不需要访问 GitHub。Mac 持有完整安装包后，通过 SSH 把程序传过去；设备端只读取包内文件。离线模式不下载字体；2.9.0 起所有安装方式都不自动检查更新。
 
 ## 从这台 Mac 上传
 
@@ -55,17 +55,19 @@ sh /opt/tesla-sentry/tesla-gadget.sh status
 
 本地录制、归档、网页回放、下载和浏览器合成不依赖 GitHub。离线包包含本项目程序，不包含设备固件、Python、内核模块、ffmpeg 或中文字体。缺少 Python 或 USB/exFAT 支持时必须先补齐；缺少 ffmpeg 会影响缩略图和设备端转码，缺少字体会影响中文烧录水印。
 
-飞书推送需要设备能连接飞书；远程访问需要设备自身的网络或已有的内网穿透。它们与能否连接 GitHub 是不同的网络条件。
+QQ / 飞书推送需要设备能连接对应服务；远程访问需要设备自身的网络或已有的内网穿透。它们与能否连接 GitHub 是不同的网络条件。
 
 ## 后续更新
 
-再次在 Mac 上取得新版本、生成离线包并上传安装即可。离线安装会设置 `TSF_OTA_ENABLED=0`，避免网页后台反复请求 GitHub。不要把未知代理网站作为程序更新源。
+2.8.x 及更早版本需先通过上述 Mac 离线安装流程切换到 2.9.0。之后可直接在 **设置 → 更新** 粘贴 R2 等存储上的更新 ZIP URL，点击下载并更新，不再依赖 GitHub。
 
-如需使用 Mac 提供局域网更新源，可以在 Mac 项目根目录运行 `python3 -m http.server 8765 --bind 0.0.0.0`，并在 F50 配置文件中设置：
+在源码目录生成专用更新包：
 
-```ini
-TSF_OTA_ENABLED=1
-TSF_OTA_SOURCES=http://Mac的局域网IP:8765
+```sh
+python3 tools/build.py
+python3 tools/package_update.py
 ```
 
-重启查看器后即可从 Mac 拉取版本清单和完整程序包；设备仍不需要访问 GitHub。这个临时文件服务器会暴露项目目录中的文件，只在可信局域网按需开启，用完按 Ctrl+C 关闭。若直接从 GitHub 更新，默认分支为 `codex/modular-runtime`，不会从保留的旧 `main` 安装程序。
+把生成的 `dist/tesla-sentry-f50-版本-update.zip` 上传到 R2，使用对象直链或 GET 预签名 URL；不要使用源码 ZIP 或离线安装 tar.gz。版本号必须高于当前运行版本。也可继续使用 Mac 上传完整离线包，或在局域网提供该 ZIP 的 HTTP 下载。
+
+`TSF_OTA_ENABLED`、`TSF_OTA_SOURCES` 等旧更新源配置已不再生效。页面加载不检查远端，只在明确点击更新时下载输入地址；完整说明见 [手动 ZIP 更新与 R2 发布](UPDATES.md)。

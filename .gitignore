@@ -17,3 +17,5 @@ Thumbs.db
 # Generated offline installers
 /dist/*.tar.gz
 /dist/*.tar.gz.sha256
+/dist/*-update.zip
+/dist/*-update.zip.sha256

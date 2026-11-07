@@ -107,7 +107,7 @@
         <option value="60">1 分钟</option>
         <option value="0">仅手动</option>
       </select>
-      <button class="lvbtn" onclick="liveTick()">检查更新</button>
+      <button class="lvbtn" onclick="liveTick()">刷新录像</button>
     </div>
     <div class="hint">「全览」同时播放全部摄像头原画, 数据量较大 (4 路每分钟约 100MB), 建议流量充足时使用; 点任一格可切到单路。原理: 车机循环录制 1 分钟一段; 后台的只读同步 (不打断车机) 把刚写完的片段持续收进归档, 这里自动发现并播放最新片段, 即约 1 分钟延时的"直播"。刚停车/刚触发录像的片段要等写完才会出现。</div>
   </div>
@@ -232,16 +232,19 @@
     <div class="updbtns" style="margin-top:16px"><button class="mini logout" onclick="doLogout()">退出登录</button></div>
   </div>
   <div id="tab-update" style="display:none">
-    <div class="updrow"><span class="updk">当前版本</span><b id="upd-cur">—</b></div>
-    <div class="updrow"><span class="updk">最新版本</span><b id="upd-new">—</b><span class="updtag" id="upd-tag">未检查</span></div>
-    <div class="updnotes" id="upd-notes"></div>
+    <div class="updrow"><span class="updk">当前版本</span><b id="upd-cur">—</b><span class="updtag" id="upd-tag">手动 ZIP 更新</span></div>
+    <div class="hint">不会自动检查或下载更新。将更新 ZIP 上传到 R2 或其它可访问的存储，再粘贴下载直链。</div>
+    <label for="upd-url">更新包 ZIP 地址</label>
+    <input class="ninput" id="upd-url" type="url" inputmode="url" maxlength="8192" autocomplete="off" spellcheck="false" placeholder="https://你的下载域名/tesla-sentry-f50-版本-update.zip">
+    <label for="upd-sha">ZIP SHA-256（可选）</label>
+    <input class="ninput" id="upd-sha" maxlength="64" autocomplete="off" spellcheck="false" placeholder="可粘贴打包脚本生成的 64 位校验值">
     <div class="updbtns">
-      <button class="mini" id="upd-check" onclick="otaCheck(true)">检查更新</button>
-      <button class="mini primary" id="upd-go" onclick="otaApply()" disabled>立即升级</button>
+      <button class="mini primary" id="upd-go" onclick="otaApply()">下载 ZIP 并更新</button>
+      <button class="mini" id="upd-refresh" onclick="otaStatus()">刷新本机状态</button>
     </div>
     <div class="hint" id="upd-msg"></div>
     <div class="updbtns"><button class="mini" id="upd-rb" onclick="otaRollback()" style="display:none">↩ 回滚到上一版本</button></div>
-    <div class="hint">升级会从 GitHub 及多个镜像并发竞速拉取最新程序, 覆盖本机文件并自动重启服务 (约5秒); 配置、录像、登录信息不受影响。</div>
+    <div class="hint">仅支持本项目打包脚本生成的更新 ZIP，不能使用 GitHub 源码 ZIP。下载后校验全部文件并自检，成功后切换完整版本、重启服务；保留配置、录像和登录信息。支持带签名参数的下载 URL，只接受高于当前版本的包。</div>
   </div>
   <div id="tab-lang" style="display:none">
     <div class="hint" style="margin-bottom:8px">选择语言</div>

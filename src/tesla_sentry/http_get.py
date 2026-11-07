@@ -115,8 +115,7 @@ class GetRoutesMixin:
 
 
     def _get_api_ota_check(self, path):
-        q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-        self._json(updates.ota_check(force=q.get("force", ["0"])[0] == "1"))
+        self._json(updates.ota_status())
 
 
     def _get_api_skins(self, path):

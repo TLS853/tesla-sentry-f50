@@ -1188,7 +1188,7 @@ function stab(which) {
     if (b) b.classList.toggle('active', k === which);
     if (t) t.style.display = k === which ? '' : 'none';
   });
-  if (which === 'update') otaCheck(false);
+  if (which === 'update') otaStatus();
   if (which === 'notify') ntLoad();
   if (which === 'auth') pwLoad();
   if (which === 'wraps') refreshWraps();
@@ -1376,83 +1376,81 @@ async function pwSave() {
   } catch (e) { m.textContent = t('修改失败') + ': ' + e; m.style.color = 'var(--accent)'; }
 }
 
-/* ---------- 系统更新 (OTA) ---------- */
-let otaInfo = null;
+/* ---------- 手动 ZIP 更新 ---------- */
+let otaCurrent = '', otaBusy = false;
 function esc(s) { return String(s == null ? '' : s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
-async function otaCheck(force) {
-  const tag = document.getElementById('upd-tag'), msg = document.getElementById('upd-msg');
-  tag.className = 'updtag'; tag.textContent = t('检查中…');
-  msg.textContent = t('正在连接 GitHub…');
+function otaSetBusy(busy) {
+  otaBusy = busy;
+  ['upd-go', 'upd-rb', 'upd-url', 'upd-sha'].forEach(id => {
+    document.getElementById(id).disabled = busy;
+  });
+}
+async function otaStatus() {
+  // This endpoint reads the installed version and rollback metadata only.
   try {
-    const j = await (await fetch('/api/ota/check' + (force ? '?force=1' : ''), { cache: 'no-store' })).json();
-    otaInfo = j;
+    const response = await fetch('/api/ota/status', { cache: 'no-store' });
+    if (!response.ok) throw new Error('无法读取本机更新状态');
+    const j = await response.json();
+    otaCurrent = j.current;
     document.getElementById('upd-cur').textContent = 'v' + j.current;
-    document.getElementById('upd-new').textContent = j.latest ? 'v' + j.latest : '—';
-    tag.className = 'updtag' + (j.has_update ? ' new' : '');
-    tag.textContent = j.error ? t('检查失败') : (j.has_update ? t('有新版本') : t('已是最新'));
-    const n = document.getElementById('upd-notes');
-    if (j.notes && j.notes.length) {
-      n.innerHTML = j.notes.map(x => '· ' + esc(x)).join('<br>');
-      n.style.display = 'block';
-    } else { n.style.display = 'none'; n.innerHTML = ''; }
-    document.getElementById('upd-go').disabled = !j.has_update;
     document.getElementById('upd-rb').style.display = j.rollback_ready ? '' : 'none';
-    msg.textContent = j.error
-      ? t('连不上 GitHub') + ': ' + j.error + ' ' + t('(可稍后重试)')
-      : (t('来源') + ': ' + (j.source || '-') + (j.date ? ' · ' + j.date : '') + (j.has_update ? '' : ' · ' + t('已是最新')));
-    document.getElementById('gear').classList.toggle('hasupd', !!j.has_update);
+    document.getElementById('upd-tag').textContent = j.busy ? '正在更新或等待重启' : '手动 ZIP 更新';
+    otaSetBusy(!!j.busy);
   } catch (e) {
-    tag.className = 'updtag'; tag.textContent = t('检查失败');
-    msg.textContent = t('检查失败') + ': ' + e;
+    document.getElementById('upd-msg').textContent = '读取本机状态失败，请刷新页面重试';
   }
 }
-/* 服务重启期间轮询, 起来后自动刷新页面 */
-async function otaWaitBack() {
+/* Only poll our own device after an explicitly requested update or rollback. */
+async function otaWaitBack(previous) {
   for (let i = 0; i < 40; i++) {
     await new Promise(r => setTimeout(r, 1500));
     try {
-      const r = await fetch('/api/live', { cache: 'no-store' });
-      if (r.ok) { location.reload(); return; }
+      const r = await fetch('/api/ota/status', { cache: 'no-store' });
+      // Older rollback targets do not have the status route.
+      if (r.status === 404 || r.status === 401) { location.reload(); return; }
+      if (r.ok && (await r.json()).current !== previous) { location.reload(); return; }
     } catch (e) {}
   }
-  location.reload();
+  document.getElementById('upd-msg').textContent = '服务尚未完成重启，请稍后手动刷新页面';
 }
 async function otaApply() {
-  if (!otaInfo || !otaInfo.has_update) return;
-  if (!confirm('升级到 v' + otaInfo.latest + ' ?\n程序文件会被覆盖, 服务自动重启约 5 秒, 期间页面会短暂打不开。')) return;
-  const btn = document.getElementById('upd-go'), msg = document.getElementById('upd-msg');
-  btn.disabled = true;
-  msg.textContent = t('正在下载并校验新版本…');
+  if (otaBusy) return;
+  const url = document.getElementById('upd-url').value.trim();
+  const sha256 = document.getElementById('upd-sha').value.trim();
+  const msg = document.getElementById('upd-msg');
   try {
-    const j = await (await fetch('/api/ota/apply', { method: 'POST' })).json();
+    const parsed = new URL(url);
+    if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) throw new Error();
+  } catch (e) { msg.textContent = '请输入 HTTP / HTTPS 的 ZIP 下载直链'; return; }
+  if (sha256 && !/^[a-fA-F0-9]{64}$/.test(sha256)) { msg.textContent = 'SHA-256 须为 64 位十六进制，也可留空'; return; }
+  if (!otaCurrent) await otaStatus();
+  otaSetBusy(true);
+  msg.textContent = '正在从指定 URL 下载、校验 ZIP 并安装，请保持页面打开…';
+  try {
+    const j = await (await fetch('/api/ota/apply', { method: 'POST',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, sha256 }) })).json();
     msg.textContent = j.msg;
-    if (!j.ok) { btn.disabled = false; return; }
-    otaWaitBack();
+    if (!j.ok) { otaSetBusy(false); return; }
+    document.getElementById('upd-url').value = ''; // signed URL stays out of browser storage
+    otaWaitBack(otaCurrent);
   } catch (e) {
-    msg.textContent = t('升级失败') + ': ' + e;
-    btn.disabled = false;
+    msg.textContent = '请求中断，请稍后刷新页面确认安装状态';
+    otaSetBusy(false);
   }
 }
 async function otaRollback() {
+  if (otaBusy) return;
   if (!confirm('回滚到升级前的版本?\n适合新版本出现问题时使用, 服务会自动重启。')) return;
+  otaSetBusy(true);
   const msg = document.getElementById('upd-msg');
   msg.textContent = '正在回滚…';
   try {
     const j = await (await fetch('/api/ota/rollback', { method: 'POST' })).json();
     msg.textContent = j.msg;
-    if (j.ok) otaWaitBack();
-  } catch (e) { msg.textContent = '回滚失败: ' + e; }
+    if (j.ok) otaWaitBack(otaCurrent);
+    else otaSetBusy(false);
+  } catch (e) { msg.textContent = '回滚请求中断，请刷新页面确认状态'; otaSetBusy(false); }
 }
-/* 打开首页后静默检查一次 (结果缓存 10 分钟), 有新版本时齿轮上亮红点 */
-setTimeout(() => {
-  fetch('/api/ota/check', { cache: 'no-store' }).then(r => r.json()).then(j => {
-    if (j && j.has_update) {
-      const g = document.getElementById('gear');
-      g.classList.add('hasupd');
-      g.title = '有新版本 v' + j.latest + ' · 点开设置可升级';
-    }
-  }).catch(() => {});
-}, 5000);
 document.getElementById('gear').onclick = () => {
   document.getElementById('mask').classList.add('open');
   document.getElementById('panel').classList.add('open');
@@ -1813,7 +1811,7 @@ Object.assign(window, {
   ntToggleEye,
   openExport,
   otaApply,
-  otaCheck,
+  otaStatus,
   otaRollback,
   pickDate,
   pwSave,

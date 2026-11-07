@@ -139,7 +139,17 @@ class PostRoutesMixin:
 
 
     def _post_api_ota_apply(self, path):
-        ok, msg = updates.ota_apply()
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 < length <= 16384:
+                raise ValueError()
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            if not isinstance(body, dict) or not isinstance(body.get("url"), str) or not isinstance(body.get("sha256", ""), str):
+                raise ValueError()
+        except (ValueError, UnicodeError, TypeError):
+            self._json({"ok": False, "msg": "请提交 JSON: url 为 ZIP 下载地址, sha256 可选"}, 400)
+            return
+        ok, msg = updates.ota_apply(body["url"].strip(), body.get("sha256", "").strip())
         self._json({"ok": ok, "msg": msg})
         return
 

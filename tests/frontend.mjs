@@ -9,6 +9,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/
 const values = new Map([['tsf_lang', 'en']]);
 const themeButton = {};
 const elements = new Map();
+const startupTimers = [], startupRequests = [];
 function element(id) {
   if (!elements.has(id)) elements.set(id, {
     innerHTML: '', textContent: '', value: '', checked: false, style: {}, dataset: {}, children: [],
@@ -36,10 +37,12 @@ const context = vm.createContext({
   addEventListener() {},
   location: { hostname: '127.0.0.1', search: '', protocol: 'http:', pathname: '/' },
   URLSearchParams, URL,
-  setTimeout() {}, clearTimeout() {}, setInterval() {}, clearInterval() {},
+  setTimeout(fn) { startupTimers.push(fn); }, clearTimeout() {}, setInterval() {}, clearInterval() {},
   requestAnimationFrame() {}, cancelAnimationFrame() {},
-  fetch: async () => ({ ok: true, text: async () => '',
-    json: async () => ({ SentryClips: [], SavedClips: [], RecentClips: [] }) }),
+  fetch: async url => {
+    startupRequests.push(url);
+    return { ok: true, text: async () => '', json: async () => ({ SentryClips: [], SavedClips: [], RecentClips: [] }) };
+  },
   __I18N: { en: { '主题': 'Theme', '路': 'cams' } }, __LANGS: [['zh', '中文'], ['en', 'English']],
   __CATEGORIES: { SentryClips: '哨兵告警', SavedClips: '手动保存', RecentClips: '行车记录' },
 });
@@ -73,6 +76,9 @@ i18n.setLang('zh');
 assert.equal(i18n.t('路'), '路');
 await modules['app.js'].evaluate();
 await new Promise(resolve => setImmediate(resolve));
+for (const callback of startupTimers.splice(0)) callback();
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(startupRequests.filter(url => url.startsWith('/api/ota/')).length, 0);
 assert.equal(typeof context.openExport, 'function');
 assert.equal(typeof context.setExpQuality, 'function');
 assert.equal(context.curClips, undefined); // internal state is no longer a page-global variable
@@ -107,4 +113,28 @@ context.ntProviderUI();
 assert.equal(element('nt-qq-fields').style.display, 'none');
 assert.equal(element('nt-feishu-fields').style.display, '');
 assert.equal(typeof context.wrapDetach, 'function');
-console.log('Frontend modules: imports, grouping, theme, language, startup and QQ settings checks passed');
+const updateRequests = [];
+context.fetch = async (url, options) => {
+  updateRequests.push({ url, options });
+  return { ok: true, json: async () => url === '/api/ota/status'
+    ? { ok: true, current: '2.9.0', mode: 'manual_zip', rollback_ready: true, busy: false }
+    : { ok: false, msg: 'test: package rejected' } };
+};
+context.stab('update');
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(updateRequests.length, 1);
+assert.equal(updateRequests[0].url, '/api/ota/status');
+assert.equal(element('upd-rb').style.display, '');
+element('upd-url').value = 'https://updates.example/release.zip?X-Amz-Signature=test-signature';
+element('upd-sha').value = 'a'.repeat(64);
+await context.otaApply();
+assert.equal(updateRequests.length, 2);
+assert.equal(updateRequests[1].url, '/api/ota/apply');
+assert.deepEqual(JSON.parse(updateRequests[1].options.body), {
+  url: 'https://updates.example/release.zip?X-Amz-Signature=test-signature', sha256: 'a'.repeat(64),
+});
+assert.equal(element('upd-go').disabled, false); // retry remains available on failure
+element('upd-url').value = 'file:///etc/passwd';
+await context.otaApply();
+assert.equal(updateRequests.length, 2); // invalid schemes never reach the update endpoint
+console.log('Frontend modules: startup without update checks, manual ZIP form, QQ settings and media checks passed');

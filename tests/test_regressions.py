@@ -1,5 +1,6 @@
 """Hardware-free regressions for archive, configuration, locks and releases."""
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -23,7 +24,7 @@ def load_runtime():
             del sys.modules[name]
     names = ("app", "archive", "archive_policy", "assets", "auth", "cli", "config", "deployment",
              "exfat", "feishu", "qqbot", "vehicle_assets", "push_media", "storage", "http", "http_get", "http_post", "locking", "media", "notifications",
-             "retention", "routes", "sync", "telemetry", "transcode", "updates", "usb")
+             "retention", "routes", "sync", "telemetry", "transcode", "updates", "update_package", "usb")
     return types.SimpleNamespace(**{name: importlib.import_module("tesla_sentry." + name) for name in names})
 
 
@@ -222,10 +223,13 @@ procd_set_param() {
             handler.do_GET()
         handler._json.assert_called_once_with({"SentryClips": []})
         handler.path = "/api/ota/apply"
+        body = b'{"url":"https://updates.example/release.zip"}'
+        handler.headers = {"Content-Length": str(len(body))}
+        handler.rfile = io.BytesIO(body)
         handler._json.reset_mock()
         with patch.object(self.runtime.updates, "ota_apply", return_value=(True, "updated")) as apply:
             handler.do_POST()
-            apply.assert_called_once()
+            apply.assert_called_once_with("https://updates.example/release.zip", "")
         handler._json.assert_called_once_with({"ok": True, "msg": "updated"})
         handler._gate.return_value = False
         with patch.object(self.runtime.updates, "ota_apply") as apply:

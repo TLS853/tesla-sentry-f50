@@ -5,7 +5,7 @@
 #   --port PORT      网页端口, 默认 8080
 #   --archive DIR    归档区路径, 默认 /archive
 #   --dir DIR        安装目录, 默认 /opt/tesla-sentry
-#   --offline        不下载字体, 关闭在线检查更新
+#   --offline        不下载字体; 程序更新始终为手动 ZIP 更新
 #   -h, --help       显示帮助
 set -e
 
@@ -21,7 +21,6 @@ set -a
 set +a
 PORT=${TSF_PORT:-$PORT}
 ARCHIVE=${TSF_ARCHIVE:-$ARCHIVE}
-OTA_ENABLED=${TSF_OTA_ENABLED:-1}
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -29,7 +28,7 @@ while [ $# -gt 0 ]; do
         --port)    PORT="$2"; shift 2 ;;
         --archive) ARCHIVE="$2"; shift 2 ;;
         --dir)     TSF_DIR="$2"; shift 2 ;;
-        --offline) OFFLINE=1; OTA_ENABLED=0; shift ;;
+        --offline) OFFLINE=1; shift ;;
         -h|--help) sed -n '2,9p' "$0"; exit 0 ;;
         *) echo "未知参数: $1 (用 --help 查看)"; exit 1 ;;
     esac
@@ -134,9 +133,6 @@ TSF_USB_TIMEOUT=300
 TSF_RECENT_ROLL_MIN=60
 TSF_BOX_KEEP_DAYS=14
 TSF_BOX_MAX_GB=12
-TSF_OTA_REPO=TLS853/tesla-sentry-f50
-TSF_OTA_REF=codex/modular-runtime
-TSF_OTA_ENABLED=$OTA_ENABLED
 TSF_LOSETUP=
 TSF_GADGET=$GADGET
 TSF_CACHE=$CACHE_DIR
@@ -341,7 +337,7 @@ sh "$TSF_DIR/tesla-gadget.sh" on || echo "  [警告] 虚拟U盘启动失败, 见
 
 # 中文字体: 飞书推送视频烧录行车信息水印时由 libass 使用; 缺失只影响水印, 不影响其它功能
 if [ "$OFFLINE" = 1 ]; then
-    say "离线模式: 跳过字体下载, 在线检查更新已关闭"
+    say "离线模式: 跳过字体下载; 更新使用手动 ZIP 下载地址"
 elif ! ls "$TSF_DIR"/fonts/*.ttf >/dev/null 2>&1; then
     say "下载中文字体 (水印用, 约 17MB) ..."
     mkdir -p "$TSF_DIR/fonts"

@@ -13,10 +13,7 @@ import tempfile
 from . import locking
 from . import storage
 from .storage import atomic_json
-
-
-RUNTIME_FILES = ("sentry-viewer.py", "tesla-live-sync.py", "tesla-gadget.sh",
-                 "tesla-sync.sh", "usb-selfheal.sh", "tesla-img.sh", "tsf-check.sh")
+from .update_package import RUNTIME_FILES
 
 
 def _release_check(path, version):

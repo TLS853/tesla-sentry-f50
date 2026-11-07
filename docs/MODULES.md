@@ -24,7 +24,8 @@
 | `vehicle_assets.py` | 锁车音转换与队列同步、PNG 涂装校验及原子写入 |
 | `push_media.py` | 推送附件转码与行车信息水印 |
 | `storage.py` | 临时文件、fsync、原子替换等持久化操作 |
-| `deployment.py`、`updates.py` | 程序包验证、版本切换、检查更新与回滚 |
+| `update_package.py` | ZIP 格式生成与校验、文件白名单和大小边界 |
+| `deployment.py`、`updates.py` | 手动 URL 下载、暂存自检、版本切换与回滚；状态读取不访问远端 |
 | `assets.py`、`web/` | 源码和独立入口共用的静态资源 |
 
 依赖方向如下；测试会检查 Python 包中不存在循环导入。
@@ -63,6 +64,8 @@ USB 与归档锁的顺序固定为 USB → 归档。卸载失败不能重新导�
 `src/tesla_sentry/__init__.py` 中的 `__version__` 是版本号来源。`tools/make_release.py` 更新它并重新生成启动器、`dist/release.json` 和 `version.json`。生成文件和源码必须在同一次提交中更新；`tools/build.py --check` 可以检查是否遗漏。
 
 部署时验证文件白名单、程序包与单文件 SHA-256，以及两个入口实际自检返回的版本。验证通过后才切换 `current`。SHA-256 核对下载一致性，不能代替对发布源的信任。旧版本仍可通过 `previous-release.json` 整包回滚，用户配置和录像不在版本目录中。
+
+从 2.9.0 起不再发现远端版本，也没有默认 GitHub 下载源。`tools/package_update.py` 从已构建产物生成确定性 ZIP；`update_package.py` 是打包端与设备端共用的格式校验器。`updates.py` 仅在显式提交 URL 时下载该 ZIP，`GET /api/ota/status` 和旧 `/api/ota/check` 仅读取本机状态。完整发布流程见 [手动 ZIP 更新](UPDATES.md)。
 
 ## 验证范围
 

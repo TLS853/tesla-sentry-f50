@@ -20,17 +20,18 @@ class OfflineTests(unittest.TestCase):
     def setUp(self):
         fixtures.RegressionTests.setUp(self)
 
-    def test_offline_update_check_does_not_make_network_requests(self):
-        with patch.dict(self.runtime.config.environment, {"TSF_OTA_ENABLED": "0"}), \
-             patch.object(self.runtime.updates, "_http_get") as network:
-            with self.assertRaisesRegex(RuntimeError, "离线"):
-                self.runtime.updates.ota_latest(force=True)
+    def test_status_never_contacts_network_even_with_legacy_auto_update_enabled(self):
+        with patch.dict(self.runtime.config.environment, {"TSF_OTA_ENABLED": "1", "TSF_OTA_SOURCES": "https://unused.example"}), \
+             patch.object(self.runtime.updates.urllib.request, "build_opener") as network:
+            self.assertEqual(self.runtime.updates.ota_check(force=True)["mode"], "manual_zip")
             network.assert_not_called()
 
-    def test_online_default_points_to_the_published_branch(self):
-        self.assertEqual(self.runtime.updates.OTA_REF, "codex/modular-runtime")
-        self.assertIn("/codex/modular-runtime", self.runtime.updates.OTA_SOURCES[0])
-        self.assertTrue(all("ghfast" not in url for url in self.runtime.updates.OTA_SOURCES))
+    def test_updates_have_no_builtin_github_discovery_source(self):
+        source = (ROOT / "src/tesla_sentry/updates.py").read_text()
+        self.assertNotIn("raw.githubusercontent.com", source)
+        with patch.object(self.runtime.updates, "_download_zip") as download:
+            self.assertFalse(self.runtime.updates.ota_apply()[0])
+            download.assert_not_called()
 
     def test_offline_font_step_cannot_run_curl(self):
         script = (ROOT / "install.sh").read_text()

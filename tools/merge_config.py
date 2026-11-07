@@ -7,7 +7,7 @@ import shlex
 import sys
 
 SELECTED = {"TSF_DIR", "TSF_IMG", "TSF_ARCHIVE", "TSF_PORT", "TSF_GADGET", "TSF_CACHE",
-            "TSF_FFMPEG", "TSF_FFPROBE", "TSF_OTA_ENABLED"}
+            "TSF_FFMPEG", "TSF_FFPROBE"}
 
 
 def merge(existing, defaults):
