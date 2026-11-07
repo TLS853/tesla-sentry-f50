@@ -69,7 +69,7 @@ MAX_UPLOAD = 100 * 1024 * 1024  # 通用文件上传上限 100MB (皮肤/音频�
 # ---------------- 版本与在线升级 (OTA) ----------------
 # 升级方式: 从 GitHub 仓库拉 version.json (清单) 比对版本号, 再下 sentry-viewer.py 覆盖本机文件并重启。
 # 国内直连 raw.githubusercontent 多数能通, 同时内置镜像源兜底, 依次尝试。
-APP_VERSION = "2.5.0"
+APP_VERSION = "2.5.2"
 OTA_REPO = os.environ.get("TSF_OTA_REPO", "baicyber/tesla-sentry-f50")
 _OTA_DEFAULT = ",".join([
     "https://raw.githubusercontent.com/%s/main" % OTA_REPO,
@@ -610,6 +610,13 @@ select.ninput { cursor:pointer; }
 .lvbody { flex:1; overflow:auto; padding:12px 14px 20px; display:flex; flex-direction:column; gap:10px; }
 .lvmeta { font-size:13px; color:var(--muted); }
 #lv-video { width:100%; max-height:58vh; background:#000; border-radius:12px; }
+/* 全览: 4 路同屏 */
+.lvgrid { display:none; gap:3px; background:#000; border-radius:12px; overflow:hidden; grid-template-columns:1fr 1fr; }
+.lvgrid.on { display:grid; }
+.lvgrid.n1 { grid-template-columns:1fr; }
+.lvgrid .lvcell { position:relative; overflow:hidden; background:#000; aspect-ratio:16/9; cursor:zoom-in; }
+.lvgrid .lvcell video { width:100%; height:100%; object-fit:cover; display:block; background:#000; }
+.lvgrid .lvcell .clabel { position:absolute; right:6px; bottom:6px; font-size:11px; color:#e8eef4; background:rgba(20,24,29,.72); border-radius:6px; padding:2px 7px; pointer-events:none; }
 .lvrow { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .lvbtn { padding:7px 14px; border-radius:9px; border:1px solid var(--line2); background:var(--panel2); color:var(--text); font-size:13px; cursor:pointer; }
 .lvbtn.on { background:var(--accent); color:#fff; border-color:var(--accent); }
@@ -708,6 +715,7 @@ select.ninput { cursor:pointer; }
   <div class="lvbody">
     <div class="lvmeta" id="lv-name">—</div>
     <video id="lv-video" controls playsinline muted></video>
+    <div class="lvgrid" id="lv-grid"></div>
     <div class="lvrow" id="lv-cams"></div>
     <div class="lvrow">
       <span style="font-size:13px;color:var(--muted)">刷新检查</span>
@@ -719,7 +727,7 @@ select.ninput { cursor:pointer; }
       </select>
       <button class="lvbtn" onclick="liveTick()">检查更新</button>
     </div>
-    <div class="hint">原理: 车机循环录制 1 分钟一段; 后台的只读同步 (不打断车机) 把刚写完的片段持续收进归档, 这里自动发现并播放最新片段, 即约 1 分钟延时的"直播"。刚停车/刚触发录像的片段要等写完才会出现。</div>
+    <div class="hint">「全览」同时播放全部摄像头原画, 数据量较大 (4 路每分钟约 100MB), 建议流量充足时使用; 点任一格可切到单路。原理: 车机循环录制 1 分钟一段; 后台的只读同步 (不打断车机) 把刚写完的片段持续收进归档, 这里自动发现并播放最新片段, 即约 1 分钟延时的"直播"。刚停车/刚触发录像的片段要等写完才会出现。</div>
   </div>
 </div>
 <div class="panel" id="panel">
@@ -1095,9 +1103,16 @@ async function load() {
     const b = document.createElement('button');
     b.className = 'tab' + (c === 'SentryClips' ? ' active' : '');
     b.textContent = `${t(CATS_NAME[c] || c)} (${data[c].length})`;
-    b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; reasonFilter = 'all'; dateFilter = 'all'; render(c); };
+    b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; reasonFilter = 'all'; dateFilter = 'all'; closeLive(); render(c); };
     tabs.appendChild(b);
   }
+  /* 第 4 个页签: 实时预览 (与分类页签同级) */
+  const lv = document.createElement('button');
+  lv.className = 'tab';
+  lv.id = 'tab-live';
+  lv.textContent = t('实时预览');
+  lv.onclick = () => { document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); lv.classList.add('active'); openLive(); };
+  tabs.appendChild(lv);
   document.getElementById('stat').textContent = `${t('归档')} ${Object.values(data).reduce((a, v) => a + v.length, 0)} ${t('条')}`;
   lastSig = sigOf(data);
   renderQSel();
@@ -1712,7 +1727,7 @@ window.addEventListener('resize', () => { if (document.getElementById('player').
 
 /* ---------- 准实时预览 ---------- */
 let liveCam = localStorage.getItem('tsflivecam') || 'front';
-let liveFolder = '', liveTimer = null, liveBusy = false;
+let liveFolder = '', liveTimer = null, liveBusy = false, liveSyncTimer = null, liveEv = null;
 function latestLiveEv() { const arr = (data && data.RecentClips) || []; return arr[0] || null; }
 function openLive() {
   document.getElementById('livep').classList.add('open');
@@ -1724,26 +1739,89 @@ function openLive() {
 function closeLive() {
   document.getElementById('livep').classList.remove('open');
   if (liveTimer) { clearInterval(liveTimer); liveTimer = null; }
+  clearLiveGrid();
   const v = document.getElementById('lv-video');
   try { v.pause(); v.removeAttribute('src'); v.load(); } catch (err) {}
+  /* 从实时预览返回时, 高亮恢复到第一个分类页签 */
+  const tl = document.getElementById('tab-live');
+  if (tl && tl.classList.contains('active')) {
+    tl.classList.remove('active');
+    const first = document.querySelector('#tabs .tab:not(#tab-live)');
+    if (first) first.classList.add('active');
+  }
 }
 function renderLive(ev) {
+  liveEv = ev;
   document.getElementById('lv-name').textContent = '最新片段: ' + ev.name.replace(/_/g, ' ');
   const vids = camSort(ev.videos || []);
   if (!vids.length) return;
-  if (!vids.find(v => v.cam === liveCam)) liveCam = vids[0].cam;
+  if (liveCam !== '__all' && !vids.find(v => v.cam === liveCam)) liveCam = '__all';
   const row = document.getElementById('lv-cams');
   row.innerHTML = '';
-  vids.forEach(v => {
+  const mkBtn = (cam, label) => {
     const b = document.createElement('button');
-    b.className = 'lvbtn' + (v.cam === liveCam ? ' on' : '');
-    b.textContent = camLabel(v.cam);
-    b.onclick = () => { liveCam = v.cam; localStorage.setItem('tsflivecam', liveCam); renderLive(ev); };
+    b.className = 'lvbtn' + (cam === liveCam ? ' on' : '');
+    b.textContent = label;
+    b.onclick = () => { liveCam = cam; localStorage.setItem('tsflivecam', liveCam); renderLive(ev); };
     row.appendChild(b);
-  });
-  const v = vids.find(x => x.cam === liveCam) || vids[0];
+  };
+  vids.forEach(v => mkBtn(v.cam, camLabel(v.cam)));
+  /* 最后一个: 全览 (所有摄像头同屏) */
+  mkBtn('__all', '全览 (' + vids.length + ')');
   const vid = document.getElementById('lv-video');
-  if (v && vid.src.indexOf(v.url) === -1) { vid.src = v.url; vid.play().catch(() => {}); }
+  const grid = document.getElementById('lv-grid');
+  if (liveCam === '__all') {
+    vid.style.display = 'none';
+    try { vid.pause(); vid.removeAttribute('src'); vid.load(); } catch (err) {}
+    buildLiveGrid(vids);
+  } else {
+    clearLiveGrid();
+    vid.style.display = '';
+    const v = vids.find(x => x.cam === liveCam) || vids[0];
+    if (v && vid.src.indexOf(v.url) === -1) { vid.src = v.url; vid.play().catch(() => {}); }
+  }
+}
+/* 全览: 每路一个 video, 同屏播放并互相对齐进度 */
+function clearLiveGrid() {
+  if (liveSyncTimer) { clearInterval(liveSyncTimer); liveSyncTimer = null; }
+  const g = document.getElementById('lv-grid');
+  g.classList.remove('on', 'n1');
+  [...g.querySelectorAll('video')].forEach(v => { try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {} });
+  g.innerHTML = '';
+}
+function buildLiveGrid(vids) {
+  const g = document.getElementById('lv-grid');
+  [...g.querySelectorAll('video')].forEach(v => { try { v.pause(); v.removeAttribute('src'); } catch (e) {} });
+  g.innerHTML = '';
+  g.classList.add('on');
+  g.classList.toggle('n1', vids.length === 1);
+  vids.forEach((v, ix) => {
+    const cell = document.createElement('div');
+    cell.className = 'lvcell';
+    const el = document.createElement('video');
+    el.playsInline = true; el.muted = true; el.preload = 'auto';
+    el.onloadedmetadata = () => { el.currentTime = 0.05; el.play().catch(() => {}); };
+    const lb = document.createElement('div');
+    lb.className = 'clabel';
+    lb.textContent = camLabel(v.cam);
+    cell.appendChild(el); cell.appendChild(lb);
+    cell.onclick = () => { liveCam = v.cam; localStorage.setItem('tsflivecam', liveCam); if (liveEv) renderLive(liveEv); };
+    g.appendChild(cell);
+    /* 逐路上屏: 每路错开 350ms, 避免 4 路同时抢占上行 */
+    el.oncanplay = null;
+    setTimeout(() => { if (!el.getAttribute('src')) el.src = v.url; }, ix * 350);
+  });
+  /* 每秒对齐一次进度, 任一路拖进度条/暂停 → 其余跟随 */
+  if (liveSyncTimer) clearInterval(liveSyncTimer);
+  liveSyncTimer = setInterval(() => {
+    const vs = [...g.querySelectorAll('video')];
+    if (!vs.length) return;
+    const lead = vs.find(v => !v.paused && !v.seeking) || vs[0];
+    vs.forEach(v => {
+      if (v === lead) return;
+      if (Math.abs((v.currentTime || 0) - (lead.currentTime || 0)) > 0.45) v.currentTime = lead.currentTime;
+    });
+  }, 1000);
 }
 async function liveTick() {
   if (liveBusy || !document.getElementById('livep').classList.contains('open')) return;
@@ -5049,9 +5127,29 @@ class Handler(BaseHTTPRequestHandler):
             size = os.path.getsize(fp)
             rng = self.headers.get("Range")
             if rng:
-                mm2 = re.match(r"bytes=(\d+)-(\d*)", rng)
-                start = int(mm2.group(1))
-                end = int(mm2.group(2)) if mm2.group(2) else size - 1
+                # 支持三种形式: bytes=a-b / bytes=a- / bytes=-n (尾部 n 字节)
+                mm2 = re.match(r"bytes=(\d*)-(\d*)$", rng.strip())
+                if not mm2:
+                    self._send(416, b"bad range")
+                    return
+                s1, s2 = mm2.group(1), mm2.group(2)
+                if s1 == "":
+                    # 尾部范围: 浏览器读 mp4 moov 时常用, 不支持会让视频一直卡在 readyState 0
+                    n = int(s2 or 0)
+                    start = max(0, size - n)
+                    end = size - 1
+                else:
+                    start = int(s1)
+                    end = int(s2) if s2 else size - 1
+                if start >= size:
+                    self.send_response(416)
+                    self.send_header("Content-Range", "bytes */%d" % size)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                end = min(end, size - 1)
+                if end < start:
+                    end = size - 1
             else:
                 start, end = 0, size - 1
             length = end - start + 1
