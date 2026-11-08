@@ -1,6 +1,9 @@
 import { LANG, t, langName, applyLang, renderLangGrid, setLang } from './i18n.js';
 import { applyTheme, cycleTheme } from './theme.js';
 import { CAM_NAME, camSort, clipKeyOf, groupVideos } from './model.js';
+import { icon, mountIcons } from './icons.js';
+
+mountIcons();
 
 let data = {}, cur = null, syncTimer = null, currentCat = 'SentryClips', lastSig = '', reasonFilter = 'all', dateFilter = 'all';
 let curClips = [], curClipIx = 0, TEL = null;
@@ -120,6 +123,10 @@ function gridDims(n) {
   return [c, Math.ceil(n / c)];
 }
 
+function tabContent(category, count) {
+  const symbols = { SentryClips: 'shield', SavedClips: 'bookmark', RecentClips: 'video' };
+  return icon(symbols[category] || 'video') + `<span class="tl">${t(CATS_NAME[category] || category)}</span><span class="tn">${count}</span>`;
+}
 async function load() {
   data = await (await fetch('/api/events')).json();
   const tabs = document.getElementById('tabs');
@@ -128,7 +135,7 @@ async function load() {
   for (const c of Object.keys(data)) {
     const b = document.createElement('button');
     b.className = 'tab' + (!liveOpen && c === currentCat ? ' active' : '');
-    b.innerHTML = `<span class="tl">${t(CATS_NAME[c] || c)}</span><span class="tn">${data[c].length}</span>`;
+    b.innerHTML = tabContent(c, data[c].length);
     b.onclick = () => { document.querySelectorAll('.tab').forEach(t => t.classList.remove('active')); b.classList.add('active'); currentCat = c; reasonFilter = 'all'; dateFilter = 'all'; closeLive(); render(c); };
     tabs.appendChild(b);
   }
@@ -136,7 +143,7 @@ async function load() {
   const lv = document.createElement('button');
   lv.className = 'tab' + (liveOpen ? ' active' : '');
   lv.id = 'tab-live';
-  lv.textContent = t('实时预览');
+  lv.innerHTML = icon('camera') + '<span class="tl">' + t('最新画面') + '</span>';
   lv.onclick = () => { document.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); lv.classList.add('active'); openLive(); };
   tabs.appendChild(lv);
   document.getElementById('stat').textContent = `${t('归档')} ${Object.values(data).reduce((a, v) => a + v.length, 0)} ${t('条')}`;
@@ -192,12 +199,12 @@ async function refreshLive() {
   try { live = await (await fetch('/api/live')).json(); } catch (e) { return; }
   const dot = document.getElementById('livedot'), txt = document.getElementById('livetxt');
   if (live.running) {
-    dot.style.background = '#4cc38a';
+    dot.style.background = 'var(--positive)';
     if (live.pending > 0) txt.textContent = `${t('实时同步中')} · ${live.pending} ${t('待确认')}`;
     else if (live.ago !== null && live.ago !== undefined) txt.textContent = `${t('实时同步中')} · ${live.ago}s`;
     else txt.textContent = t('实时同步中');
   } else {
-    dot.style.background = '#e8443f';
+    dot.style.background = 'var(--muted2)';
     txt.textContent = t('同步服务未运行');
   }
   // 车载U盘存储条 (镜像未挂载时回落显示归档盘)
@@ -211,7 +218,7 @@ async function refreshLive() {
     const pct = Math.min(100, d.used / d.total * 100);
     const fill = document.getElementById('storfill');
     fill.style.width = pct.toFixed(1) + '%';
-    fill.style.background = pct >= 90 ? '#e8443f' : '#2f6ee0';
+    fill.style.background = pct >= 90 ? 'var(--accent)' : 'var(--muted2)';
   } else {
     sw.style.display = 'none';
   }
@@ -224,7 +231,7 @@ async function refreshLive() {
       const tabs = document.getElementById('tabs');
       [...tabs.children].forEach((b, i) => {
         const c = Object.keys(d)[i];
-        if (c) b.innerHTML = `<span class="tl">${t(CATS_NAME[c] || c)}</span><span class="tn">${d[c].length}</span>`;
+        if (c) b.innerHTML = tabContent(c, d[c].length);
       });
       document.getElementById('stat').textContent = `${t('归档')} ${Object.values(d).reduce((a, v) => a + v.length, 0)} ${t('条')}`;
       if (!document.getElementById('player').classList.contains('open')) render(currentCat);
@@ -330,7 +337,7 @@ function renderFilters(cat) {
     days.map(d => [d, d.slice(5).replace('-', '/'), dcnt[d] || 0]));
   dbox.innerHTML = '<span class="flab">' + t('日期') + '</span>' + items.map(([k, label, n]) =>
     `<button class="chip d${k === dateFilter ? ' on' : ''}" onclick="setDate('${k}')">${label}<span class="n">${n}</span></button>`
-  ).join('') + '<button class="chip pick" onclick="pickDate()" title="' + t('选择日期…') + '">' + t('选择日期…') + '</button>';
+  ).join('') + '<button class="chip pick" onclick="pickDate()" title="' + t('选择日期…') + '">' + icon('calendar') + t('选择日期…') + '</button>';
 }
 /* 原生日期选择器: 分类里只有一天时也能翻到别的日期 */
 function pickDate() {
@@ -351,6 +358,10 @@ function setDate(k) {
   dateFilter = k;
   render(currentCat);
 }
+function clearFilters() {
+  reasonFilter = 'all'; dateFilter = 'all';
+  render(currentCat);
+}
 /* 缩略图失败多半是临时的 (磁盘满/片段刚同步完还没落稳), 自动重试两次再显示占位图 */
 function thumbErr(img) {
   const n = +(img.dataset.r || 0);
@@ -359,7 +370,7 @@ function thumbErr(img) {
     setTimeout(() => { img.src = img.src.split('?')[0] + '?r=' + (n + 1); }, n ? 8000 : 2500);
     return;
   }
-  img.parentNode.innerHTML = '<div class="ph">🎞</div>';
+  img.parentNode.innerHTML = '<div class="ph">' + icon('video') + '<span>' + t('暂无缩略图') + '</span></div>';
 }
 /* 日期分组小标题: 今天/昨天/M月D日 */
 function dheadLabel(d) {
@@ -380,10 +391,13 @@ function render(cat) {
   let evs = data[cat] || [];
   evs = evs.filter(ev => matchReason(cat, ev));
   if (dateFilter !== 'all') evs = evs.filter(ev => dateOf(ev) === dateFilter);
+  document.getElementById('category-title').textContent = t(CATS_NAME[cat] || cat);
+  document.getElementById('result-count').textContent = evs.length + ' ' + t('条事件');
+  document.getElementById('clear-filters').hidden = reasonFilter === 'all' && dateFilter === 'all';
   e.style.display = evs.length ? 'none' : 'block';
   if (!evs.length) {
     e.innerHTML = (reasonFilter !== 'all' || dateFilter !== 'all')
-      ? '<div class="big">🔍</div><div>' + t('该筛选下暂无事件') + '<br><small style="font-size:12px">' + t('换个日期或点「全部」查看本分类所有事件') + '</small></div>'
+      ? '<div class="empty-symbol">' + icon('search') + '</div><h3>' + t('该筛选下暂无事件') + '</h3><p>' + t('换个日期或点「全部」查看本分类所有事件') + '</p>'
       : EMPTY_HTML;
   }
   let prevDay = null;
@@ -396,7 +410,9 @@ function render(cat) {
       g.appendChild(h);
       prevDay = day;
     }
-    const card = document.createElement('div'); card.className = 'card';
+    const card = document.createElement('article'); card.className = 'card';
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
     const groups = groupVideos(ev.videos);
     const vids = camSort(groups.length ? groups[groups.length - 1].vids : []);
     let th;
@@ -404,28 +420,30 @@ function render(cat) {
       /* 哨兵事件: 用触发摄像头在触发那一帧当封面; 其他/回落: 前摄像头第1秒 */
       const src = sentryThumbSrc(ev, groups) ||
         (vids.find(v => v.cam === 'front') || vids[0]).url.replace('/media/', '/thumb/');
-      th = `<div class="thumb"><img loading="lazy" decoding="async" src="${src}" alt="" onerror="thumbErr(this)"><span class="cnum">${vids.length} ${t('路')}</span></div>`;
+      th = `<div class="thumb"><img loading="lazy" decoding="async" src="${esc(src)}" alt="${t('事件缩略图')}" onerror="thumbErr(this)"><span class="play-spot">${icon('play')}</span><span class="cnum">${icon('video')}${vids.length} ${t('路')}</span></div>`;
     } else {
-      th = `<div class="thumb"><div class="ph">🎞</div></div>`;
+      th = '<div class="thumb"><div class="ph">' + icon('video') + '<span>' + t('暂无缩略图') + '</span></div></div>';
     }
     const mm = ev.meta || {};
     /* 标题: 触发原因·触发摄像头 (哨兵), 否则分类名 */
     let title = t(CATS_NAME[cat] || cat);
     if (mm.reason) {
       title = reasonLabel(mm.reason) || mm.reason;
-      if (isSentryEv(mm) && mm.camera) {
+      if (isSentryEv(mm) && mm.camera !== undefined && mm.camera !== null) {
         const ck = CAM_IDX[+mm.camera];
         if (ck) title += ' · ' + camLabel(ck);
       }
     }
     const tm = (ev.name.match(/_(\d{2}-\d{2})/) || [,''])[1].replace('-', ':');
     const tmTxt = tm ? tm : fmtName(ev.name);
-    const extra = (mm.city ? ' · ' + mm.city : '') + (mm.street ? ' ' + mm.street : '');
-    const dayTxt = dateFilter === 'all' && day ? day.slice(5).replace('-', '/') + ' · ' : '';
-    const mb = ev.size / 1048576;
+    const locationText = [mm.city, mm.street].filter(Boolean).join(' · ') || t('位置未知');
+    const dayTxt = day ? day.slice(5).replace('-', '/') : '';
+    const mb = (Number(ev.size) || 0) / 1048576;
     const szTxt = mb >= 1 ? mb.toFixed(1) + ' MB' : (mb * 1024).toFixed(0) + ' KB';
-    card.innerHTML = th + `<div class="meta"><div class="l1"><span class="rt" title="${title}">${title}</span><span class="tm">${tmTxt}${extra}</span></div><div class="l2"><span>${dayTxt}${vids.length} ${t('路画面')}</span><span class="sz">${szTxt}</span></div></div>`;
+    card.innerHTML = th + `<div class="meta"><div class="event-topline"><time class="event-time">${esc(tmTxt)}</time><span>${esc(dayTxt)}</span><span class="event-arrow">${icon('arrowUpRight')}</span></div><h3 class="event-title" title="${esc(title)}">${esc(title)}</h3><div class="event-location">${icon('location')}<span>${esc(locationText)}</span></div><div class="event-footer"><span>${vids.length} ${t('路画面')} · ${szTxt}</span><span class="view-event">${t('查看事件')}${icon('chevron')}</span></div></div>`;
+    card.setAttribute('aria-label', tmTxt + ' ' + title + ' ' + locationText);
     card.onclick = () => openPlayer(ev);
+    card.onkeydown = event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPlayer(ev); } };
     g.appendChild(card);
   }
   applyLang();
@@ -1091,11 +1109,11 @@ function playAll() {
   vs.forEach(tryPlay);
   const m = document.getElementById('startmask');
   if (m) m.classList.remove('show');
-  const pp = document.getElementById('ppbtn'); if (pp) pp.textContent = '⏸';
+  const pp = document.getElementById('ppbtn'); if (pp) { pp.innerHTML = icon('pause'); pp.setAttribute('aria-label', t('暂停')); }
 }
 function pauseAll() {
   document.querySelectorAll('#vgrid video').forEach(v => v.pause());
-  const pp = document.getElementById('ppbtn'); if (pp) pp.textContent = '▶';
+  const pp = document.getElementById('ppbtn'); if (pp) { pp.innerHTML = icon('play'); pp.setAttribute('aria-label', t('播放')); }
 }
 let baseRate = 1;
 function setSpeed(s) {
@@ -1175,19 +1193,24 @@ document.addEventListener('keydown', e => {
 /* ---------- 设置面板 ---------- */
 function toast(msg) {
   const box = document.getElementById('toast');
-  box.textContent = t(msg); box.style.display = 'block';
+  const symbol = /^[❌⚠]/u.test(msg) ? 'alert' : /^⏳/u.test(msg) ? 'update' : 'check';
+  const clean = String(msg).replace(/^[✅❌⏳⚠🔗🟢]+\s*/u, '');
+  box.innerHTML = icon(symbol) + '<span>' + esc(t(clean)) + '</span>'; box.style.display = 'flex';
   setTimeout(() => box.style.display = 'none', 2500);
 }
 function doLogout() {
   if (!confirm(t('确定要退出登录吗？'))) return;
   location.href = '/logout';
 }
+const SETTING_TABS = ['files', 'audio', 'wraps', 'notify', 'auth', 'lang', 'skin', 'update'];
 function stab(which) {
-  ['files', 'audio', 'wraps', 'notify', 'auth', 'lang', 'skin', 'update'].forEach(k => {
-    const b = document.getElementById('st-' + k), t = document.getElementById('tab-' + k);
+  SETTING_TABS.forEach(k => {
+    const b = document.getElementById('st-' + k), pane = document.getElementById('tab-' + k);
     if (b) b.classList.toggle('active', k === which);
-    if (t) t.style.display = k === which ? '' : 'none';
+    if (b) { b.setAttribute('aria-selected', String(k === which)); b.tabIndex = k === which ? 0 : -1; }
+    if (pane) pane.style.display = k === which ? '' : 'none';
   });
+  document.getElementById('settings-content').scrollTop = 0;
   if (which === 'update') otaStatus();
   if (which === 'notify') ntLoad();
   if (which === 'auth') pwLoad();
@@ -1239,7 +1262,7 @@ function ntSetEye(hide) {
   const qqsec = document.getElementById('nt-qq-secret');
   if (qqsec) qqsec.placeholder = qqsec.dataset.has === '1' ? 'QQ AppSecret 已保存, 留空表示不修改' : 'QQ AppSecret';
   const btn = document.getElementById('nt-eye'), tip = document.getElementById('nt-eyetip');
-  if (btn) btn.textContent = ntHidden ? '👁 显示' : '🙈 隐藏';
+  if (btn) btn.innerHTML = icon(ntHidden ? 'eye' : 'eyeOff') + '<span>' + t(ntHidden ? '显示' : '隐藏') + '</span>';
   if (tip) tip.textContent = ntHidden ? '敏感信息已隐藏（截图安全）' : '敏感信息已明文显示，注意别外发';
 }
 function ntToggleEye() { ntSetEye(!ntHidden); }
@@ -1279,7 +1302,7 @@ async function ntLoad() {
     const m = document.getElementById('nt-msg');
     if (j.last && j.last.msg) {
       m.textContent = t('最近一次') + ': ' + (j.last.ok ? '✅ ' : '❌ ') + j.last.msg + ' (' + new Date(j.last.at * 1000).toLocaleString() + ')';
-      m.style.color = j.last.ok ? '#4cc38a' : 'var(--accent)';
+      m.style.color = j.last.ok ? 'var(--positive)' : 'var(--accent)';
     } else if (!j.enabled) { m.textContent = t('未启用'); m.style.color = ''; }
     else if (j.ready) { m.textContent = '已启用推送, 等下一个哨兵事件'; m.style.color = ''; }
     else { m.textContent = t('已启用, 但接收人/应用凭据未配全'); m.style.color = 'var(--accent)'; }
@@ -1323,7 +1346,7 @@ async function ntSave() {
   try {
     const j = await (await fetch('/api/notify/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
     m.textContent = (j.ok ? '✅ ' + t('已保存') : '❌ ' + j.msg) + (j.warn ? ' · ' + j.warn : '');
-    m.style.color = j.ok ? '#4cc38a' : 'var(--accent)';
+    m.style.color = j.ok ? 'var(--positive)' : 'var(--accent)';
     if (j.ok) ntLoad();
   } catch (e) { m.textContent = t('保存失败') + ': ' + e; m.style.color = 'var(--accent)'; }
 }
@@ -1333,7 +1356,7 @@ async function ntTest() {
   try {
     const j = await (await fetch('/api/notify/test', { method: 'POST' })).json();
     m.textContent = (j.ok ? '✅ ' : '❌ ') + j.msg;
-    m.style.color = j.ok ? '#4cc38a' : 'var(--accent)';
+    m.style.color = j.ok ? 'var(--positive)' : 'var(--accent)';
   } catch (e) { m.textContent = t('发送失败') + ': ' + e; m.style.color = 'var(--accent)'; }
 }
 
@@ -1372,13 +1395,13 @@ async function pwSave() {
     document.getElementById('pw-new').value = '';
     document.getElementById('pw-new2').value = '';
     m.textContent = '✅ ' + j.msg;
-    m.style.color = '#4cc38a';
+    m.style.color = 'var(--positive)';
   } catch (e) { m.textContent = t('修改失败') + ': ' + e; m.style.color = 'var(--accent)'; }
 }
 
 /* ---------- 手动 ZIP 更新 ---------- */
 let otaCurrent = '', otaBusy = false;
-function esc(s) { return String(s == null ? '' : s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function otaSetBusy(busy) {
   otaBusy = busy;
   ['upd-go', 'upd-rb', 'upd-url', 'upd-sha'].forEach(id => {
@@ -1451,16 +1474,52 @@ async function otaRollback() {
     else otaSetBusy(false);
   } catch (e) { msg.textContent = '回滚请求中断，请刷新页面确认状态'; otaSetBusy(false); }
 }
-document.getElementById('gear').onclick = () => {
+function openPanel(which = 'files') {
   document.getElementById('mask').classList.add('open');
   document.getElementById('panel').classList.add('open');
-  stab('files');
+  document.getElementById('panel').setAttribute('aria-hidden', 'false');
+  document.body.classList.add('dialog-open');
+  document.querySelectorAll('.library,.app-header').forEach(el => { el.inert = true; });
+  stab(which);
   refreshSkins(); refreshAudio(); refreshFiles();
-};
+  document.getElementById('st-' + which).focus();
+}
+document.getElementById('gear').onclick = () => openPanel();
 function closePanel() {
+  const wasOpen = document.getElementById('panel').classList.contains('open');
   document.getElementById('mask').classList.remove('open');
   document.getElementById('panel').classList.remove('open');
+  document.getElementById('panel').setAttribute('aria-hidden', 'true');
+  document.body.classList.remove('dialog-open');
+  document.querySelectorAll('.library,.app-header').forEach(el => { el.inert = false; });
+  if (wasOpen) document.getElementById('gear').focus();
 }
+
+SETTING_TABS.forEach(key => {
+  const button = document.getElementById('st-' + key), pane = document.getElementById('tab-' + key);
+  button.setAttribute('role', 'tab'); button.setAttribute('aria-controls', 'tab-' + key);
+  button.setAttribute('aria-selected', String(key === 'files')); button.tabIndex = key === 'files' ? 0 : -1;
+  pane.setAttribute('role', 'tabpanel'); pane.setAttribute('aria-labelledby', 'st-' + key);
+  button.addEventListener('keydown', event => {
+    if (!['ArrowDown', 'ArrowUp', 'ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault();
+    let index = SETTING_TABS.indexOf(key);
+    if (event.key === 'Home') index = 0;
+    else if (event.key === 'End') index = SETTING_TABS.length - 1;
+    else index = (index + (['ArrowUp', 'ArrowLeft'].includes(event.key) ? -1 : 1) + SETTING_TABS.length) % SETTING_TABS.length;
+    stab(SETTING_TABS[index]); document.getElementById('st-' + SETTING_TABS[index]).focus();
+  });
+});
+document.addEventListener('keydown', event => {
+  const panel = document.getElementById('panel');
+  if (event.key !== 'Tab' || !panel.classList.contains('open')) return;
+  const focusable = [...panel.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),a[href],summary,[tabindex="0"]')]
+    .filter(el => el.offsetParent !== null && el.tabIndex >= 0);
+  const first = focusable[0], last = focusable[focusable.length - 1];
+  if (!first) return;
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
 
 async function uploadFile(input, url, fields) {
   const f = input.files[0]; if (!f) return;
@@ -1560,14 +1619,7 @@ function fmtSize(n) {
 }
 /* ---------- 涂装 (Wraps) ---------- */
 function wrapStatusHtml(attached) {
-  if (!attached) {
-    return '<div style="background:#3a2a12;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#f0b429;line-height:1.6">' +
-      '⚠ U盘当前未连接管理 (车机正常读写中)<br>' +
-      '<button onclick="wrapAttach()" style="background:#e8443f;border:none;color:#fff;border-radius:8px;padding:7px 16px;font-size:12.5px;cursor:pointer;margin-top:6px">🔗 连接车机U盘 (临时断开车机读取)</button></div>';
-  }
-  return '<div style="background:#1a3325;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#4cc38a;line-height:1.6">' +
-    '🟢 已连接管理 — 上传后写入 Wraps/；管理期间车机录制暂停<br>' +
-    '<button class="mini primary" onclick="wrapDetach()">完成并恢复车机导出</button></div>';
+  return usbStatusHtml(attached, 'wraps');
 }
 async function wrapAttach() {
   toast('⏳ 正在连接, 管理期间车机读取将暂停…');
@@ -1595,17 +1647,17 @@ async function refreshWraps() {
   if (!files.length) { grid.innerHTML = '<div class="hint">Wraps 目录为空, 上传图片即可在车机上选用</div>'; return; }
   for (const f of files) {
     const box = document.createElement('div');
-    box.style.cssText = 'width:110px;text-align:center';
+    box.className = 'wrap-card';
     const img = document.createElement('img');
     img.src = '/usbdl?path=' + encodeURIComponent('Wraps/' + f.name);
-    img.style.cssText = 'width:100px;height:68px;object-fit:contain;background:#0d1117;border-radius:8px;border:1px solid #2a3440;cursor:pointer';
+    img.className = 'wrap-preview';
+    img.alt = f.name;
     img.onclick = () => window.open('/usbdl?path=' + encodeURIComponent('Wraps/' + f.name));
     const cap = document.createElement('div');
     cap.textContent = f.name;
-    cap.style.cssText = 'font-size:11px;color:#c9d1d9;margin:4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+    cap.className = 'wrap-name';
     const btn = document.createElement('button');
-    btn.className = 'danger'; btn.textContent = t('删除');
-    btn.style.cssText = 'font-size:11px;padding:4px 12px';
+    btn.className = 'mini danger'; btn.textContent = t('删除');
     btn.onclick = async () => {
       if (!confirm(t('删除') + ' Wraps/' + f.name + ' ?')) return;
       const r = await fetch('/api/usb?path=' + encodeURIComponent('Wraps/' + f.name), { method: 'DELETE' });
@@ -1644,16 +1696,12 @@ function switchArea(a) {
   curDir = a === 'usb' ? '' : '/archive/files';
   refreshFiles();
 }
-function usbStatusHtml(attached, msg) {
+function usbStatusHtml(attached, context = 'files') {
+  const wrap = context === 'wraps';
   if (!attached) {
-    return '<div style="background:#3a2a12;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#f0b429;line-height:1.6">' +
-      '⚠ U盘当前未连接管理 (车机正常读写中)<br>' +
-      '<button onclick="usbAttach()" style="background:#e8443f;border:none;color:#fff;border-radius:8px;padding:7px 16px;font-size:12.5px;cursor:pointer;margin-top:6px">🔗 连接车机U盘 (临时断开车机读取)</button></div>';
+    return '<div class="notice"><span class="notice-icon">' + icon('storage') + '</span><div class="notice-content"><div class="notice-title">' + t('尚未进入 U 盘管理模式') + '</div><p>' + t('连接后车机读写会暂停，请在停车后操作。') + '</p><button class="mini primary" onclick="' + (wrap ? 'wrapAttach()' : 'usbAttach()') + '">' + t('连接车机 U 盘') + '</button></div></div>';
   }
-  return '<div style="background:#1a3325;border-radius:10px;padding:10px 12px;font-size:12.5px;color:#4cc38a;line-height:1.6">' +
-    '🟢 已连接 — U盘已从车机临时断开, 你在网页上的改动会直接写入车机U盘<br>' +
-    '<span style="color:#7d8894;font-size:11.5px">断开满 5 分钟无操作会自动恢复车机导出</span><br>' +
-    '<button onclick="usbDetach()" style="background:#242c35;border:none;color:#e8eaed;border-radius:8px;padding:7px 16px;font-size:12.5px;cursor:pointer;margin-top:6px">✅ 恢复车机导出</button></div>';
+  return '<div class="notice positive"><span class="notice-icon">' + icon('storage') + '</span><div class="notice-content"><div class="notice-title">' + t('U 盘管理已连接') + '</div><p>' + t(wrap ? '图片将直接写入 Wraps 目录，完成后请恢复车机导出。' : '网页改动会写入车机 U 盘，操作完成后请恢复导出。') + '</p><button class="mini" onclick="' + (wrap ? 'wrapDetach()' : 'usbDetach()') + '">' + t('完成并恢复导出') + '</button><small>' + t('闲置后系统会尝试自动恢复导出') + '</small></div></div>';
 }
 async function usbAttach() {
   toast('⏳ 正在连接 (车机读取将断开几秒)...');
@@ -1689,7 +1737,7 @@ async function refreshFiles(dir) {
   if (area === 'usb') {
     j = await (await fetch('/api/usb/browse?dir=' + encodeURIComponent(curDir))).json();
     statusEl.style.display = 'block';
-    statusEl.innerHTML = usbStatusHtml(j.attached, j.msg);
+    statusEl.innerHTML = usbStatusHtml(j.attached);
     if (!j.attached) { nav.style.display = 'none'; return; }
     nav.style.display = 'block';
   } else {
@@ -1704,14 +1752,13 @@ async function refreshFiles(dir) {
   const mkLink = (label, target, folder) => {
     const a = document.createElement('a');
     a.textContent = label; a.href = 'javascript:void(0)';
-    a.style.cssText = 'color:' + (folder ? '#5ea9ff' : '#7d8894') + ';cursor:pointer;text-decoration:underline';
     a.onclick = () => goDir(target);
     crumb.appendChild(a);
-    const s = document.createElement('span'); s.textContent = ' / '; s.style.color = '#3a4652';
+    const s = document.createElement('span'); s.textContent = ' / ';
     crumb.appendChild(s);
   };
   if (area === 'usb') {
-    mkLink('🚗 U盘根目录', '', true);
+    mkLink(t('U盘根目录'), '', true);
     let acc = '';
     for (const seg of curDir.split('/').filter(Boolean)) {
       acc = acc ? acc + '/' + seg : seg;
@@ -1726,10 +1773,11 @@ async function refreshFiles(dir) {
   for (const d of j.dirs) {
     empty = false;
     const el = document.createElement('div'); el.className = 'item';
-    const n = document.createElement('span'); n.className = 'n';
-    n.textContent = '📁 ' + d; n.style.cssText = 'cursor:pointer;color:#5ea9ff';
+    const n = document.createElement('span'); n.className = 'n folder';
+    n.textContent = d;
     n.onclick = () => goDir(area === 'usb' ? (curDir ? curDir + '/' + d : d) : curDir + '/' + d);
-    el.appendChild(n); list.appendChild(el);
+    const symbol = document.createElement('span'); symbol.innerHTML = icon('folder');
+    el.append(symbol, n); list.appendChild(el);
   }
   for (const f of j.files) {
     empty = false;
@@ -1786,6 +1834,8 @@ window.addEventListener('tsf:language', () => {
 
 // Public actions referenced by static and generated HTML. All other state stays in this module.
 Object.assign(window, {
+  clearFilters,
+  openPanel,
   ntProviderUI,
   wrapDetach,
   applySkin,

@@ -62,7 +62,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIn(b'type="module"', body)
         self.assertNotIn(b"__CAT_NAMES__", body)
-        for name in ("app.js", "theme.js", "i18n.js", "model.js", "app.css"):
+        for name in ("app.js", "theme.js", "i18n.js", "model.js", "icons.js", "app.css"):
             status, headers, body = self.request(server, "GET", "/assets/" + name)
             self.assertEqual(status, 200, name)
             self.assertEqual(len(body), int(headers["Content-Length"]))
@@ -79,6 +79,12 @@ class RuntimeTests(unittest.TestCase):
         auth = self.runtime.auth
         with patch.multiple(auth, AUTH_ON=True, AUTH_USER="admin", AUTH_PASS="old-secret", AUTH_SHA="", AUTH_SECRET="old-key"):
             server = self.server()
+            status, _, body = self.request(server, "GET", "/login", headers={"Accept-Language": "en-US"})
+            self.assertEqual(status, 200)
+            self.assertIn(b'Welcome back', body)
+            self.assertIn(b'safely remembered.', body)
+            self.assertNotIn(b'__L_', body)
+            self.assertIn(b'autocomplete="current-password"', body)
             for method, path in (("GET", "/api/events"), ("POST", "/api/ota/apply"), ("DELETE", "/api/file?path=x")):
                 self.assertEqual(self.request(server, method, path)[0], 401)
             token = base64.b64encode(b"admin:old-secret").decode()

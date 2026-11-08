@@ -1,29 +1,48 @@
 <!DOCTYPE html>
 <html lang="zh"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>特斯拉哨兵查看器</title>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#121315">
+<title>哨兵云盘 · Sentry Drive</title>
 <link id="base" rel="stylesheet" href="/assets/app.css"></head><body>
-<header><h1>🚗 特斯拉哨兵查看器</h1><span class="sub" id="stat"></span>
-<span id="live" title="车机在线只读同步状态" style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:4px 10px;white-space:nowrap"><span id="livedot" style="width:7px;height:7px;border-radius:50%;background:#5f6b76"></span><span id="livetxt">同步状态</span></span>
-<nav class="tabs" id="tabs"></nav><button id="theme" title="主题: 自动/浅色/深色" onclick="cycleTheme()">🌗</button><button id="gear" title="设置">⚙</button></header>
-<nav class="storwrap" id="storwrap" style="display:none">
+<header class="app-header"><div class="header-inner">
+  <a class="brand" href="/" aria-label="哨兵云盘首页"><span class="brand-mark" data-icon="shield"></span><span class="brand-wordmark">哨兵云盘<small>SENTRY DRIVE</small></span></a>
+  <div class="header-actions">
+    <span id="live" class="sync-status" title="车机在线只读同步状态"><span id="livedot"></span><span id="livetxt">同步状态</span></span>
+    <span class="header-divider"></span>
+    <button id="theme" class="icon-button" title="主题: 自动/浅色/深色" aria-label="切换主题" onclick="cycleTheme()"></button>
+    <button id="gear" class="icon-button" title="设置" aria-label="打开设置" aria-haspopup="dialog"><span data-icon="settings"></span></button>
+  </div>
+</div></header>
+<main class="library">
+<section class="library-heading">
+  <div><p class="eyebrow">YOUR DRIVE, REMEMBERED.</p><h1>录像资料库</h1><p class="library-description">按时间与触发原因浏览，同步回放每个视角。</p></div>
+  <div class="archive-total"><span class="archive-total-icon" data-icon="folder"></span><span id="stat">正在载入归档…</span></div>
+</section>
+<section class="library-toolbar">
+<nav class="tabs" id="tabs" aria-label="录像分类"></nav>
+<div class="storwrap" id="storwrap" style="display:none">
   <div class="storcard">
     <div class="storrow"><span class="storlab" id="storlab">车载U盘存储</span><span class="storval" id="storval"></span></div>
     <div class="storbar"><i id="storfill"></i></div>
   </div>
-</nav>
+</div>
+</section>
+<div class="filter-panel">
 <nav class="filters" id="filters"></nav>
 <nav class="filters" id="dfilters"></nav>
 <input type="date" id="dpick" class="dpick" onchange="if(this.value) setDate(this.value)">
+</div>
+<div class="results-heading"><h2 id="category-title">哨兵告警</h2><span id="result-count"></span><button class="text-button" id="clear-filters" onclick="clearFilters()" hidden>重置筛选</button></div>
 <div class="grid-wrap" id="grid"></div>
-<div class="empty" id="empty" style="display:none"><div class="big">📹</div>
-<div>暂无归档视频<br><small style="font-size:12px">车机录制后, 归档同步任务会自动把视频收进来 (镜像需空闲10分钟)</small></div></div>
+<div class="empty" id="empty" style="display:none"><div class="empty-symbol" data-icon="video"></div><h3>还没有归档录像</h3><p>车机录制的稳定片段会自动同步到这里。<br>你可以稍后回来，或查看同步服务状态。</p></div>
+<footer class="library-footer"><span>SENTRY DRIVE</span><span>记录在设备，回忆在身边。</span></footer>
+</main>
 
 <div class="player" id="player">
   <div class="ptop">
-    <button class="pback" onclick="closePlayer()">‹ 返回</button>
+    <button class="pback" onclick="closePlayer()"><span data-icon="arrowLeft"></span><span>返回资料库</span></button>
     <span class="ptitle" id="ptitle"></span>
-    <button class="pdl" onclick="openExport()" title="导出">⬇</button>
+    <button class="pdl" onclick="openExport()" title="导出"><span data-icon="download"></span><span>导出视频</span></button>
   </div>
   <div class="pscroll">
     <div class="tpanel" id="tpanel">
@@ -44,7 +63,7 @@
         <div class="tp-rows" id="tp-rows"></div>
     </div>
     <div class="vwrap">
-      <div class="startmask" id="startmask">▶ 轻触开始同步播放</div>
+      <div class="startmask" id="startmask"><span data-icon="play"></span><span>轻触开始同步播放</span></div>
       <div class="vgrid" id="vgrid"></div>
     </div>
     <div class="infocard" id="infocard">
@@ -56,7 +75,7 @@
     </div>
   </div>
   <div class="pbar">
-    <button class="pp" id="ppbtn" onclick="togglePlay()">⏸</button>
+    <button class="pp" id="ppbtn" onclick="togglePlay()" aria-label="播放或暂停"><span data-icon="pause"></span></button>
     <input type="range" id="seek" min="0" max="1000" value="0">
     <span class="t" id="ptime">00:00</span>
     <button class="spd" id="spdbtn" onclick="cycleSpeed()">1x</button>
@@ -66,14 +85,14 @@
 </div>
 
 <div class="expp" id="expp">
-  <div class="expt">选择要导出的画面<button class="x" onclick="closeExport()">✕</button></div>
+  <div class="expt">导出录像<button class="icon-button x" onclick="closeExport()" aria-label="关闭导出"><span data-icon="close"></span></button></div>
   <div id="expchks"></div>
   <label class="expitem" id="expwm-row" style="border-top:1px solid var(--line2);margin-top:6px;align-items:flex-start">
     <input type="checkbox" id="expwm" style="margin-top:2px">
-    <span style="line-height:1.45">叠加行车信息水印<small style="display:block;color:#7d8894;font-size:11px;margin-top:2px">半透明单行: 时间/位置/车速/挡位/油门/刹车, 基本不挡画面</small></span>
+    <span style="line-height:1.45">叠加行车信息水印<small style="display:block;color:var(--muted);font-size:11px;margin-top:2px">时间 / 位置 / 车速 / 挡位 / 油门 / 刹车</small></span>
   </label>
   <div class="expitem" id="expq-row" style="border-top:1px solid var(--line2);margin-top:6px">
-    <span style="flex:0 0 auto;color:#c6cdd4;cursor:default">下载清晰度</span>
+    <span style="flex:0 0 auto;color:var(--muted);cursor:default">下载清晰度</span>
     <div class="qsel" id="expq" style="flex:1;display:flex;justify-content:flex-end"></div>
   </div>
   <div class="expr">
@@ -90,8 +109,8 @@
 
 <div class="livep" id="livep">
   <div class="lvtop">
-    <button class="pback" onclick="closeLive()">‹ 返回</button>
-    <span class="lvtitle">📡 准实时预览 <small style="color:#7d8894;font-weight:400">延时约 1~2 分钟</small></span>
+    <button class="pback" onclick="closeLive()"><span data-icon="arrowLeft"></span><span>返回</span></button>
+    <span class="lvtitle">最新画面 <small>显示最近已完成同步的录像片段</small></span>
     <span class="lvstatus" id="lv-status"></span>
   </div>
   <div class="lvbody">
@@ -112,54 +131,60 @@
     <div class="hint">「全览」同时播放全部摄像头原画, 数据量较大 (4 路每分钟约 100MB), 建议流量充足时使用; 点任一格可切到单路。原理: 车机循环录制 1 分钟一段; 后台的只读同步 (不打断车机) 把刚写完的片段持续收进归档, 这里自动发现并播放最新片段, 即约 1 分钟延时的"直播"。刚停车/刚触发录像的片段要等写完才会出现。</div>
   </div>
 </div>
-<div class="panel" id="panel">
-  <h2>⚙ 个性化 <button class="x" onclick="closePanel()">✕</button></h2>
-  <div class="stabs">
-    <button class="stab active" id="st-files" onclick="stab('files')">📂 文件</button>
-    <button class="stab" id="st-audio" onclick="stab('audio')">🔊 锁车语音</button>
-    <button class="stab" id="st-wraps" onclick="stab('wraps')">🚙 涂装</button>
-    <button class="stab" id="st-notify" onclick="stab('notify')">🔔 推送</button>
-    <button class="stab" id="st-auth" onclick="stab('auth')">🔑 账号</button>
-    <button class="stab" id="st-lang" onclick="stab('lang')">🌐 语言</button>
-    <button class="stab" id="st-skin" onclick="stab('skin')">🎨 网页背景</button>
-    <button class="stab" id="st-update" onclick="stab('update')">🔄 更新</button>
-  </div>
+<section class="panel" id="panel" role="dialog" aria-modal="true" aria-labelledby="settings-title" aria-hidden="true">
+  <div class="panel-heading"><div><p class="eyebrow">MAKE IT YOURS</p><h2 id="settings-title">设备设置</h2></div><button class="icon-button x" onclick="closePanel()" aria-label="关闭设置"><span data-icon="close"></span></button></div>
+  <div class="settings-layout">
+  <nav class="stabs" role="tablist" aria-label="设置分类">
+    <button class="stab active" id="st-files" onclick="stab('files')"><span data-icon="folder"></span><span>文件管理</span></button>
+    <button class="stab" id="st-audio" onclick="stab('audio')"><span data-icon="audio"></span><span>锁车音效</span></button>
+    <button class="stab" id="st-wraps" onclick="stab('wraps')"><span data-icon="car"></span><span>车身涂装</span></button>
+    <button class="stab" id="st-notify" onclick="stab('notify')"><span data-icon="bell"></span><span>消息推送</span></button>
+    <button class="stab" id="st-auth" onclick="stab('auth')"><span data-icon="key"></span><span>账号与安全</span></button>
+    <button class="stab" id="st-lang" onclick="stab('lang')"><span data-icon="globe"></span><span>界面语言</span></button>
+    <button class="stab" id="st-skin" onclick="stab('skin')"><span data-icon="palette"></span><span>网页外观</span></button>
+    <button class="stab" id="st-update" onclick="stab('update')"><span data-icon="update"></span><span>版本更新</span></button>
+  </nav>
+  <div class="settings-content" id="settings-content">
   <div id="tab-skin" style="display:none">
+    <div class="setting-intro"><h3>网页外观</h3><p>上传背景图片或自己的 CSS 皮肤。</p></div>
     <div class="hint">上传 CSS 皮肤文件或背景图 (jpg/png/webp)。CSS 中引用图片请用 /skin-media/文件名。</div>
     <div class="hint"><code>body{background:url(/skin-media/bg.jpg) center/cover}</code></div>
     <label class="upbtn">＋ 上传皮肤文件 (css/jpg/png/webp)<input type="file" id="skin-file" accept=".css,.jpg,.jpeg,.png,.webp" hidden></label>
     <div id="skin-list"></div>
   </div>
   <div id="tab-audio" style="display:none">
+    <div class="setting-intro"><h3>锁车音效</h3><p>上传喜欢的声音，自动转换为车机锁车音效。</p></div>
     <div class="hint">上传后自动裁剪、转换为 44.1kHz / 16-bit / 单声道 PCM WAV，并命名为 LockChime.wav。默认取前 5 秒，输出小于 1 MB；源文件最大 20 MB。支持 WAV / MP3 / M4A / AAC / FLAC / OGG / OPUS / WEBM。</div>
     <label class="nrow"><span>从第几秒开始</span><input class="ninput num" id="audio-start" type="number" min="0" max="3600" step="0.1" value="0"></label>
     <label class="nrow"><span>保留时长（秒）</span><input class="ninput num" id="audio-duration" type="number" min="0.1" max="5" step="0.1" value="5"></label>
     <label class="upbtn">＋ 上传并转换锁车音<input type="file" id="audio-file" accept=".wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.webm" hidden></label>
     <div class="hint" id="audio-msg">转换成功后替换待写入的锁车音。等待镜像空闲后的归档同步，自动写入 USB 根目录；车机内再选「玩具箱 → Boombox → 锁车音 → USB」。需要车辆支持外部扬声器及自定义锁车音。</div>
-    <div class="hint" style="color:#4cc38a">⏳ 待写入车机U盘:</div>
+    <div class="section-label">待写入车机 U 盘</div>
     <div id="audio-list"></div>
-    <div class="hint" style="color:#4cc38a">✅ 已写入:</div>
+    <div class="section-label">已写入</div>
     <div id="audio-done"></div>
   </div>
   <div id="tab-wraps" style="display:none">
+    <div class="setting-intro"><h3>车身涂装</h3><p>为车机上的车辆可视化换一套外观。</p></div>
     <div class="hint">自定义车身涂装：上传对应车型模板制作的静态 PNG，512×512–1024×1024，单文件 ≤1 MB，USB 最多 10 个。自动创建根目录 Wraps/ 并规范文件名。普通照片不能自动变成贴合车身的涂装。</div>
     <div class="hint"><a href="https://github.com/teslamotors/custom-wraps" target="_blank" rel="noopener noreferrer">Tesla 官方车型模板</a> · 恢复导出后，在车机「玩具箱 → 喷漆车间 → 涂装」选用。请停车后管理 U 盘，管理期间车机录制暂停。</div>
     <div id="wraps-status" style="margin-bottom:10px"></div>
     <label class="upbtn" id="wraps-upbtn">＋ 上传涂装到 Wraps/（PNG，≤1 MB）<input type="file" id="wraps-file" accept=".png,image/png" hidden multiple></label>
-    <div id="wraps-grid" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:12px"></div>
+    <div id="wraps-grid" class="wraps-grid"></div>
   </div>
   <div id="tab-files">
-    <div style="display:flex;gap:8px;margin-bottom:10px">
-      <button id="area-usb" class="stab" style="flex:1" onclick="switchArea('usb')">🚗 车机U盘</button>
-      <button id="area-archive" class="stab" style="flex:1" onclick="switchArea('archive')">🗄 归档区</button>
+    <div class="setting-intro"><h3>文件管理</h3><p>浏览设备归档，或连接车机 U 盘管理文件。</p></div>
+    <div class="area-switch">
+      <button id="area-usb" class="stab active" onclick="switchArea('usb')">车机 U 盘</button>
+      <button id="area-archive" class="stab" onclick="switchArea('archive')">设备归档</button>
     </div>
     <div id="usb-status" style="display:none;margin-bottom:10px"></div>
-    <div id="usb-hint" class="hint">浏览和管理车机U盘 (特斯拉写入的镜像)。连接后会临时断开车机读取几秒，5 分钟无操作自动恢复。</div>
+    <div id="usb-hint" class="hint">管理车机 U 盘时会暂停车机读写。完成操作后请恢复导出；5 分钟无操作也会尝试自动恢复。</div>
     <div id="arch-hint" class="hint" style="display:none">归档区 (F50 内部存储): 查看器用的视频副本、皮肤、文件中转。</div>
     <div id="dir-nav" style="display:none">
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <input id="dest-dir" placeholder="/" style="flex:1;background:#161c22;border:1px solid #3a4652;border-radius:8px;color:#e8eaed;padding:8px 10px;font-size:12px;outline:none">
-        <button onclick="goDir(document.getElementById('dest-dir').value)" style="background:#e8443f;border:none;color:#fff;border-radius:8px;padding:0 14px;font-size:12px;cursor:pointer">跳转</button>
+      <div class="path-row">
+        <input id="dest-dir" class="ninput" placeholder="/" aria-label="文件路径">
+        <button class="mini" onclick="goDir(document.getElementById('dest-dir').value)">跳转</button>
       </div>
       <div id="crumb" style="font-size:12px;color:#5ea9ff;margin-bottom:8px;line-height:1.8"></div>
       <label class="upbtn" id="upbtn">＋ 上传文件到当前目录 (任意类型, ≤100MB)<input type="file" id="anyfile-file" hidden></label>
@@ -167,6 +192,7 @@
     </div>
   </div>
   <div id="tab-notify" style="display:none">
+    <div class="setting-intro"><h3>消息推送</h3><p>把新的哨兵事件送到你的 QQ 或飞书。</p></div>
     <div class="hint">新增哨兵事件时，推送时间、位置、原因及封面或视频。选择一个渠道；切换渠道会保留另一渠道的设置。</div>
     <label for="nt-provider">推送渠道</label>
     <select class="ninput" id="nt-provider" onchange="ntProviderUI()">
@@ -177,7 +203,7 @@
     <label class="nrow"><span>也推手动保存</span><input type="checkbox" id="nt-saved"></label>
     <div class="eyebar">
       <span class="lbl" id="nt-eyetip">敏感信息已隐藏（截图安全）</span>
-      <button class="mini" id="nt-eye" onclick="ntToggleEye()">👁 显示</button>
+      <button class="mini" id="nt-eye" onclick="ntToggleEye()">显示</button>
     </div>
     <div id="nt-feishu-fields">
       <select class="ninput" id="nt-mode">
@@ -221,6 +247,7 @@
     <div class="hint" id="nt-msg"></div>
   </div>
   <div id="tab-auth" style="display:none">
+    <div class="setting-intro"><h3>账号与安全</h3><p>管理用于访问此设备的登录凭据。</p></div>
     <div class="hint">改完本机会自动用新密码重新登录，手机/其它设备上的登录状态立即失效。</div>
     <input class="ninput" id="pw-old" type="password" placeholder="当前密码" autocomplete="current-password">
     <input class="ninput" id="pw-new" type="password" placeholder="新密码 (至少 6 位)" autocomplete="new-password">
@@ -232,6 +259,7 @@
     <div class="updbtns" style="margin-top:16px"><button class="mini logout" onclick="doLogout()">退出登录</button></div>
   </div>
   <div id="tab-update" style="display:none">
+    <div class="setting-intro"><h3>版本更新</h3><p>从你指定的下载地址，手动安装新版本。</p></div>
     <div class="updrow"><span class="updk">当前版本</span><b id="upd-cur">—</b><span class="updtag" id="upd-tag">手动 ZIP 更新</span></div>
     <div class="hint">不会自动检查或下载更新。将更新 ZIP 上传到 R2 或其它可访问的存储，再粘贴下载直链。</div>
     <label for="upd-url">更新包 ZIP 地址</label>
@@ -247,12 +275,15 @@
     <div class="hint">仅支持本项目打包脚本生成的更新 ZIP，不能使用 GitHub 源码 ZIP。下载后校验全部文件并自检，成功后切换完整版本、重启服务；保留配置、录像和登录信息。支持带签名参数的下载 URL，只接受高于当前版本的包。</div>
   </div>
   <div id="tab-lang" style="display:none">
+    <div class="setting-intro"><h3>界面语言</h3><p>界面语言保存在当前浏览器中。</p></div>
     <div class="hint" style="margin-bottom:8px">选择语言</div>
     <div class="langgrid" id="lang-grid"></div>
     <div class="hint">界面语言，保存在本机浏览器</div>
   </div>
-</div>
-<div class="toast" id="toast"></div>
+  </div>
+  </div>
+</section>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <div class="stitch" id="stitch">
   <div class="stbox">

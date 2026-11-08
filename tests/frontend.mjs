@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/tesla_sentry/web');
 const values = new Map([['tsf_lang', 'en']]);
-const themeButton = {};
+const themeButton = { setAttribute() {} };
 const elements = new Map();
 const startupTimers = [], startupRequests = [];
 function element(id) {
@@ -48,7 +48,7 @@ const context = vm.createContext({
 });
 vm.runInContext('globalThis.window = globalThis', context);
 const modules = {};
-for (const name of ['app.js', 'i18n.js', 'theme.js', 'model.js']) {
+for (const name of ['app.js', 'i18n.js', 'theme.js', 'model.js', 'icons.js']) {
   modules[name] = new vm.SourceTextModule(await fs.readFile(path.join(root, name), 'utf8'),
     { context, identifier: name });
 }

@@ -6,7 +6,7 @@
 >
 > 没有 USB Device 模式的机器也可运行纯网页查看器：把 `TSF_ARCHIVE` 指向包含 `SentryClips/`、`SavedClips/`、`RecentClips/` 的目录，例如 `TSF_ARCHIVE=/path/to/TeslaCam python3 sentry-viewer.py --host 127.0.0.1`。完整部署、手动复制归档和仅网页三种用法见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
 
-> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前功能版本 **2.9.0**，开发和发布分支为 **`codex/modular-runtime`**。设备不自动检查更新，只在你输入 ZIP URL 并点击更新时下载，可使用 R2 直链。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
+> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前功能版本 **2.10.0**，开发和发布分支为 **`codex/modular-runtime`**。设备不自动检查更新，只在你输入 ZIP URL 并点击更新时下载，可使用 R2 直链。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-aarch64%20%7C%20armv7%20%7C%20x86-blue.svg)](#硬件要求)
@@ -26,7 +26,15 @@
 - [手动 ZIP 更新与 R2 发布](docs/UPDATES.md)
 - [部署细节](docs/DEPLOYMENT.md) · [新增功能完整说明](docs/FEATURES.md) · [模块结构](docs/MODULES.md)
 
-## 2.9.0 更新
+## 2.10.0 更新
+
+- 重设计录像资料库：大封面事件卡片、独立分类与日期筛选、清晰的时间和位置信息，并提供重置筛选与空状态。
+- 统一浅色 / 深色主题、系统字体和本地 SVG 图标；网页不从外部 CDN 下载字体或图标。
+- 设备设置在桌面采用侧栏分区，手机采用横向导航；登录页、播放器、导出及文件管理提示同步更新。
+- 支持键盘打开事件、设置页方向键切换、对话框焦点循环及关闭后焦点恢复；适配减少动画偏好。
+- 保留 QQ / 飞书、涂装、锁车音及手动 ZIP 更新流程，不添加自动更新检测。
+
+### 2.9.0 更新机制
 
 - 取消页面启动、打开设置时的自动远端版本检查，也不再使用 GitHub 默认更新源。
 - **设置 → 更新** 输入 R2 等存储上的 ZIP 下载直链，手动点击后下载、校验、安装；支持 GET 签名 URL，可选填 ZIP SHA-256。
@@ -144,7 +152,7 @@ sh tools/deploy_f50.sh root@设备IP
 sh tools/deploy_f50.sh root@设备IP --dir /大容量分区/tesla-sentry --archive /大容量分区/archive --size 64 --port 8080
 ```
 
-非默认 SSH 端口使用 `SSH_PORT=2222 sh tools/deploy_f50.sh root@设备IP`。也可用 `python3 tools/package_release.py` 单独生成 `dist/tesla-sentry-f50-2.9.0-offline.tar.gz`；手动上传、校验及安装步骤见[离线部署说明](docs/DEPLOYMENT.md)。
+非默认 SSH 端口使用 `SSH_PORT=2222 sh tools/deploy_f50.sh root@设备IP`。也可用 `python3 tools/package_release.py` 单独生成 `dist/tesla-sentry-f50-2.10.0-offline.tar.gz`；手动上传、校验及安装步骤见[离线部署说明](docs/DEPLOYMENT.md)。
 
 离线安装跳过字体下载；所有安装方式都不自动检查更新。QQ / 飞书推送仍需 F50 能访问各自官方服务，与能否访问 GitHub 无关。
 
@@ -270,13 +278,13 @@ python3 tools/build.py
 python3 tools/package_update.py
 ```
 
-将生成的 `dist/tesla-sentry-f50-2.9.0-update.zip` 上传到 R2，取得公开下载直链或私有对象的 GET 预签名 URL。网页 **设置 → 更新** 粘贴完整 URL，可选填 `.sha256` 文件中的 64 位校验值，然后点击 **下载 ZIP 并更新**。
+将生成的 `dist/tesla-sentry-f50-2.10.0-update.zip` 上传到 R2，取得公开下载直链或私有对象的 GET 预签名 URL。网页 **设置 → 更新** 粘贴完整 URL，可选填 `.sha256` 文件中的 64 位校验值，然后点击 **下载 ZIP 并更新**。
 
 设备下载并检查 ZIP 格式、文件清单、每个文件的 SHA-256 和版本，运行自检后切换完整版本目录并重启服务。配置、账号、QQ / 飞书凭据及录像保留，上一完整版本可通过 **回滚到上一版本** 恢复。下载由 F50 服务端执行，不需要浏览器直接访问 R2，也不需要在设备保存 R2 密钥。
 
 只接受高于当前运行版本的包，同版本安装和直接降级会被拒绝。压缩包最大 16 MiB。不能使用 GitHub 源码 ZIP、普通目录压缩包或 `*-offline.tar.gz`；必须使用专用打包脚本。旧版 2.8.x 需先用前述 Mac 离线部署流程安装一次新机制。
 
-后续发新版，先用 `python3 tools/make_release.py 2.9.1 "更新说明"` 递增版本并构建，再运行 `python3 tools/package_update.py`。完整 R2 上传、局域网下载、校验和回滚说明见 [docs/UPDATES.md](docs/UPDATES.md)。
+后续发新版，先用 `python3 tools/make_release.py 2.10.1 "更新说明"` 递增版本并构建，再运行 `python3 tools/package_update.py`。完整 R2 上传、局域网下载、校验和回滚说明见 [docs/UPDATES.md](docs/UPDATES.md)。
 
 ### 开发与构建
 
@@ -304,7 +312,15 @@ node --experimental-vm-modules tests/frontend.mjs
 
 `dist/release.json` 包含查看器、实时同步程序与五个 Shell 工具，须与 `version.json` 一起提交。安装后程序入口指向 `current/`，升级与回滚通过一次替换符号链接切换整个版本；配置、镜像和录像保存在版本目录之外。旧客户端只更新查看器时，新入口会使用内嵌配套脚本迁移完整程序包。
 
-2.9.0 已通过 64 项 Python 自动化测试，以及前端无自动更新请求、手动 ZIP 表单和 QQ 设置交互检查。测试涵盖本机 HTTP 下载、签名参数、坏包拒绝、真实版本切换与回滚、WAV / MP3 转换；使用临时目录与模拟服务，不代表真实 R2、QQ 账号或 F50 / 车机效果已验证。
+2.10.0 通过 Python 回归、前端模块及真实浏览器检查。浏览器覆盖浅深主题、320 / 360 / 390 像素手机、平板、桌面及英文界面，检查筛选、空状态、播放器、导出、设置焦点和手动更新表单；文字主题色及主按钮的检查目标为至少 4.5:1 对比度。录像事件、缩略图和视频是演示数据，不代表真实车辆录像或设备负载验证。
+
+仅预览本地界面（临时数据、只监听本机、禁止写入，不启动 USB 或同步后台任务）：
+
+```sh
+python3 tools/preview_ui.py --port 8080
+```
+
+浏览器打开 `http://127.0.0.1:8080`；`/login` 可单独预览登录页。安装了 Node.js、Playwright 和 Chromium 的开发环境，可另开终端运行 `node tests/ui.cjs http://127.0.0.1:8080 /tmp/tesla-sentry-ui`，生成演示事件的桌面、手机及设置截图。可通过 `TSF_PLAYWRIGHT_PATH`、`TSF_BROWSER_BIN` 指定已有工具路径；这些工具不是设备运行依赖。
 
 ### 多语言
 

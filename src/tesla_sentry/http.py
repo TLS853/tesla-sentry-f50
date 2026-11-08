@@ -66,7 +66,7 @@ class Handler(http_get.GetRoutesMixin, http_post.PostRoutesMixin, BaseHTTPReques
     def _asset(self, path):
         content_types = {"app.css": "text/css; charset=utf-8"}
         content_types.update({name: "text/javascript; charset=utf-8"
-                              for name in ("app.js", "i18n.js", "theme.js", "model.js")})
+                              for name in ("app.js", "i18n.js", "theme.js", "model.js", "icons.js")})
         name = path[len("/assets/"):]
         if name not in content_types:
             self._send(404, b"not found")
@@ -109,6 +109,12 @@ class Handler(http_get.GetRoutesMixin, http_post.PostRoutesMixin, BaseHTTPReques
                 .replace("__L_USER__", assets.tr("用户名", lang))
                 .replace("__L_PASS__", assets.tr("密码", lang))
                 .replace("__L_LOGIN__", assets.tr("登录", lang))
+                .replace("__L_WELCOME__", assets.tr("欢迎回来", lang))
+                .replace("__L_SUBTITLE__", assets.tr("登录以查看你的行车记录。", lang))
+                .replace("__L_TAGLINE_A__", assets.tr("每一程，", lang))
+                .replace("__L_TAGLINE_B__", assets.tr("安心记录。", lang))
+                .replace("__L_FEATURES__", assets.tr("多路回放 · 事件归档 · 本地存储", lang))
+                .replace("__L_LOCAL__", assets.tr("你的录像，留在你的设备上。", lang))
                 .replace("__L_FOOT__", foot))
         if lang != "zh":
             html = html.replace('<html lang="zh">', '<html lang="%s">' % lang)

@@ -35,8 +35,8 @@ export function applyLang() {
     n.nodeValue = (val === key) ? raw : raw.replace(key, val);
     n[ZH_TV] = n.nodeValue;
   }
-  document.querySelectorAll('[placeholder],[title]').forEach(el => {
-    ['placeholder', 'title'].forEach(a => {
+  document.querySelectorAll('[placeholder],[title],[aria-label],[alt]').forEach(el => {
+    ['placeholder', 'title', 'aria-label', 'alt'].forEach(a => {
       if (!el.hasAttribute(a)) return;
       el[ZH_ATTR] = el[ZH_ATTR] || {};
       if (el[ZH_ATTR][a] === undefined) el[ZH_ATTR][a] = el.getAttribute(a);
