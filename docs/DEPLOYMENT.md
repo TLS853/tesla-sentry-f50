@@ -59,15 +59,4 @@ QQ / 飞书推送需要设备能连接对应服务；远程访问需要设备自
 
 ## 后续更新
 
-2.8.x 及更早版本需先通过上述 Mac 离线安装流程切换到 2.9.0 或更新版本。之后可直接在 **设置 → 更新** 粘贴 R2 等存储上的更新 ZIP URL，点击下载并更新，不再依赖 GitHub。
-
-在源码目录生成专用更新包：
-
-```sh
-python3 tools/build.py
-python3 tools/package_update.py
-```
-
-把生成的 `dist/tesla-sentry-f50-版本-update.zip` 上传到 R2，使用对象直链或 GET 预签名 URL；不要使用源码 ZIP 或离线安装 tar.gz。版本号必须高于当前运行版本。也可继续使用 Mac 上传完整离线包，或在局域网提供该 ZIP 的 HTTP 下载。
-
-`TSF_OTA_ENABLED`、`TSF_OTA_SOURCES` 等旧更新源配置已不再生效。页面加载不检查远端，只在明确点击更新时下载输入地址；完整说明见 [手动 ZIP 更新与 R2 发布](UPDATES.md)。
+从 2.10.2 起，通过网页 **设置 → 版本更新** 上传本地 ZIP。专用更新包由 `python3 tools/package_update.py` 生成。旧版可先用本页的 Mac 离线部署流程切换一次，也可从 2.9.0–2.10.1 的旧更新页使用 ZIP 直链完成过渡。详见 [离线上传 ZIP 更新](UPDATES.md)。

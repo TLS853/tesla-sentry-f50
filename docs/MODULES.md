@@ -65,7 +65,7 @@ USB 与归档锁的顺序固定为 USB → 归档。卸载失败不能重新导�
 
 部署时验证文件白名单、程序包与单文件 SHA-256，以及两个入口实际自检返回的版本。验证通过后才切换 `current`。SHA-256 核对下载一致性，不能代替对发布源的信任。旧版本仍可通过 `previous-release.json` 整包回滚，用户配置和录像不在版本目录中。
 
-从 2.9.0 起不再发现远端版本，也没有默认 GitHub 下载源。`tools/package_update.py` 从已构建产物生成确定性 ZIP；`update_package.py` 是打包端与设备端共用的格式校验器。`updates.py` 仅在显式提交 URL 时下载该 ZIP，`GET /api/ota/status` 和旧 `/api/ota/check` 仅读取本机状态。完整发布流程见 [手动 ZIP 更新](UPDATES.md)。
+从 2.9.0 起不再发现远端版本，也没有默认 GitHub 下载源。`tools/package_update.py` 从已构建产物生成确定性 ZIP；`update_package.py` 是打包端与设备端共用的格式校验器。`updates.py` 负责接收本地 ZIP 上传并安装，`GET /api/ota/status` 和旧 `/api/ota/check` 仅读取本机状态。完整发布流程见 [离线上传 ZIP 更新](UPDATES.md)。
 
 ## 验证范围
 

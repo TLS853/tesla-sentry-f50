@@ -1399,16 +1399,17 @@ async function pwSave() {
   } catch (e) { m.textContent = t('修改失败') + ': ' + e; m.style.color = 'var(--accent)'; }
 }
 
-/* ---------- 手动 ZIP 更新 ---------- */
+/* ---------- 离线 ZIP 更新 ---------- */
 let otaCurrent = '', otaBusy = false;
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
 function otaSetBusy(busy) {
   otaBusy = busy;
-  ['upd-go', 'upd-rb', 'upd-url', 'upd-sha'].forEach(id => {
+  ['upd-go', 'upd-rb', 'upd-file', 'upd-sha', 'upd-refresh'].forEach(id => {
     document.getElementById(id).disabled = busy;
   });
 }
 async function otaStatus() {
+  if (otaBusy) return;
   // This endpoint reads the installed version and rollback metadata only.
   try {
     const response = await fetch('/api/ota/status', { cache: 'no-store' });
@@ -1417,8 +1418,7 @@ async function otaStatus() {
     otaCurrent = j.current;
     document.getElementById('upd-cur').textContent = 'v' + j.current;
     document.getElementById('upd-rb').style.display = j.rollback_ready ? '' : 'none';
-    document.getElementById('upd-tag').textContent = j.busy ? '正在更新或等待重启' : '手动 ZIP 更新';
-    otaSetBusy(!!j.busy);
+    document.getElementById('upd-tag').textContent = t(j.busy ? '正在更新或等待重启' : '离线 ZIP 更新');
   } catch (e) {
     document.getElementById('upd-msg').textContent = '读取本机状态失败，请刷新页面重试';
   }
@@ -1431,31 +1431,35 @@ async function otaWaitBack(previous) {
       const r = await fetch('/api/ota/status', { cache: 'no-store' });
       // Older rollback targets do not have the status route.
       if (r.status === 404 || r.status === 401) { location.reload(); return; }
-      if (r.ok && (await r.json()).current !== previous) { location.reload(); return; }
+      if (r.ok) {
+        const status = await r.json();
+        if (!status.busy && status.current && status.current !== previous) { location.reload(); return; }
+      }
     } catch (e) {}
   }
   document.getElementById('upd-msg').textContent = '服务尚未完成重启，请稍后手动刷新页面';
+  otaSetBusy(false);
 }
 async function otaApply() {
   if (otaBusy) return;
-  const url = document.getElementById('upd-url').value.trim();
+  const input = document.getElementById('upd-file');
+  const file = input.files[0];
   const sha256 = document.getElementById('upd-sha').value.trim();
   const msg = document.getElementById('upd-msg');
-  try {
-    const parsed = new URL(url);
-    if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.hash) throw new Error();
-  } catch (e) { msg.textContent = '请输入 HTTP / HTTPS 的 ZIP 下载直链'; return; }
-  if (sha256 && !/^[a-fA-F0-9]{64}$/.test(sha256)) { msg.textContent = 'SHA-256 须为 64 位十六进制，也可留空'; return; }
-  if (!otaCurrent) await otaStatus();
+  if (!file || !/\.zip$/i.test(file.name)) { msg.textContent = t('请选择本地更新 ZIP 文件'); return; }
+  if (file.size <= 0 || file.size > 16 * 1024 * 1024) { msg.textContent = t('更新 ZIP 为空或超过 16 MiB'); return; }
+  if (sha256 && !/^[a-fA-F0-9]{64}$/.test(sha256)) { msg.textContent = t('SHA-256 须为 64 位十六进制，也可留空'); return; }
+  const headers = { 'Content-Type': 'application/zip' };
+  if (sha256) headers['X-Update-SHA256'] = sha256;
+  const previous = otaCurrent;
   otaSetBusy(true);
-  msg.textContent = '正在从指定 URL 下载、校验 ZIP 并安装，请保持页面打开…';
+  msg.textContent = t('正在上传并安装 ZIP，请保持页面打开…');
   try {
-    const j = await (await fetch('/api/ota/apply', { method: 'POST',
-      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, sha256 }) })).json();
+    const j = await (await fetch('/api/ota/apply', { method: 'POST', headers, body: file })).json();
     msg.textContent = j.msg;
     if (!j.ok) { otaSetBusy(false); return; }
-    document.getElementById('upd-url').value = ''; // signed URL stays out of browser storage
-    otaWaitBack(otaCurrent);
+    input.value = '';
+    otaWaitBack(previous);
   } catch (e) {
     msg.textContent = '请求中断，请稍后刷新页面确认安装状态';
     otaSetBusy(false);
@@ -1464,13 +1468,14 @@ async function otaApply() {
 async function otaRollback() {
   if (otaBusy) return;
   if (!confirm('回滚到升级前的版本?\n适合新版本出现问题时使用, 服务会自动重启。')) return;
+  const previous = otaCurrent;
   otaSetBusy(true);
   const msg = document.getElementById('upd-msg');
   msg.textContent = '正在回滚…';
   try {
     const j = await (await fetch('/api/ota/rollback', { method: 'POST' })).json();
     msg.textContent = j.msg;
-    if (j.ok) otaWaitBack(otaCurrent);
+    if (j.ok) otaWaitBack(previous);
     else otaSetBusy(false);
   } catch (e) { msg.textContent = '回滚请求中断，请刷新页面确认状态'; otaSetBusy(false); }
 }

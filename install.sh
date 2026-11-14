@@ -5,7 +5,7 @@
 #   --port PORT      网页端口, 默认 8080
 #   --archive DIR    归档区路径, 默认 /archive
 #   --dir DIR        安装目录, 默认 /opt/tesla-sentry
-#   --offline        不下载字体; 程序更新始终为手动 ZIP 更新
+#   --offline        不下载字体; 程序更新使用本地 ZIP 上传
 #   -h, --help       显示帮助
 set -e
 
@@ -337,7 +337,7 @@ sh "$TSF_DIR/tesla-gadget.sh" on || echo "  [警告] 虚拟U盘启动失败, 见
 
 # 中文字体: 飞书推送视频烧录行车信息水印时由 libass 使用; 缺失只影响水印, 不影响其它功能
 if [ "$OFFLINE" = 1 ]; then
-    say "离线模式: 跳过字体下载; 更新使用手动 ZIP 下载地址"
+    say "离线模式: 跳过字体下载; 更新使用本地 ZIP 上传"
 elif ! ls "$TSF_DIR"/fonts/*.ttf >/dev/null 2>&1; then
     say "下载中文字体 (水印用, 约 17MB) ..."
     mkdir -p "$TSF_DIR/fonts"

@@ -22,16 +22,9 @@ class OfflineTests(unittest.TestCase):
 
     def test_status_never_contacts_network_even_with_legacy_auto_update_enabled(self):
         with patch.dict(self.runtime.config.environment, {"TSF_OTA_ENABLED": "1", "TSF_OTA_SOURCES": "https://unused.example"}), \
-             patch.object(self.runtime.updates.urllib.request, "build_opener") as network:
-            self.assertEqual(self.runtime.updates.ota_check(force=True)["mode"], "manual_zip")
+             patch("urllib.request.build_opener") as network:
+            self.assertEqual(self.runtime.updates.ota_check(force=True)["mode"], "upload_zip")
             network.assert_not_called()
-
-    def test_updates_have_no_builtin_github_discovery_source(self):
-        source = (ROOT / "src/tesla_sentry/updates.py").read_text()
-        self.assertNotIn("raw.githubusercontent.com", source)
-        with patch.object(self.runtime.updates, "_download_zip") as download:
-            self.assertFalse(self.runtime.updates.ota_apply()[0])
-            download.assert_not_called()
 
     def test_offline_font_step_cannot_run_curl(self):
         script = (ROOT / "install.sh").read_text()

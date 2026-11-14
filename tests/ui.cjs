@@ -75,7 +75,7 @@ async function main() {
         else if (pathname === '/api/notify') data = { provider: 'qq', mode: 'dm', qq_target_type: 'user', media: 'thumb', quality: '480p', delay: 20, vdur: 30, enabled: false };
         else if (pathname === '/api/auth/info') data = { on: true, user: 'admin' };
         else if (pathname === '/api/telemetry') data = { ok: false };
-        else if (pathname === '/api/ota/status') data = { current: '2.10.0', busy: false, rollback_ready: true, mode: 'manual_zip' };
+        else if (pathname === '/api/ota/status') data = { current: '2.10.2', busy: false, rollback_ready: true, mode: 'upload_zip' };
         else if (pathname === '/api/ota/apply') data = { ok: false, msg: 'UI preview does not install updates' };
         return route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
       });
@@ -128,13 +128,19 @@ async function main() {
         if (tab === 'notify') await page.screenshot({ path: path.join(output, view.name + '-notify.png') });
       }
       await page.locator('#st-update').click();
-      await page.locator('#upd-cur').filter({ hasText: '2.10.0' }).waitFor();
-      await page.locator('#upd-url').fill('https://updates.example/release.zip?X-Amz-Signature=preview');
+      await page.locator('#upd-cur').filter({ hasText: '2.10.2' }).waitFor();
+      await page.locator('#upd-file').setInputFiles({ name: 'update.zip', mimeType: 'application/zip', buffer: Buffer.from('test ZIP bytes') });
       await page.locator('#upd-sha').fill('bad-hash');
       await page.locator('#upd-go').click();
       assert.match(await page.locator('#upd-msg').innerText(), /SHA-256/);
       assert.equal(requests.filter(r => r.method === 'POST' && r.url.includes('/api/ota/apply')).length, 0);
       await page.locator('#upd-sha').fill('');
+      const upload = page.waitForRequest(r => r.method() === 'POST' && new URL(r.url()).pathname === '/api/ota/apply');
+      await page.locator('#upd-go').click();
+      const request = await upload;
+      assert.equal(request.headers()['content-type'], 'application/zip');
+      assert.equal(request.postDataBuffer().toString(), 'test ZIP bytes');
+      await page.locator('#upd-msg').filter({ hasText: 'UI preview does not install updates' }).waitFor();
       assert.equal(await page.locator('#panel').evaluate(el => el.scrollWidth <= el.clientWidth + 1), true, view.name + ': settings overflow');
       await page.screenshot({ path: path.join(output, view.name + '-settings.png') });
       await page.locator('#panel .x').focus();

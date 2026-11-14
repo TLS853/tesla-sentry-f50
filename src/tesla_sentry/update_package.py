@@ -9,7 +9,7 @@ import zlib
 
 RUNTIME_FILES = ("sentry-viewer.py", "tesla-live-sync.py", "tesla-gadget.sh",
                  "tesla-sync.sh", "usb-selfheal.sh", "tesla-img.sh", "tsf-check.sh")
-MAX_DOWNLOAD = 16 * 1024 * 1024
+MAX_ZIP_SIZE = 16 * 1024 * 1024
 MAX_UNPACKED = 32 * 1024 * 1024
 MAX_MEMBER = 8 * 1024 * 1024
 MAX_MANIFEST = 128 * 1024
@@ -39,7 +39,7 @@ def _json(data):
 
 def read_zip(data):
     """Read only named members; never extract archive paths onto the filesystem."""
-    if not data or len(data) > MAX_DOWNLOAD:
+    if not data or len(data) > MAX_ZIP_SIZE:
         raise ValueError("更新 ZIP 为空或超过 16 MiB")
     expected = set(RUNTIME_FILES) | {"manifest.json"}
     try:

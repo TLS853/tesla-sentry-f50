@@ -1,10 +1,10 @@
 {
-  "version": "2.10.1",
+  "version": "2.10.2",
   "date": "2026-11-14",
   "notes": [
-    "在线同步支持分区镜像中的 exFAT 录像",
-    "修复连续分配的多簇目录漏读"
+    "改为上传本地 ZIP 更新，移除 URL 下载更新",
+    "包含 2.10.1 的录像同步修复"
   ],
   "bundle": "dist/release.json",
-  "sha256": "a967fdc0ea0b3b0741128825df6c6311ba9e001c443902fe4d1e8267bcf0d99e"
+  "sha256": "01a30eeee233f1ea5f92ffbb39deba7217c1680087550ba52af5557e090b8f6e"
 }

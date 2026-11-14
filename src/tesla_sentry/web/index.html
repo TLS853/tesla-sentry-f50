@@ -259,20 +259,19 @@
     <div class="updbtns" style="margin-top:16px"><button class="mini logout" onclick="doLogout()">退出登录</button></div>
   </div>
   <div id="tab-update" style="display:none">
-    <div class="setting-intro"><h3>版本更新</h3><p>从你指定的下载地址，手动安装新版本。</p></div>
-    <div class="updrow"><span class="updk">当前版本</span><b id="upd-cur">—</b><span class="updtag" id="upd-tag">手动 ZIP 更新</span></div>
-    <div class="hint">不会自动检查或下载更新。将更新 ZIP 上传到 R2 或其它可访问的存储，再粘贴下载直链。</div>
-    <label for="upd-url">更新包 ZIP 地址</label>
-    <input class="ninput" id="upd-url" type="url" inputmode="url" maxlength="8192" autocomplete="off" spellcheck="false" placeholder="https://你的下载域名/tesla-sentry-f50-版本-update.zip">
+    <div class="setting-intro"><h3>版本更新</h3></div>
+    <div class="updrow"><span class="updk">当前版本</span><b id="upd-cur">—</b><span class="updtag" id="upd-tag">离线 ZIP 更新</span></div>
+    <label for="upd-file">本地更新 ZIP（最大 16 MiB）</label>
+    <input class="ninput" id="upd-file" type="file" accept=".zip,application/zip">
     <label for="upd-sha">ZIP SHA-256（可选）</label>
     <input class="ninput" id="upd-sha" maxlength="64" autocomplete="off" spellcheck="false" placeholder="可粘贴打包脚本生成的 64 位校验值">
     <div class="updbtns">
-      <button class="mini primary" id="upd-go" onclick="otaApply()">下载 ZIP 并更新</button>
+      <button class="mini primary" id="upd-go" onclick="otaApply()">上传 ZIP 并更新</button>
       <button class="mini" id="upd-refresh" onclick="otaStatus()">刷新本机状态</button>
     </div>
-    <div class="hint" id="upd-msg"></div>
+    <div class="hint" id="upd-msg" role="status"></div>
     <div class="updbtns"><button class="mini" id="upd-rb" onclick="otaRollback()" style="display:none">↩ 回滚到上一版本</button></div>
-    <div class="hint">仅支持本项目打包脚本生成的更新 ZIP，不能使用 GitHub 源码 ZIP。下载后校验全部文件并自检，成功后切换完整版本、重启服务；保留配置、录像和登录信息。支持带签名参数的下载 URL，只接受高于当前版本的包。</div>
+    <div class="hint">请选择本项目打包的更新 ZIP，版本需高于当前版本。校验通过后会重启服务，配置、录像和登录信息会保留。</div>
   </div>
   <div id="tab-lang" style="display:none">
     <div class="setting-intro"><h3>界面语言</h3><p>界面语言保存在当前浏览器中。</p></div>

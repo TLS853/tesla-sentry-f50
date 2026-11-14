@@ -6,7 +6,7 @@
 >
 > 没有 USB Device 模式的机器也可运行纯网页查看器：把 `TSF_ARCHIVE` 指向包含 `SentryClips/`、`SavedClips/`、`RecentClips/` 的目录，例如 `TSF_ARCHIVE=/path/to/TeslaCam python3 sentry-viewer.py --host 127.0.0.1`。完整部署、手动复制归档和仅网页三种用法见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
 
-> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前版本 **2.10.1**，开发和发布分支为 **`codex/modular-runtime`**。设备不自动检查更新，只在你输入 ZIP URL 并点击更新时下载，可使用 R2 直链。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
+> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前版本 **2.10.2**，开发和发布分支为 **`codex/modular-runtime`**。设备通过网页上传本地 ZIP 更新。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-aarch64%20%7C%20armv7%20%7C%20x86-blue.svg)](#硬件要求)
@@ -23,8 +23,12 @@
 - [车身涂装上传](#车身涂装)
 - [锁车音自动转换](#锁车音自动转换)
 - [已有安装升级](#已有安装升级)
-- [手动 ZIP 更新与 R2 发布](docs/UPDATES.md)
+- [离线上传 ZIP 更新](docs/UPDATES.md)
 - [部署细节](docs/DEPLOYMENT.md) · [新增功能完整说明](docs/FEATURES.md) · [模块结构](docs/MODULES.md)
+
+## 2.10.2 更新
+
+- 在设置里选择本地更新 ZIP 并上传，替代输入直链下载的方式。
 
 ## 2.10.1 更新
 
@@ -99,7 +103,7 @@
 | 💧 **导出可烧录水印** | 导出时勾选"叠加行车信息水印"，把时间/位置/车速/挡位/油门/刹车以**半透明单行横条**烧录到画面顶部（约占画面高 5%，基本不挡路况），单路/多路都支持 |
 | 🎨 **网页背景** | 上传 CSS / 背景图，即刻换肤 |
 | 🌗 **深色 / 浅色 / 自动** | 整套界面用 CSS 变量做成双主题，右上角一键循环切换（自动模式跟随系统），播放器子页面同步换肤；只有视频画面区域保持恒定深色 |
-| 🔄 **手动 ZIP 升级与回滚** | 不自动检测；输入 R2 / HTTP / HTTPS 下载直链，校验 ZIP 及全部运行文件后切换完整版本，保留上一版供回滚 |
+| 🔄 **手动 ZIP 升级与回滚** | 在网页上传本地 ZIP。设备校验文件后切换完整版本并保留上一版供回滚 |
 | 🔐 **全站登录保护** | 账号密码登录（cookie 记住 30 天），页面/视频流/缩略图/下载/API 全部拦截；支持 HTTP Basic 便于脚本；同 IP 连错 8 次锁 5 分钟；右上角一键退出 |
 | 🔔 **飞书推送** | 哨兵触发后自动把时间 / 位置 / 触发原因 / 触发镜头 + **触发那一帧画面** 推到飞书（默认**自建应用私聊，只有本人可见**；也可用群机器人 webhook），可推**触发那一路的短视频**或封面卡片，带「查看录像」按钮 |
 | 🔔 **QQ 官方机器人推送** | AppID / AppSecret + 接收 OpenID，支持单聊、群聊、文字、封面及视频；本地媒体直接上传 QQ，无需公网服务 |
@@ -208,7 +212,7 @@ sh install.sh --size 64 --port 8080 --archive /archive
 | 📂 文件 | **车机U盘**：浏览/上传/下载/删除 U 盘任意目录（含根目录）；**归档区**：浏览 F50 内部文件 |
 | 🔔 推送 | 选择 QQ 官方机器人或飞书，推送新增事件；见 [QQ 配置及车辆文件使用说明](docs/FEATURES.md) 和 [飞书推送](#飞书推送) |
 | 🌐 **多语言** | 界面支持中/英/德/法/意/西/荷/俄/日/韩，设置 → 语言 里切换，保存在本机浏览器 |
-| 🔄 更新 | 显示本机版本，输入 ZIP URL 后手动下载并更新，支持回滚（见 [手动 ZIP 更新](#手动-zip-更新r2)） |
+| 🔄 更新 | 显示本机版本，上传本地 ZIP 并更新，支持回滚（见 [离线 ZIP 更新](#离线-zip-更新)） |
 
 **锁车音转换**：项目自动输出 44.1kHz / 16-bit / 单声道 PCM WAV，最长 5 秒、小于 1 MB，保存为 USB 根目录的 `LockChime.wav`。这是本项目采用的输出配置；车机端在 Toybox → Boombox → Lock Sound 选择 USB，需要车辆支持该功能。详见 [使用说明](docs/FEATURES.md)。
 
@@ -255,7 +259,7 @@ TSF_BOX_MAX_GB=12                # 单个分类体积上限 (GB), 0 = 不按体�
 # TSF_USB_LOCK=/tmp/tesla-sentry-usb.lock  # 所有访问镜像的进程必须使用同一锁路径
 ```
 
-旧的 `TSF_OTA_ENABLED`、`TSF_OTA_REPO`、`TSF_OTA_REF`、`TSF_OTA_SOURCES` 已不参与更新；不需要为 R2 配置访问密钥或修改设备更新源，直接使用可下载的 ZIP URL。
+旧的 `TSF_OTA_ENABLED`、`TSF_OTA_REPO`、`TSF_OTA_REF`、`TSF_OTA_SOURCES` 已不参与更新；2.10.2 起直接上传本地更新 ZIP。
 
 ### 已有安装升级
 
@@ -271,24 +275,13 @@ TSF_BOX_MAX_GB=12                # 单个分类体积上限 (GB), 0 = 不按体�
 
 从旧版首次升级到模块化版本应重跑安装器，以更新服务的配置加载方式。只更新 Python 文件不会重写既有的服务定义。通用 `rc.local` 部署需确保旧进程退出，必要时重启设备。详细步骤见[部署文档](docs/DEPLOYMENT.md)。
 
-### 手动 ZIP 更新（R2）
+### 离线 ZIP 更新
 
-**2.9.0 起不会自动检测或下载更新。** 打开更新页只读取本机状态，不请求 GitHub 或 R2。
+打开 **设置 → 版本更新**，选择本地更新 ZIP，点击 **上传 ZIP 并更新**。可选填 `.sha256` 文件开头的 64 位校验值。设备校验并自检后切换版本、重启服务。配置、账号和录像会保留，也可以回滚到上一版。
 
-在源码目录生成更新包：
+在源码目录运行 `python3 tools/package_update.py` 可从当前构建产物生成专用 ZIP。压缩包最大 16 MiB，版本号须高于当前运行版本。
 
-```sh
-python3 tools/build.py
-python3 tools/package_update.py
-```
-
-将生成的 `dist/tesla-sentry-f50-2.10.1-update.zip` 上传到 R2，取得公开下载直链或私有对象的 GET 预签名 URL。网页 **设置 → 更新** 粘贴完整 URL，可选填 `.sha256` 文件中的 64 位校验值，然后点击 **下载 ZIP 并更新**。
-
-设备下载并检查 ZIP 格式、文件清单、每个文件的 SHA-256 和版本，运行自检后切换完整版本目录并重启服务。配置、账号、QQ / 飞书凭据及录像保留，上一完整版本可通过 **回滚到上一版本** 恢复。下载由 F50 服务端执行，不需要浏览器直接访问 R2，也不需要在设备保存 R2 密钥。
-
-只接受高于当前运行版本的包，同版本安装和直接降级会被拒绝。压缩包最大 16 MiB。不能使用 GitHub 源码 ZIP、普通目录压缩包或 `*-offline.tar.gz`；必须使用专用打包脚本。旧版 2.8.x 需先用前述 Mac 离线部署流程安装一次新机制。
-
-后续发新版，先用 `python3 tools/make_release.py 2.10.2 "更新说明"` 递增版本并构建，再运行 `python3 tools/package_update.py`。完整 R2 上传、局域网下载、校验和回滚说明见 [docs/UPDATES.md](docs/UPDATES.md)。
+2.9.0–2.10.1 仍使用 URL 输入框，可通过旧入口安装一次 2.10.2，或用 Mac 离线部署。完整步骤见 [离线上传 ZIP 更新](docs/UPDATES.md)。
 
 ### 开发与构建
 
@@ -505,9 +498,9 @@ USB 根目录/
 | `/api/upload/audio` | POST | 上传并转换锁车音（`file`, 可选 `start=0`, `duration=5`），返回文件名、时长与大小 |
 | `/api/audio` | GET | 待写入和已写入的音频列表 |
 | `/api/audio/setlockchime` | POST | 将历史队列音频实际转换为 LockChime.wav |
-| `/api/ota/status` | GET | 本机版本、手动 ZIP 模式、忙状态和回滚是否可用；不请求远端 |
+| `/api/ota/status` | GET | 本机版本、ZIP 上传模式、忙状态和回滚是否可用；不请求远端 |
 | `/api/ota/check?force=1` | GET | 旧客户端兼容接口，仅返回本机状态，force 不会触发远端请求 |
-| `/api/ota/apply` | POST | JSON `url` 为 ZIP 直链，可选 `sha256`；手动下载、校验、自检、切换版本并重启 |
+| `/api/ota/apply` | POST | 上传 ZIP 原始字节，类型为 `application/zip`，可选请求头 `X-Update-SHA256` |
 | `/api/notify` | GET | 推送渠道配置、就绪状态与最近结果；不返回应用密钥 |
 | `/api/notify/save` | POST | 保存配置；QQ 使用 `provider=qq`, `qq_app_id`, `qq_app_secret`, `qq_target_type=user/group`, `qq_openid`；密钥留空保留 |
 | `/api/notify/test` | POST | 向已保存渠道发送测试消息；QQ 无录像时也可测试 |
@@ -553,7 +546,7 @@ USB 根目录/
 在线同步只读镜像，不停止导出。挂载归档、文件管理和涂装上传会暂时停止车机访问，可能造成录制空窗；管理会话默认 5 分钟无操作后尝试恢复，操作完成应主动恢复导出。
 
 **Q：F50 访问不了 GitHub，还能使用和更新吗？**
-首次安装或从旧版切换新机制可用 Mac 离线部署脚本。2.9.0 起在更新页填 R2 等存储的 ZIP 直链即可手动升级，所有安装方式都不自动检测更新。本地录制、归档、回放和下载不依赖 GitHub；QQ / 飞书推送需要各自服务可达。
+首次安装或从旧版切换新机制可用 Mac 离线部署脚本。2.10.2 起在更新页上传本地 ZIP 即可升级。本地录制、归档、回放和下载不依赖 GitHub；QQ / 飞书推送需要各自服务可达。
 
 **Q：QQ 测试失败或收不到消息？**
 检查当前选择的渠道和已保存配置，确认填的是该 AppID 对应的 OpenID，并检查机器人状态、主动消息开关及平台权限。先用「仅文字」测试，依据页面返回的 QQ 错误码排查；无法联网时不会发送成功。

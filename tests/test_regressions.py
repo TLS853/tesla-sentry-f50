@@ -223,13 +223,13 @@ procd_set_param() {
             handler.do_GET()
         handler._json.assert_called_once_with({"SentryClips": []})
         handler.path = "/api/ota/apply"
-        body = b'{"url":"https://updates.example/release.zip"}'
-        handler.headers = {"Content-Length": str(len(body))}
+        body = b'zip bytes'
+        handler.headers = {"Content-Type": "application/zip", "Content-Length": str(len(body))}
         handler.rfile = io.BytesIO(body)
         handler._json.reset_mock()
         with patch.object(self.runtime.updates, "ota_apply", return_value=(True, "updated")) as apply:
             handler.do_POST()
-            apply.assert_called_once_with("https://updates.example/release.zip", "")
+            apply.assert_called_once_with(handler.rfile, len(body), "")
         handler._json.assert_called_once_with({"ok": True, "msg": "updated"})
         handler._gate.return_value = False
         with patch.object(self.runtime.updates, "ota_apply") as apply:

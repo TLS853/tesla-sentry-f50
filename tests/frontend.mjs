@@ -117,7 +117,7 @@ const updateRequests = [];
 context.fetch = async (url, options) => {
   updateRequests.push({ url, options });
   return { ok: true, json: async () => url === '/api/ota/status'
-    ? { ok: true, current: '2.9.0', mode: 'manual_zip', rollback_ready: true, busy: false }
+    ? { ok: true, current: '2.10.2', mode: 'upload_zip', rollback_ready: true, busy: false }
     : { ok: false, msg: 'test: package rejected' } };
 };
 context.stab('update');
@@ -125,16 +125,17 @@ await new Promise(resolve => setImmediate(resolve));
 assert.equal(updateRequests.length, 1);
 assert.equal(updateRequests[0].url, '/api/ota/status');
 assert.equal(element('upd-rb').style.display, '');
-element('upd-url').value = 'https://updates.example/release.zip?X-Amz-Signature=test-signature';
+const updateFile = {name: 'update.zip', size: 385000};
+element('upd-file').files = [updateFile];
 element('upd-sha').value = 'a'.repeat(64);
 await context.otaApply();
 assert.equal(updateRequests.length, 2);
 assert.equal(updateRequests[1].url, '/api/ota/apply');
-assert.deepEqual(JSON.parse(updateRequests[1].options.body), {
-  url: 'https://updates.example/release.zip?X-Amz-Signature=test-signature', sha256: 'a'.repeat(64),
-});
+assert.equal(updateRequests[1].options.body, updateFile);
+assert.equal(updateRequests[1].options.headers['Content-Type'], 'application/zip');
+assert.equal(updateRequests[1].options.headers['X-Update-SHA256'], 'a'.repeat(64));
 assert.equal(element('upd-go').disabled, false); // retry remains available on failure
-element('upd-url').value = 'file:///etc/passwd';
+element('upd-file').files = [];
 await context.otaApply();
-assert.equal(updateRequests.length, 2); // invalid schemes never reach the update endpoint
-console.log('Frontend modules: startup without update checks, manual ZIP form, QQ settings and media checks passed');
+assert.equal(updateRequests.length, 2); // no upload without a selected file
+console.log('Frontend modules: startup without update checks, ZIP upload form, QQ settings and media checks passed');

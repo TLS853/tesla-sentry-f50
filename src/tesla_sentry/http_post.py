@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import urllib.parse
 import urllib.request
-from . import archive, auth, config, notifications, qqbot, transcode, updates, usb, vehicle_assets
+from . import archive, auth, config, notifications, qqbot, transcode, update_package, updates, usb, vehicle_assets
 
 class PostRoutesMixin:
 
@@ -139,17 +139,24 @@ class PostRoutesMixin:
 
 
     def _post_api_ota_apply(self, path):
+        content_type = self.headers.get("Content-Type", "").strip().lower()
+        if content_type != "application/zip":
+            self._json({"ok": False, "msg": "请刷新更新页并上传本地 ZIP 文件"}, 415)
+            return
+        if self.headers.get("Transfer-Encoding") is not None:
+            self._json({"ok": False, "msg": "ZIP 上传须提供文件长度"}, 400)
+            return
         try:
             length = int(self.headers.get("Content-Length", 0))
-            if not 0 < length <= 16384:
+            if length <= 0:
                 raise ValueError()
-            body = json.loads(self.rfile.read(length).decode("utf-8"))
-            if not isinstance(body, dict) or not isinstance(body.get("url"), str) or not isinstance(body.get("sha256", ""), str):
-                raise ValueError()
-        except (ValueError, UnicodeError, TypeError):
-            self._json({"ok": False, "msg": "请提交 JSON: url 为 ZIP 下载地址, sha256 可选"}, 400)
+        except ValueError:
+            self._json({"ok": False, "msg": "ZIP 文件为空或长度无效"}, 400)
             return
-        ok, msg = updates.ota_apply(body["url"].strip(), body.get("sha256", "").strip())
+        if length > update_package.MAX_ZIP_SIZE:
+            self._json({"ok": False, "msg": "更新 ZIP 超过 16 MiB"}, 413)
+            return
+        ok, msg = updates.ota_apply(self.rfile, length, self.headers.get("X-Update-SHA256", "").strip())
         self._json({"ok": ok, "msg": msg})
         return
 

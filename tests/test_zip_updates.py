@@ -1,14 +1,11 @@
-"""Manual ZIP updates, exercised against local HTTP and temporary release stores."""
+"""Offline ZIP uploads using local HTTP and temporary release stores."""
 import hashlib
-import http.server
 import io
 import json
-import os
 from pathlib import Path
 import runpy
 import stat
 import struct
-import threading
 import unittest
 import zipfile
 from unittest.mock import patch
@@ -32,32 +29,6 @@ class ZipUpdateTests(unittest.TestCase):
     def zip(self, version="9.0.0", release=None):
         release = release or self.release(version)
         return self.format.make_zip(release, {"version": version, "date": "2026-11-08", "notes": ["Local update test"]})
-
-    def download_server(self, routes):
-        requests = []
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                requests.append(self.path)
-                status, headers, body = routes.get(self.path.split("?", 1)[0], (404, {}, b"missing"))
-                self.send_response(status)
-                for key, value in headers.items():
-                    self.send_header(key, str(value))
-                self.end_headers()
-                self.wfile.write(body)
-
-            def log_message(self, *args):
-                pass
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-        thread.start()
-
-        def close():
-            server.shutdown()
-            server.server_close()
-            thread.join(2)
-        self.addCleanup(close)
-        return "http://%s:%s" % server.server_address, requests
 
     def rewrite(self, data, change=None, omit=None, extra=()):
         output = io.BytesIO()
@@ -123,73 +94,62 @@ class ZipUpdateTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "重复"):
             self.format.read_zip(duplicated_manifest)
 
-    def test_local_download_accepts_signed_query_and_redirect_without_extra_fetches(self):
-        data = self.zip()
-        base, requests = self.download_server({
-            "/redirect": (302, {"Location": "/release.zip?X-Amz-Signature=example-signature"}, b""),
-            "/release.zip": (200, {"Content-Length": len(data)}, data),
-        })
-        self.assertEqual(self.updates._download_zip(base + "/redirect"), data)
-        self.assertEqual(requests, ["/redirect", "/release.zip?X-Amz-Signature=example-signature"])
+    def apply(self, data, sha256="", length=None):
+        return self.updates.ota_apply(io.BytesIO(data), len(data) if length is None else length, sha256)
 
-    def test_download_rejects_partial_oversize_and_http_errors_without_leaking_query(self):
-        base, _requests = self.download_server({
-            "/partial": (200, {"Content-Length": 20}, b"short"),
-            "/large": (200, {"Content-Length": self.format.MAX_DOWNLOAD + 1}, b""),
-            "/denied": (403, {}, b"denied"),
-            "/range": (206, {}, b"partial"),
-            "/stream": (200, {}, b"12345"),
-        })
-        for path in ("/partial", "/large", "/denied", "/range"):
-            with self.assertRaises(ValueError) as error:
-                self.updates._download_zip(base + path + "?X-Amz-Signature=private-signature")
-            self.assertNotIn("private-signature", str(error.exception))
-        with patch.object(self.format, "MAX_DOWNLOAD", 4):
-            with self.assertRaisesRegex(ValueError, "超过"):
-                self.updates._download_zip(base + "/stream")
+    def test_incomplete_and_oversize_uploads_do_not_activate(self):
+        data = self.zip()
+        with patch.object(self.runtime.deployment, "install_release") as install:
+            self.assertIn("不完整", self.apply(data[:10], length=len(data))[1])
+            with patch.object(self.format, "MAX_ZIP_SIZE", 4):
+                self.assertIn("超过", self.apply(data)[1])
+            install.assert_not_called()
+        self.assertFalse(self.updates.ota_status()["busy"])
 
     def test_hash_and_version_rejection_leave_installation_untouched(self):
         future = self.zip()
-        with patch.object(self.updates, "_download_zip", return_value=future), \
-             patch.object(self.runtime.deployment, "install_release") as install, patch.object(self.updates, "_restart_later") as restart:
-            ok, message = self.updates.ota_apply("https://example.test/update.zip", "0" * 64)
+        with patch.object(self.runtime.deployment, "install_release") as install, \
+             patch.object(self.updates, "_restart_later") as restart:
+            ok, message = self.apply(future, "0" * 64)
             self.assertFalse(ok)
             self.assertIn("SHA-256", message)
+            for version in (self.updates.APP_VERSION, "0.1.0"):
+                self.assertFalse(self.apply(self.zip(version))[0])
             install.assert_not_called()
             restart.assert_not_called()
-        for version in (self.updates.APP_VERSION, "0.1.0"):
-            with patch.object(self.updates, "_download_zip", return_value=self.zip(version)), \
-                 patch.object(self.runtime.deployment, "install_release") as install:
-                self.assertFalse(self.updates.ota_apply("https://example.test/update.zip")[0])
-                install.assert_not_called()
 
-    def test_url_validation_and_failed_install_never_schedule_restart(self):
-        with patch.object(self.updates, "_download_zip") as download:
-            for url in ("", "file:///etc/passwd", "https://user:password@example.test/a.zip", "https://example.test/a.zip#fragment", "https://example.test/\n.zip"):
-                self.assertFalse(self.updates.ota_apply(url)[0])
-            download.assert_not_called()
+    def test_failed_install_never_schedules_restart(self):
         bad = self.release("9.0.0")
         content = "this is invalid Python ("
         bad["files"]["tesla-live-sync.py"] = {"content": content, "sha256": hashlib.sha256(content.encode()).hexdigest()}
-        with patch.object(self.updates, "_download_zip", return_value=self.zip(release=bad)), \
-             patch.object(self.updates, "_restart_later") as restart:
-            self.assertFalse(self.updates.ota_apply("https://example.test/update.zip")[0])
+        with patch.object(self.updates, "_restart_later") as restart:
+            self.assertFalse(self.apply(self.zip(release=bad))[0])
             self.assertFalse((Path(self.env["TSF_DIR"]) / "current").exists())
             restart.assert_not_called()
 
-    def test_http_status_and_invalid_apply_requests_cannot_start_download(self):
+    def test_http_status_and_rejected_legacy_url_requests_never_contact_network(self):
         server = self.server()
-        with patch.object(self.updates.urllib.request, "build_opener") as network:
+        with patch("urllib.request.build_opener") as network, patch.object(self.updates, "ota_apply") as apply:
             for path in ("/api/ota/status", "/api/ota/check", "/api/ota/check?force=1"):
                 status, _, body = self.request(server, "GET", path)
                 self.assertEqual(status, 200)
-                self.assertEqual(json.loads(body)["mode"], "manual_zip")
-            for body in ('{}', '[]', '{"url":12}', '{"url":"x","sha256":false}', 'invalid'):
-                status, _, _ = self.request(server, "POST", "/api/ota/apply", body, {"Content-Type": "application/json"})
-                self.assertEqual(status, 400)
+                self.assertEqual(json.loads(body)["mode"], "upload_zip")
+            old_body = json.dumps({"url": "https://updates.example/release.zip"})
+            status, _, body = self.request(server, "POST", "/api/ota/apply", old_body,
+                                           {"Content-Type": "application/json"})
+            self.assertEqual(status, 415)
+            self.assertIn("本地 ZIP", json.loads(body)["msg"])
+            status, _, _ = self.request(server, "POST", "/api/ota/apply", b"",
+                                         {"Content-Type": "application/zip"})
+            self.assertEqual(status, 400)
+            status, _, _ = self.request(server, "POST", "/api/ota/apply", b"",
+                                         {"Content-Type": "application/zip",
+                                          "Content-Length": str(self.format.MAX_ZIP_SIZE + 1)})
+            self.assertEqual(status, 413)
+            apply.assert_not_called()
             network.assert_not_called()
 
-    def test_real_http_zip_update_and_rollback_preserve_user_data_and_signed_url_privacy(self):
+    def test_http_upload_and_rollback_preserve_user_data(self):
         store = Path(self.env["TSF_DIR"])
         self.runtime.deployment.install_release(json.dumps(self.release("2.8.0")).encode(), str(store))
         previous = (store / "current").resolve()
@@ -198,41 +158,37 @@ class ZipUpdateTests(unittest.TestCase):
         for path, content in sentinels.items():
             path.write_bytes(content)
         data = self.zip()
-        base, requests = self.download_server({"/update.zip": (200, {"Content-Length": len(data)}, data)})
         server = self.server()
-        body = json.dumps({"url": base + "/update.zip?X-Amz-Signature=private-signature",
-                           "sha256": hashlib.sha256(data).hexdigest()})
-        with patch.object(self.updates, "_restart_later") as restart, \
-             patch.dict(self.runtime.config.environment, {"TSF_OTA_ENABLED": "0"}):
-            status, _, result = self.request(server, "POST", "/api/ota/apply", body, {"Content-Type": "application/json"})
+        digest = hashlib.sha256(data).hexdigest()
+        with patch.object(self.updates, "_restart_later") as restart, patch("urllib.request.build_opener") as network:
+            status, _, result = self.request(server, "POST", "/api/ota/apply", data,
+                                             {"Content-Type": "application/zip", "X-Update-SHA256": digest})
             self.assertEqual(status, 200, result)
             self.assertTrue(json.loads(result)["ok"], result)
             self.assertNotEqual((store / "current").resolve(), previous)
             self.assertTrue(self.updates.ota_status()["rollback_ready"])
             self.assertFalse((store / "sentry-viewer.bak.py").exists())
-            history = Path(self.updates.OTA_STATE).read_text()
-            self.assertNotIn("private-signature", history)
-            self.assertNotIn("http", history)
+            history = json.loads(Path(self.updates.OTA_STATE).read_text())
+            self.assertEqual(history["sha256"], digest)
             self.assertTrue(self.updates.ota_rollback()[0])
             self.assertEqual((store / "current").resolve(), previous)
             self.assertEqual(restart.call_count, 2)
+            network.assert_not_called()
         for path, content in sentinels.items():
             self.assertEqual(path.read_bytes(), content)
-        self.assertEqual(requests, ["/update.zip?X-Amz-Signature=private-signature"])
 
     def test_busy_usb_and_optional_history_failure_have_correct_activation_result(self):
         data = self.zip()
         lease = self.runtime.locking.ProcessLock(self.env["TSF_USB_LOCK"])
         lease.acquire()
         try:
-            with patch.object(self.updates, "_download_zip", return_value=data), patch.object(self.updates, "_restart_later") as restart:
-                self.assertFalse(self.updates.ota_apply("https://example.test/update.zip")[0])
+            with patch.object(self.updates, "_restart_later") as restart:
+                self.assertFalse(self.apply(data)[0])
                 restart.assert_not_called()
         finally:
             lease.release()
-        with patch.object(self.updates, "_download_zip", return_value=data), \
-             patch.object(self.runtime.deployment, "install_release"), \
+        with patch.object(self.runtime.deployment, "install_release"), \
              patch.object(self.runtime.deployment, "atomic_json", side_effect=OSError("history is unavailable")), \
              patch.object(self.updates, "_restart_later") as restart:
-            self.assertTrue(self.updates.ota_apply("https://example.test/update.zip")[0])
+            self.assertTrue(self.apply(data)[0])
             restart.assert_called_once()
