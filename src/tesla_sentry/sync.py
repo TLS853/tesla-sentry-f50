@@ -95,7 +95,7 @@ def iter_media(exfat, dir_entry, prefix=()):
     if not dir_entry or not dir_entry.is_dir:
         return
     try:
-        entries = exfat.list_dir(dir_entry.cluster, dir_entry.size)
+        entries = exfat.list_subdir(dir_entry)
     except Exception as e:
         log("读取目录失败 %s: %s" % (dir_entry.name, e))
         return
@@ -136,7 +136,7 @@ def scan(exfat):
     cam = exfat.find(root, "TeslaCam")
     if not cam or not cam.is_dir:
         return found
-    cat_list = exfat.list_dir(cam.cluster, cam.size)
+    cat_list = exfat.list_subdir(cam)
     for cat in CATS:
         catdir = exfat.find(cat_list, cat)
         if not catdir or not catdir.is_dir:
@@ -144,7 +144,7 @@ def scan(exfat):
         if cat == "RecentClips":
             # 平铺文件: 按文件名时间戳分组, 让网页能按事件展示
             try:
-                items = exfat.list_dir(catdir.cluster, catdir.size)
+                items = exfat.list_subdir(catdir)
             except Exception:
                 continue
             for e in items:
@@ -218,11 +218,11 @@ def dump(exfat):
         print("! 没有 TeslaCam 目录")
         return
     for cat in CATS:
-        c = exfat.find(exfat.list_dir(cam.cluster, cam.size), cat)
+        c = exfat.find(exfat.list_subdir(cam), cat)
         if not c:
             print("%s: 不存在" % cat)
             continue
-        items = exfat.list_dir(c.cluster, c.size)
+        items = exfat.list_subdir(c)
         print("%s: %d 项" % (cat, len(items)))
         for it in items[:8]:
             print("   %s %-40s size=%d" % ("DIR " if it.is_dir else "FILE", it.name, it.size))

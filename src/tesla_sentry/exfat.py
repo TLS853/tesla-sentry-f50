@@ -3,6 +3,40 @@ import os
 import struct
 import time
 
+
+def _partitions(fd, disk_size, mbr):
+    """Yield bounded (offset, length) pairs from a disk image's partition table."""
+    if mbr[510:512] != b"\x55\xaa":
+        return
+
+    for sector in (512, 4096):
+        header = os.pread(fd, sector, sector)
+        if len(header) < 92 or header[:8] != b"EFI PART":
+            continue
+        table_lba, count, entry_size = struct.unpack_from("<QII", header, 72)
+        start, size = table_lba * sector, count * entry_size
+        if start < 2 * sector or entry_size < 128 or not 0 < size <= 4 * 1024 * 1024:
+            continue
+        if start + size > disk_size:
+            continue
+        table = os.pread(fd, size, start)
+        for offset in range(0, len(table) - entry_size + 1, entry_size):
+            if not any(table[offset:offset + 16]):
+                continue
+            first, last = struct.unpack_from("<QQ", table, offset + 32)
+            if 0 < first <= last and (last + 1) * sector <= disk_size:
+                yield first * sector, (last - first + 1) * sector
+        return
+
+    for offset in range(446, 510, 16):
+        if mbr[offset + 4] != 0x07:  # Microsoft basic data (including exFAT)
+            continue
+        first, count = struct.unpack_from("<II", mbr, offset + 8)
+        for sector in (512, 4096):
+            if first and count and (first + count) * sector <= disk_size:
+                yield first * sector, count * sector
+
+
 def dos_time(raw):
     """exFAT 32bit 时间 → epoch 近似值"""
     if not raw:
@@ -47,8 +81,16 @@ class ExFat:
             self.fd_ino = stat.st_ino
             self.fd_dev = stat.st_dev
             vbr = os.pread(self.fd, 512, 0)
+            self.volume_offset = 0
+            capacity = stat.st_size
             if len(vbr) < 512 or vbr[3:11] != b"EXFAT   ":
-                raise ValueError("不是 exFAT 卷: %s" % path)
+                for offset, length in _partitions(self.fd, stat.st_size, vbr):
+                    candidate = os.pread(self.fd, 512, offset)
+                    if len(candidate) == 512 and candidate[3:11] == b"EXFAT   ":
+                        self.volume_offset, capacity, vbr = offset, length, candidate
+                        break
+                else:
+                    raise ValueError("镜像中未找到 exFAT 卷: %s" % path)
             self.part_offset = struct.unpack_from("<Q", vbr, 64)[0]
             self.vol_len = struct.unpack_from("<Q", vbr, 72)[0]
             self.fat_offset = struct.unpack_from("<I", vbr, 80)[0]
@@ -70,7 +112,7 @@ class ExFat:
 
             if not self.cluster_count or not 2 <= self.root_cluster < self.cluster_count + 2:
                 raise ValueError("invalid exFAT root cluster")
-            if self.vol_len * self.bytes_per_sector > stat.st_size:
+            if self.vol_len * self.bytes_per_sector > capacity:
                 raise ValueError("truncated exFAT volume")
         except BaseException:
             self.close()
@@ -78,8 +120,10 @@ class ExFat:
 
     # ---------- 底层读取 ----------
     def pread(self, n, off):
-        out = os.pread(self.fd, n, off)
-        return out
+        size = self.vol_len * self.bytes_per_sector
+        if off < 0 or off >= size:
+            return b""
+        return os.pread(self.fd, min(n, size - off), self.volume_offset + off)
 
     def cluster_off(self, cluster):
         return self.heap_byte + (cluster - 2) * self.cluster_size
@@ -143,10 +187,10 @@ class ExFat:
             cs = (cs + b) & 0xFFFF
         return cs
 
-    def list_dir(self, cluster, size=0):
+    def list_dir(self, cluster, size=0, no_fat_chain=False):
         """解析目录簇链, 返回 Entry 列表"""
         if size > 0:
-            clist = self.clusters_for(Entry("", True, cluster, size, size, 0, False, True))
+            clist = self.clusters_for(Entry("", True, cluster, size, size, 0, no_fat_chain, True))
         else:
             clist = self.chain(cluster, 64)
         data = b"".join(self.read_cluster(c) for c in clist)
@@ -191,6 +235,9 @@ class ExFat:
             entries.append(Entry(name, bool(attrs & 0x10), first, size_, vdl, mtime, no_chain, ok))
             i = set_end
         return entries
+
+    def list_subdir(self, entry):
+        return self.list_dir(entry.cluster, entry.size, entry.no_fat_chain)
 
     def find(self, entries, name):
         low = name.lower()

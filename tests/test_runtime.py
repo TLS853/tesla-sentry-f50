@@ -171,6 +171,82 @@ class RuntimeTests(unittest.TestCase):
             self.assertEqual(volume.list_dir(2), [])
         self.assertIsNone(volume.fd)
 
+    def test_live_sync_recovers_recording_in_partitioned_exfat(self):
+        sector = 512
+        volume = bytearray(32 * sector)
+        volume[3:11] = b"EXFAT   "
+        struct.pack_into("<QQIIIIII", volume, 64, 2048, 32, 1, 1, 2, 30, 2, 0)
+        volume[108:111] = bytes((9, 0, 1))
+        struct.pack_into("<I", volume, sector + 2 * 4, 0xFFFFFFFF)
+
+        def entry(name, cluster, length, directory=False):
+            encoded = name.encode("utf-16le")
+            names = [encoded[i:i + 30] for i in range(0, len(encoded), 30)]
+            data = bytearray(32 * (2 + len(names)))
+            data[0:2] = bytes((0x85, 1 + len(names)))
+            struct.pack_into("<H", data, 4, 0x10 if directory else 0)
+            data[32:34] = bytes((0xC0, 3))
+            data[35] = len(name)
+            struct.pack_into("<Q", data, 40, length)
+            struct.pack_into("<IQ", data, 52, cluster, length)
+            for i, part in enumerate(names, 2):
+                data[32 * i] = 0xC1
+                data[32 * i + 2:32 * i + 2 + len(part)] = part
+            struct.pack_into("<H", data, 2, self.runtime.exfat.ExFat._set_checksum(data))
+            return data
+
+        event = "2026-11-14_16-00-00"
+        clip = b"completed recording"
+        event_dir = bytes((0x05,)) * sector + entry("front.mp4", 7, len(clip))
+        for cluster, data in [(2, entry("TeslaCam", 3, sector, True)),
+                              (3, entry("SavedClips", 4, sector, True)),
+                              (4, entry(event, 5, sector * 2, True)),
+                              (5, event_dir), (7, clip)]:
+            volume[cluster * sector:cluster * sector + len(data)] = data
+
+        def disk_image(layout):
+            if layout == "raw":
+                return volume
+            first_lba = 2048
+            disk = bytearray(first_lba * sector)
+            disk[510:512] = b"\x55\xaa"
+            if layout == "mbr":
+                disk[450] = 0x07
+                struct.pack_into("<II", disk, 454, first_lba, 32)
+            else:
+                import zlib
+                disk[450] = 0xEE
+                struct.pack_into("<II", disk, 454, 1, first_lba + 31)
+                table = bytearray(4 * 128)
+                table[0:16] = bytes.fromhex("a2a0d0ebe5b9334487c068b6b72699c7")
+                table[16:32] = bytes(range(16))
+                struct.pack_into("<QQ", table, 32, first_lba, first_lba + 31)
+                header = bytearray(92)
+                header[:8] = b"EFI PART"
+                struct.pack_into("<IIIIQQQQ", header, 8, 0x10000, len(header), 0, 0,
+                                 1, first_lba + 33, 34, first_lba + 31)
+                struct.pack_into("<QIII", header, 72, 2, 4, 128, zlib.crc32(table))
+                struct.pack_into("<I", header, 16, zlib.crc32(header))
+                disk[sector:sector + len(header)] = header
+                disk[2 * sector:3 * sector] = table
+                return disk + volume + bytearray(2 * sector)
+            return disk + volume
+
+        for layout in ("raw", "mbr", "gpt"):
+            with self.subTest(layout=layout):
+                path = self.root / (layout + ".img")
+                path.write_bytes(disk_image(layout))
+                dest = self.archive / "SavedClips" / event / "front.mp4"
+                if dest.exists():
+                    dest.unlink()
+                with self.runtime.exfat.ExFat(str(path)) as reader, \
+                     patch.object(self.runtime.sync, "save_state"), \
+                     patch.object(self.runtime.sync, "log"):
+                    state = {}
+                    self.assertEqual(self.runtime.sync.do_sync(reader, state), (0, 0))
+                    self.assertEqual(self.runtime.sync.do_sync(reader, state), (1, len(clip)))
+                self.assertEqual(dest.read_bytes(), clip)
+
     def test_package_import_graph_has_no_cycles_or_implicit_shared_globals(self):
         package = ROOT / "src/tesla_sentry"
         edges = {}

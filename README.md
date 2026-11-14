@@ -6,7 +6,7 @@
 >
 > 没有 USB Device 模式的机器也可运行纯网页查看器：把 `TSF_ARCHIVE` 指向包含 `SentryClips/`、`SavedClips/`、`RecentClips/` 的目录，例如 `TSF_ARCHIVE=/path/to/TeslaCam python3 sentry-viewer.py --host 127.0.0.1`。完整部署、手动复制归档和仅网页三种用法见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
 
-> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前功能版本 **2.10.0**，开发和发布分支为 **`codex/modular-runtime`**。设备不自动检查更新，只在你输入 ZIP URL 并点击更新时下载，可使用 R2 直链。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
+> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前版本 **2.10.1**，开发和发布分支为 **`codex/modular-runtime`**。设备不自动检查更新，只在你输入 ZIP URL 并点击更新时下载，可使用 R2 直链。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-aarch64%20%7C%20armv7%20%7C%20x86-blue.svg)](#硬件要求)
@@ -25,6 +25,10 @@
 - [已有安装升级](#已有安装升级)
 - [手动 ZIP 更新与 R2 发布](docs/UPDATES.md)
 - [部署细节](docs/DEPLOYMENT.md) · [新增功能完整说明](docs/FEATURES.md) · [模块结构](docs/MODULES.md)
+
+## 2.10.1 更新
+
+- 在线同步可以只读定位 MBR 或 GPT 分区中的 exFAT 卷，并完整扫描连续分配的多簇目录，修复这两种布局下漏同步录像的问题。
 
 ## 2.10.0 更新
 
@@ -152,7 +156,7 @@ sh tools/deploy_f50.sh root@设备IP
 sh tools/deploy_f50.sh root@设备IP --dir /大容量分区/tesla-sentry --archive /大容量分区/archive --size 64 --port 8080
 ```
 
-非默认 SSH 端口使用 `SSH_PORT=2222 sh tools/deploy_f50.sh root@设备IP`。也可用 `python3 tools/package_release.py` 单独生成 `dist/tesla-sentry-f50-2.10.0-offline.tar.gz`；手动上传、校验及安装步骤见[离线部署说明](docs/DEPLOYMENT.md)。
+非默认 SSH 端口使用 `SSH_PORT=2222 sh tools/deploy_f50.sh root@设备IP`。也可用 `python3 tools/package_release.py` 单独生成 `dist/tesla-sentry-f50-2.10.1-offline.tar.gz`；手动上传、校验及安装步骤见[离线部署说明](docs/DEPLOYMENT.md)。
 
 离线安装跳过字体下载；所有安装方式都不自动检查更新。QQ / 飞书推送仍需 F50 能访问各自官方服务，与能否访问 GitHub 无关。
 
@@ -278,13 +282,13 @@ python3 tools/build.py
 python3 tools/package_update.py
 ```
 
-将生成的 `dist/tesla-sentry-f50-2.10.0-update.zip` 上传到 R2，取得公开下载直链或私有对象的 GET 预签名 URL。网页 **设置 → 更新** 粘贴完整 URL，可选填 `.sha256` 文件中的 64 位校验值，然后点击 **下载 ZIP 并更新**。
+将生成的 `dist/tesla-sentry-f50-2.10.1-update.zip` 上传到 R2，取得公开下载直链或私有对象的 GET 预签名 URL。网页 **设置 → 更新** 粘贴完整 URL，可选填 `.sha256` 文件中的 64 位校验值，然后点击 **下载 ZIP 并更新**。
 
 设备下载并检查 ZIP 格式、文件清单、每个文件的 SHA-256 和版本，运行自检后切换完整版本目录并重启服务。配置、账号、QQ / 飞书凭据及录像保留，上一完整版本可通过 **回滚到上一版本** 恢复。下载由 F50 服务端执行，不需要浏览器直接访问 R2，也不需要在设备保存 R2 密钥。
 
 只接受高于当前运行版本的包，同版本安装和直接降级会被拒绝。压缩包最大 16 MiB。不能使用 GitHub 源码 ZIP、普通目录压缩包或 `*-offline.tar.gz`；必须使用专用打包脚本。旧版 2.8.x 需先用前述 Mac 离线部署流程安装一次新机制。
 
-后续发新版，先用 `python3 tools/make_release.py 2.10.1 "更新说明"` 递增版本并构建，再运行 `python3 tools/package_update.py`。完整 R2 上传、局域网下载、校验和回滚说明见 [docs/UPDATES.md](docs/UPDATES.md)。
+后续发新版，先用 `python3 tools/make_release.py 2.10.2 "更新说明"` 递增版本并构建，再运行 `python3 tools/package_update.py`。完整 R2 上传、局域网下载、校验和回滚说明见 [docs/UPDATES.md](docs/UPDATES.md)。
 
 ### 开发与构建
 
