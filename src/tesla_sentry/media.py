@@ -29,50 +29,66 @@ def _proc_running(needle):
     return False
 
 
-def disk_usage():
-    """存储条数据: 优先取车载U盘 (镜像内部 exFAT, 挂载时); 未挂载回落到归档盘 (loop 镜像所在)"""
-    for p, usb in ((usb_service.MNT, True), (config.settings.archive, False)):
-        if usb and not os.path.ismount(usb_service.MNT):
-            # MNT 目录本身常驻 (tmpfs), 未挂载镜像时 statvfs 会读到 tmpfs 的
-            # 小容量 (如 0.7G), 必须跳过回落到归档盘
-            continue
-        try:
-            st = os.statvfs(p)
-            if st.f_blocks <= 0:
-                continue
-            fr = st.f_frsize
-            return {"src": "usb" if usb else "loop",
-                    "used": (st.f_blocks - st.f_bavail) * fr, "total": st.f_blocks * fr}
-        except OSError:
-            continue
+def filesystem_usage(path):
+    try:
+        st = os.statvfs(path)
+    except OSError:
+        return None
+    if st.f_blocks > 0:
+        return {"used": (st.f_blocks - st.f_bfree) * st.f_frsize, "total": st.f_blocks * st.f_frsize}
     return None
 
 
 def live_status():
     """车机在线只读同步的健康状态 (给页面显示心跳)"""
     running = _proc_running(LIVE_SCRIPT)
-    pending = 0
+    pending, health = 0, {}
     try:
         with open(LIVE_STATE) as f:
-            pending = len(json.load(f).get("__pending__", {}))
+            state = json.load(f)
+        if isinstance(state, dict):
+            pending = len(state.get("__pending__") or {})
+            if isinstance(state.get("health"), dict):
+                health = state["health"]
     except Exception:
         pass
     ago, last = None, ""
+    now = time.time()
     try:
         st = os.stat(LIVE_LOG)
-        ago = int(time.time() - st.st_mtime)
+        ago = max(0, int(now - st.st_mtime))
         with open(LIVE_LOG, "rb") as f:
             f.seek(max(0, st.st_size - 2048))
             lines = [l for l in f.read().decode("utf-8", "replace").splitlines() if l.strip()]
-        for line in reversed(lines):
-            if "已同步" in line:
-                last = line.split("] ", 1)[-1]
-                break
-        if not last and lines:
+        if lines:
             last = lines[-1].split("] ", 1)[-1]
     except Exception:
         pass
-    return {"running": running, "pending": pending, "ago": ago, "last": last, "disk": disk_usage()}
+    disk = filesystem_usage(config.settings.archive)
+    mounted = os.path.ismount(usb_service.MNT)
+    usb = filesystem_usage(usb_service.MNT) if mounted else None
+    image = None
+    try:
+        st = os.stat(config.settings.image)
+        image = {"allocated": st.st_blocks * 512, "capacity": st.st_size,
+                 "modified": int(st.st_mtime)}
+    except OSError:
+        pass
+    interval = int(config.get("TSF_LIVE_INTERVAL", "15"))
+    phase = health.get("phase", "starting")
+    heartbeat = health.get("heartbeat")
+    if not running:
+        phase = "stopped"
+    elif mounted:
+        phase = "managed"
+    elif isinstance(heartbeat, (int, float)) and now - heartbeat > max(interval * 4, 120):
+        phase = "stale"
+    elif phase in ("empty", "ready") and image and 0 <= now - image["modified"] < interval * 2:
+        phase = "writing"
+    legacy_disk = usb or disk
+    return {"running": running, "pending": pending, "ago": ago, "last": last,
+            "sync": dict(health, phase=phase), "storage": {"disk": disk, "usb": usb, "image": image},
+            "disk": dict(legacy_disk, src="usb" if usb else "loop") if legacy_disk else None}
 
 
 def active_skin():

@@ -59,7 +59,11 @@ async function main() {
       { name: 'desktop-english', width: 1340, height: 1000, theme: 'dark', language: 'en' },
     ]) {
       const context = await browser.newContext({ viewport: { width: view.width, height: view.height }, locale: view.language === 'en' ? 'en-US' : 'zh-CN', timezoneId: 'Asia/Shanghai', reducedMotion: 'reduce' });
-      await context.addInitScript(settings => { localStorage.setItem('tsf_theme', settings.theme); localStorage.setItem('tsf_lang', settings.language || 'zh'); }, view);
+      await context.addInitScript(settings => {
+        localStorage.setItem('tsf_theme', settings.theme);
+        localStorage.setItem('tsf_lang', settings.language || 'zh');
+        localStorage.setItem('tsf-saver', 'on');
+      }, view);
       const page = await context.newPage(), errors = [], requests = [];
       page.on('pageerror', error => errors.push(error.message));
       page.on('request', request => requests.push({ url: request.url(), method: request.method() }));
@@ -67,15 +71,21 @@ async function main() {
         const pathname = new URL(route.request().url()).pathname;
         let data = { ok: true };
         if (pathname === '/api/events') data = events;
-        else if (pathname === '/api/live') data = { running: true, pending: 0, ago: 3, disk: { src: 'loop', total: 256 * 1073741824, used: 82.4 * 1073741824 } };
+        else if (pathname === '/api/live') data = { running: true, pending: 2,
+          sync: { phase: 'copy_error', detail: 'Demo: archive write failed', last_success: 1794100000 },
+          storage: { disk: { total: 256 * 1073741824, used: 82.4 * 1073741824 },
+            image: { capacity: 64 * 1073741824, allocated: 24.6 * 1073741824 } } };
         else if (pathname === '/api/skin') return route.fulfill({ contentType: 'text/css', body: '' });
         else if (pathname === '/api/skins') data = { skins: [], active: '' };
         else if (pathname === '/api/audio') data = { queue: [], done: [] };
         else if (pathname === '/api/usb/browse') data = { ok: false, attached: false, dirs: [], files: [] };
         else if (pathname === '/api/notify') data = { provider: 'qq', mode: 'dm', qq_target_type: 'user', media: 'thumb', quality: '480p', delay: 20, vdur: 30, enabled: false };
         else if (pathname === '/api/auth/info') data = { on: true, user: 'admin' };
-        else if (pathname === '/api/telemetry') data = { ok: false };
-        else if (pathname === '/api/ota/status') data = { current: '2.10.2', busy: false, rollback_ready: true, mode: 'upload_zip' };
+        else if (pathname === '/api/telemetry') data = { ok: true, fps: 30, count: 120,
+          max_speed: 72, avg_speed: 43, brake_ratio: 5,
+          frames: [[0, 'D', 72, 37.5, -18.5, 1, 3, 2, 31.25, 121.5, 180, 0.5, -0.75, 9.8, 1, '4267'],
+                   [0.5, 'D', 46, 0, 1.5, 0, 0, 0, 31.25, 121.5, 180, 0.0, -0.25, 9.8, 1, '4282']] };
+        else if (pathname === '/api/ota/status') data = { current: '2.11.0', busy: false, rollback_ready: true, mode: 'upload_zip' };
         else if (pathname === '/api/ota/apply') data = { ok: false, msg: 'UI preview does not install updates' };
         return route.fulfill({ contentType: 'application/json', body: JSON.stringify(data) });
       });
@@ -98,6 +108,10 @@ async function main() {
         for (const background of ['--bg', '--panel']) assert.ok(contrast(colors[foreground], colors[background]) >= 4.5, view.name + ': text contrast ' + foreground);
       }
       assert.ok(contrast('#ffffff', colors['--accent-fill']) >= 4.5, view.name + ': primary button contrast');
+      await page.locator('#sync-details summary').click();
+      assert.match(await page.locator('#sync-detail').innerText(), /archive write failed/);
+      assert.match(await page.locator('#sync-image').innerText(), /24\.6 GiB/);
+      assert.equal(await page.locator('#sync-pending').innerText(), '2');
       await page.screenshot({ path: path.join(output, view.name + '.png'), fullPage: true });
 
       await page.locator('#filters .chip').filter({ hasText: '1' }).first().click();
@@ -112,6 +126,35 @@ async function main() {
       await page.locator('.card').first().focus();
       await page.keyboard.press('Enter');
       assert.equal(await page.locator('#player').evaluate(el => el.classList.contains('open')), true);
+      await page.locator('#tp-spd').filter({ hasText: '72' }).waitFor();
+      assert.equal(await page.locator('#tp-throttle').innerText(), '37.5%');
+      assert.equal(await page.locator('.tp-signals .on').count(), 2);
+      assert.equal(await page.locator('#vgrid video').count(), 1);
+      assert.equal(await page.locator('#vgrid video').getAttribute('src'), null);
+      assert.equal(requests.filter(r => new URL(r.url).pathname.startsWith('/media/')).length, 0);
+      await page.locator('#tp-details summary').click();
+      assert.match(await page.locator('#tp-rows').innerText(), /31\.250000/);
+      assert.match(await page.locator('#tp-rows').innerText(), /4267/);
+      assert.match(await page.locator('#tp-rows').innerText(), /180°/);
+      await page.locator('#tp-details summary').click();
+      await page.locator('#startmask').scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(output, view.name + '-instruments.png') });
+      const playing = page.waitForRequest(r => new URL(r.url()).pathname.startsWith('/media/'));
+      await page.locator('#startmask').click();
+      assert.match((await playing).url(), /-front\.mp4\?q=360p&strict=1/);
+      if (process.env.TSF_UI_VIDEO) {
+        await page.locator('#tp-spd').filter({hasText: '46'}).waitFor();
+        await page.locator('#ppbtn').click();
+      }
+      const mediaRequests = () => requests.filter(r => new URL(r.url).pathname.startsWith('/media/')).length;
+      const played = mediaRequests();
+      await page.locator('#camera-choices [data-cam="back"]').click();
+      assert.equal(await page.locator('#vgrid .vcell').getAttribute('data-cam'), 'back');
+      assert.equal(await page.locator('#vgrid video').getAttribute('src'), null);
+      await page.locator('#camera-choices [data-cam=""]').click();
+      assert.equal(await page.locator('#vgrid video').count(), 4);
+      assert.equal(await page.locator('#vgrid video[src]').count(), 0);
+      assert.equal(mediaRequests(), played);
       await page.locator('.pdl').click();
       assert.equal(await page.locator('#expp').evaluate(el => el.classList.contains('open')), true);
       await page.locator('#expp .x').click();
@@ -128,7 +171,7 @@ async function main() {
         if (tab === 'notify') await page.screenshot({ path: path.join(output, view.name + '-notify.png') });
       }
       await page.locator('#st-update').click();
-      await page.locator('#upd-cur').filter({ hasText: '2.10.2' }).waitFor();
+      await page.locator('#upd-cur').filter({ hasText: '2.11.0' }).waitFor();
       await page.locator('#upd-file').setInputFiles({ name: 'update.zip', mimeType: 'application/zip', buffer: Buffer.from('test ZIP bytes') });
       await page.locator('#upd-sha').fill('bad-hash');
       await page.locator('#upd-go').click();

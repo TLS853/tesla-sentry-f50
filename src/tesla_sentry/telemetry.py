@@ -3,6 +3,7 @@
 from . import config
 import hashlib
 import json
+import math
 import os
 import struct
 import threading
@@ -66,27 +67,24 @@ def _strip_emulation(b):
 
 
 def _mp4_video_samples(fp, max_samples=4000):
-    """解析 moov, 返回 [(offset, size), ...] 与 lenSize; 失败返回 None"""
-    with open(fp, "rb") as f:
-        d = f.read(4096)
-        f.seek(0, 2)
-        fsize = f.tell()
+    """Read the AVC or HEVC sample table and length prefix size."""
+    fsize = os.path.getsize(fp)
 
     def boxes(buf, start, end):
         out = []
         i = start
         while i + 8 <= end:
-            if i + 8 > len(buf) and len(buf) < fsize:
-                return None  # 需要 moov 全量, 由调用方重新读
             size = struct.unpack(">I", buf[i:i + 4])[0]
             typ = buf[i + 4:i + 8]
             hdr = 8
             if size == 1:
+                if i + 16 > end:
+                    break
                 size = struct.unpack(">Q", buf[i + 8:i + 16])[0]
                 hdr = 16
             elif size == 0:
                 size = end - i
-            if size < hdr:
+            if size < hdr or i + size > end:
                 break
             out.append((typ, i + hdr, i + size))
             i += size
@@ -105,13 +103,18 @@ def _mp4_video_samples(fp, max_samples=4000):
             typ = hdr[4:8]
             hsz = 8
             if size == 1:
-                size = struct.unpack(">Q", f.read(8))[0]
+                ext = f.read(8)
+                if len(ext) != 8:
+                    break
+                size = struct.unpack(">Q", ext)[0]
                 hsz = 16
             elif size == 0:
                 size = fsize - pos
-            if size < hsz:
+            if size < hsz or pos + size > fsize:
                 break
             if typ == b"moov":
+                if size > 16 * 1024 * 1024:
+                    return None
                 moov_rng = (pos + hsz, pos + size)
                 break
             pos += size
@@ -142,33 +145,40 @@ def _mp4_video_samples(fp, max_samples=4000):
         if not r3:
             continue
         stsd = find1(b"stsd", r3[0], r3[1])
-        if stsd and moov.find(b"avcC", stsd[0], stsd[1]) > 0:
-            stbl = r3
+        if not stsd:
+            continue
+        for codec, name, index in (("avc", b"avcC", 8), ("hevc", b"hvcC", 25)):
+            box = moov.find(name, stsd[0], stsd[1])
+            if box >= 0 and box + index < stsd[1]:
+                stbl = r3
+                len_size = (moov[box + index] & 3) + 1
+                break
+        if stbl:
             break
     if not stbl:
         return None
     s, e = stbl
-    stsd = find1(b"stsd", s, e)
-    avc = moov.find(b"avcC", stsd[0], stsd[1])
-    len_size = (moov[avc + 8] & 3) + 1
     a = find1(b"stsz", s, e)[0]
     uniform = struct.unpack(">I", moov[a + 4:a + 8])[0]
     n = struct.unpack(">I", moov[a + 8:a + 12])[0]
+    take = min(n, max_samples)
     if uniform:
-        sizes = [uniform] * n
-        buf = b""
+        sizes = [uniform] * take
     else:
-        take = min(n, max_samples * 2)
         sizes = list(struct.unpack(">%dI" % take, moov[a + 12:a + 12 + 4 * take]))
-    ca = find1(b"stco", s, e)[0]
+    chunk_table = find1(b"stco", s, e)
+    width, code = (4, "I") if chunk_table else (8, "Q")
+    ca = (chunk_table or find1(b"co64", s, e))[0]
     nch = struct.unpack(">I", moov[ca + 4:ca + 8])[0]
-    chunks = struct.unpack(">%dI" % nch, moov[ca + 8:ca + 8 + 4 * nch])
+    chunks = struct.unpack(">%d%s" % (nch, code), moov[ca + 8:ca + 8 + width * nch])
     sa = find1(b"stsc", s, e)[0]
     ns = struct.unpack(">I", moov[sa + 4:sa + 8])[0]
     stsc = struct.unpack(">%dIII" % ns, moov[sa + 8:sa + 8 + 12 * ns])
     offs = []
     si = 0
     for ci in range(nch):
+        if si >= take:
+            break
         run = None
         for k in range(ns):
             if stsc[k * 3] - 1 <= ci:
@@ -181,7 +191,29 @@ def _mp4_video_samples(fp, max_samples=4000):
             offs.append((o, sizes[si]))
             o += sizes[si]
             si += 1
-    return offs, len_size
+    return offs, len_size, codec, n
+
+
+def _sei_metadata(nal, codec):
+    header = 2 if codec == "hevc" else 1
+    if len(nal) < header + 3:
+        return None
+    kind = (nal[0] >> 1) & 0x3F if codec == "hevc" else nal[0] & 0x1F
+    if kind not in ((39, 40) if codec == "hevc" else (6,)) or nal[header] != 5:
+        return None
+    # Skip the SEI payload size and recognize Tesla's marker.
+    start = header + 1
+    while start < len(nal) and nal[start] == 0xFF:
+        start += 1
+    start += 1
+    while start < len(nal) and nal[start] == 0x42:
+        start += 1
+    if start >= len(nal) - 1 or nal[start] != 0x69:
+        return None
+    msg = _pb_decode(_strip_emulation(nal[start + 1:-1]))
+    if msg and all(not isinstance(v, float) or math.isfinite(v) for v in msg.values()):
+        return msg
+    return None
 
 
 def parse_telemetry(fp, stride=3):
@@ -189,18 +221,18 @@ def parse_telemetry(fp, stride=3):
     r = _mp4_video_samples(fp)
     if not r:
         return None
-    offs, len_size = r
+    offs, len_size, codec, total = r
     dur = transcode.probe_duration(fp)
-    if not dur or len(offs) < 2:
+    if not math.isfinite(dur) or dur <= 0 or len(offs) < 2:
         return None
-    fps = len(offs) / float(dur)
+    fps = total / float(dur)
     fsize = os.path.getsize(fp)
     frames = []
     gear_map = {0: "P", 1: "D", 2: "R", 3: "N"}
     with open(fp, "rb") as f, TEL_SEM:
         for k in range(0, len(offs), stride):
             o, ln = offs[k]
-            if o + ln > fsize:
+            if ln <= 0 or ln > 8 * 1024 * 1024 or o + ln > fsize:
                 continue
             f.seek(o)
             data = f.read(ln)
@@ -211,31 +243,18 @@ def parse_telemetry(fp, stride=3):
                     break
                 nal = data[pos + len_size:pos + len_size + n2]
                 pos += len_size + n2
-                if nal[0] & 0x1F != 6:
-                    continue
-                # 找 magic: 连续的 0x42 之后遇到 0x69
-                pi = None
-                for i in range(3, min(len(nal), 100)):
-                    if nal[i] == 0x42:
-                        continue
-                    if nal[i] == 0x69:
-                        pi = i + 1
-                    break
-                if pi is None:
-                    continue
-                payload = _strip_emulation(nal[pi:len(nal) - 1])
-                msg = _pb_decode(payload)
+                msg = _sei_metadata(nal, codec)
                 if not msg:
                     continue
                 spd = msg.get(4, 0.0) * 3.6
                 frames.append([
                     round(k / fps, 2),
-                    gear_map.get(msg.get(2, 1), "D"),
+                    gear_map.get(msg.get(2, 0), "—"),
                     round(spd, 1),
-                    int(round(msg.get(5, 0.0))),
+                    round(msg.get(5, 0.0), 1),
                     round(msg.get(6, 0.0), 1),
                     1 if msg.get(9) else 0,
-                    1 if msg.get(7) else (2 if msg.get(8) else 0),
+                    int(bool(msg.get(7))) | (int(bool(msg.get(8))) << 1),
                     int(msg.get(10, 0)),
                     round(msg.get(11, 0.0), 6),
                     round(msg.get(12, 0.0), 6),
@@ -243,14 +262,18 @@ def parse_telemetry(fp, stride=3):
                     round(msg.get(14, 0.0), 2),
                     round(msg.get(15, 0.0), 2),
                     round(msg.get(16, 0.0), 2),
+                    int(msg.get(1, 0)),
+                    str(msg.get(3, 0)),
                 ])
+                break
     if not frames:
         return None
     speeds = [f[2] for f in frames]
     brakes = sum(1 for f in frames if f[5])
     return {
         "fps": round(fps, 2),
-        "count": len(offs),
+        "count": total,
+        "sample_stride": stride,
         "duration": round(dur, 2),
         "max_speed": max(speeds),
         "avg_speed": round(sum(speeds) / len(speeds), 1),
@@ -265,7 +288,7 @@ def telemetry_cached(fp):
         st = os.stat(fp)
     except OSError:
         return None
-    key = hashlib.md5(("%s|%d|%d" % (fp, st.st_mtime_ns, st.st_size)).encode()).hexdigest()
+    key = hashlib.md5(("sei2|%s|%d|%d" % (fp, st.st_mtime_ns, st.st_size)).encode()).hexdigest()
     cache = os.path.join(TEL_DIR, key + ".json")
     if os.path.isfile(cache):
         try:

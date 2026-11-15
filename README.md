@@ -6,7 +6,7 @@
 >
 > 没有 USB Device 模式的机器也可运行纯网页查看器：把 `TSF_ARCHIVE` 指向包含 `SentryClips/`、`SavedClips/`、`RecentClips/` 的目录，例如 `TSF_ARCHIVE=/path/to/TeslaCam python3 sentry-viewer.py --host 127.0.0.1`。完整部署、手动复制归档和仅网页三种用法见 [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md)。
 
-> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前版本 **2.10.2**，开发和发布分支为 **`codex/modular-runtime`**。设备通过网页上传本地 ZIP 更新。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
+> 本仓库基于 [baicyber/tesla-sentry-f50](https://github.com/baicyber/tesla-sentry-f50) 重构。当前版本 **2.11.0**，开发和发布分支为 **`codex/modular-runtime`**。设备通过网页上传本地 ZIP 更新。仓库名来自参考硬件中兴 F50 存储版；本分支的自动化验证不等同于真实设备验证。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-aarch64%20%7C%20armv7%20%7C%20x86-blue.svg)](#硬件要求)
@@ -25,6 +25,12 @@
 - [已有安装升级](#已有安装升级)
 - [离线上传 ZIP 更新](docs/UPDATES.md)
 - [部署细节](docs/DEPLOYMENT.md) · [新增功能完整说明](docs/FEATURES.md) · [模块结构](docs/MODULES.md)
+
+## 2.11.0 更新
+
+- 首页可展开同步诊断，查看等待写完、镜像读取失败、复制失败等状态与最近成功时间。分开显示镜像占用、归档录像大小和设备分区用量。
+- 远程播放默认开启省流模式。优先显示触发镜头或前视封面，点击播放才请求单路 360p，可手动切换镜头和全景。低清版本不可用时，需手动选择原画。
+- 参照 Tesla 记录仪的主画面与镜头切换布局，新增随进度更新的仪表和完整行车数据。刹车仅显示踩下或松开。无 SEI 遥测的录像仍可播放。
 
 ## 2.10.2 更新
 
@@ -95,7 +101,7 @@
 | 🎬 **多路合成导出** | 勾选任意几路 → **浏览器本机实时合成一个多画面视频**（2×2/3×2 布局，webm 为主、Safari 为 mp4），设备只出文件流不参与转码；单路直接下载原文件，也可打包 zip；**下载/打包zip可选清晰度**（原画/720p/480p/360p，默认跟随播放清晰度）
 | 🖼 **静态缩略图** | 服务端 ffmpeg 抽帧 + eMMC 缓存，列表秒开；事件内每分钟一组片段自动分组，默认播最新一组，可切换
 | 🎬 **多路同步播放** | 按事件实际路数自适应布局（4 路 2×2、6 路 3×2），带摄像头名称，帧级同步校正、统一进度条、0.5x–4x 倍速 |
-| 📊 **行车遥测（SEI 直读）** | 解析视频码流里特斯拉内嵌的 SEI 元数据（protobuf），播放页顶部面板实时显示：挡位 / 车速 / 油门% / 刹车 / 方向盘角度 / 转向灯 / AP 状态 / 坐标 / 三轴加速度，随进度逐帧跳动；不依赖网络与云端账号，数据永远跟着视频文件走
+| 📊 **行车遥测（SEI 直读）** | 解析视频码流里特斯拉内嵌的 SEI 元数据（protobuf），播放页显示车速、挡位、油门开度、刹车状态、方向盘和辅助驾驶。展开详情查看独立转向灯、GPS、航向、三轴加速度、数据版本和帧序号
 | 🗺 **事件元数据** | 读取车机 `event.json`：时间 / 城市 / 街道 / 坐标 / 触发原因 / 触发画面 / 活动 ID，列表卡片与播放器同步展示 |
 | 🔍 **按触发原因筛选** | 手动保存、按喇叭、点击图标、物体感知⋯⋯分类下按原因一键筛选，带数量；分类切换自动重置 |
 | 📅 **按日期筛选** | 触发原因下方再列一行日期胶囊（当天有事件才出现），可与原因筛选叠加；支持 `?date=2026-11-03` 深链 |
@@ -483,7 +489,7 @@ USB 根目录/
 | `/login` | GET / POST | 登录页；POST 表单 `u/p/next`，成功后设置签名 cookie |
 | `/logout` | GET | 清除当前浏览器登录 cookie |
 | `/api/auth/info` · `/api/auth/pass` | GET / POST | 认证状态与改密（POST JSON `old/new`） |
-| `/api/live` | GET | 在线同步健康状态及存储信息 |
+| `/api/live` | GET | 最近扫描和成功归档状态、待确认数、错误、镜像及分区空间 |
 | `/media/<cat>/<event>/<file>` | GET | 视频流（支持 Range）；追加 `?q=360p/480p/720p` 返回按需转码的低码率副本（缓存于 `TSF_CACHE/res-cache`，单任务串行转码，失败自动回退原文件） |
 | `/thumb/<cat>/<event>/<file>` | GET | 缩略图（服务端抽帧 + eMMC 缓存，空文件自动重建） |
 | `/api/telemetry?path=` | GET | 解析该片段内嵌 SEI 遥测，返回逐帧 `frames[]` 与最高/平均车速、刹车占比；无 SEI 返回 `{ok:false}`，结果缓存在 eMMC |

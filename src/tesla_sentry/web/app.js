@@ -12,13 +12,18 @@ let curClips = [], curClipIx = 0, TEL = null;
    字典以中文原文为 key; 静态文案由 applyLang() 遍历 DOM 替换, 动态文案在生成时用 t() 包一层。
    切回中文时从节点上保存的原文还原, 不会叠加翻译。 */
 /* ---------- 主题: 自动(跟系统) / 浅色 / 深色, 手动循环切换并记住 ---------- */
-/* ---------- 清晰度选择 ----------
-   内网(100.96.x/192.168.x)默认原画; 走公网/穿透访问时默认 360p 省 5G 上行带宽 */
+/* ---------- 播放模式与清晰度 ---------- */
 const Q_LIST = [['orig', '原画'], ['720p', '720p'], ['480p', '480p'], ['360p', '360p']];
-const isLanNet = /^(100\.96\.|192\.168\.|10\.|127\.)/.test(location.hostname);
-let curQ = localStorage.getItem('tsfq') || (isLanNet ? 'orig' : '360p');
-if (!Q_LIST.some(x => x[0] === curQ)) curQ = 'orig';
-function qUrl(u) { return curQ === 'orig' ? u : u + '?q=' + curQ; }
+const isLanNet = /^(192\.168\.|10\.|127\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname)
+  || ['localhost', '[::1]'].includes(location.hostname);
+let saver = (localStorage.getItem('tsf-saver') || (isLanNet ? 'off' : 'on')) === 'on';
+let curQ = localStorage.getItem(saver ? 'tsfq-saver' : 'tsfq') || (saver ? '360p' : 'orig');
+if (!Q_LIST.some(([q]) => q === curQ)) curQ = saver ? '360p' : 'orig';
+let selectedCamera = '', mediaStarted = false, resumeTime = 0;
+function qUrl(u) {
+  if (curQ === 'orig') return u;
+  return u + '?q=' + curQ + (saver ? '&strict=1' : '');
+}
 function renderQSel() {
   const curLabel = (Q_LIST.find(x => x[0] === curQ) || Q_LIST[0])[1];
   document.getElementById('qsel').innerHTML =
@@ -36,34 +41,22 @@ function closeQ() {
 document.addEventListener('click', closeQ);
 function setQuality(q) {
   closeQ();
-  if (q === curQ) return;
-  curQ = q; localStorage.setItem('tsfq', q);
+  if (q === curQ || !Q_LIST.some(([key]) => key === q)) return;
+  curQ = q;
+  localStorage.setItem(saver ? 'tsfq-saver' : 'tsfq', q);
   renderQSel();
-  if (!cur) return;
-  // 记住各路播放进度与播放状态, 换源后续播
-  const v0el = document.querySelector('#vgrid video');
-  const wasPlaying = v0el ? !v0el.paused : false;
-  const times = [...document.querySelectorAll('#vgrid video')].map(v => v.currentTime || 0);
-  const hint = document.getElementById('qhint');
-  if (q !== 'orig') {
-    hint.textContent = '正在按 ' + q + ' 转码所选片段 (首次约需 20~60 秒/路, 转好一次后秒开)…';
-    hint.style.display = 'block';
-    clearTimeout(setQuality._ht);
-    setQuality._ht = setTimeout(() => { hint.style.display = 'none'; }, 90000);
-  } else {
-    hint.style.display = 'none';
+  if (cur) rebuildPlayback();
+}
+function toggleDataSaver() {
+  saver = !saver;
+  localStorage.setItem('tsf-saver', saver ? 'on' : 'off');
+  curQ = localStorage.getItem(saver ? 'tsfq-saver' : 'tsfq') || (saver ? '360p' : 'orig');
+  if (!Q_LIST.some(([key]) => key === curQ)) curQ = saver ? '360p' : 'orig';
+  renderQSel();
+  if (cur) {
+    if (saver && !selectedCamera) selectedCamera = defaultCamera(curVids(), cur.meta || {});
+    rebuildPlayback(saver);
   }
-  renderClip();
-  const vids = [...document.querySelectorAll('#vgrid video')];
-  vids.forEach((v, i) => {
-    const seek = () => { try { if (times[i]) v.currentTime = times[i]; } catch (e) {} };
-    if (v.readyState >= 1) seek();
-    else v.addEventListener('loadedmetadata', seek, { once: true });
-  });
-  if (wasPlaying) tryPlay();
-  // 第一路能播就撤提示
-  const v0 = vids[0];
-  if (v0) v0.addEventListener('canplay', () => { hint.style.display = 'none'; }, { once: true });
 }
 const CATS_NAME = window.__CATEGORIES;
 /* event.json 里的 reason → 中文名 (reason 是自由文本, 新值靠前缀匹配兜底) */
@@ -129,6 +122,7 @@ function tabContent(category, count) {
 }
 async function load() {
   data = await (await fetch('/api/events')).json();
+  updateArchiveUsage(data);
   const tabs = document.getElementById('tabs');
   tabs.innerHTML = '';
   const liveOpen = document.getElementById('livep').classList.contains('open');
@@ -178,12 +172,7 @@ function openDeepLink() {
     [...tabs.children].forEach(b => b.classList.remove('active'));
     const idx = keys.indexOf(c);
     if (tabs.children[idx]) tabs.children[idx].classList.add('active');
-    currentCat = c; reasonFilter = 'all'; render(c); openPlayer(ev);
-    const cam = new URLSearchParams(location.search).get('cam');
-    if (cam) {
-      const cell = document.querySelector(`#vgrid .vcell[data-cam="${cam}"]`);
-      if (cell) focusCell(cell);
-    }
+    currentCat = c; reasonFilter = 'all'; render(c); openPlayer(ev, q.get('cam'));
     if (q.get('exp') === '1') setTimeout(openExport, 600);
     return;
   }
@@ -193,41 +182,81 @@ function sigOf(d) {
   return Object.keys(d).map(c => c + ':' + d[c].map(e => e.name + '/' + e.videos.length).join(',')).join('|');
 }
 
-/* 实时同步状态 + 新片段自动出现 */
-async function refreshLive() {
-  let live = null;
-  try { live = await (await fetch('/api/live')).json(); } catch (e) { return; }
-  const dot = document.getElementById('livedot'), txt = document.getElementById('livetxt');
-  if (live.running) {
-    dot.style.background = 'var(--positive)';
-    if (live.pending > 0) txt.textContent = `${t('实时同步中')} · ${live.pending} ${t('待确认')}`;
-    else if (live.ago !== null && live.ago !== undefined) txt.textContent = `${t('实时同步中')} · ${live.ago}s`;
-    else txt.textContent = t('实时同步中');
-  } else {
-    dot.style.background = 'var(--muted2)';
-    txt.textContent = t('同步服务未运行');
-  }
-  // 车载U盘存储条 (镜像未挂载时回落显示归档盘)
+const SYNC_LABELS = {
+  starting: '等待首次扫描', stopped: '同步服务未运行', stale: '同步无响应',
+  managed: 'U 盘管理中', paused: '暂等 U 盘空闲', read_error: '镜像读取失败',
+  copy_error: '归档复制失败', waiting: '等待片段写完', empty: '未发现录像',
+  writing: '镜像近期写入', ready: '录像已扫描', unreachable: '无法读取同步状态',
+};
+function sizeText(bytes) {
+  if (!Number.isFinite(bytes)) return '—';
+  return bytes >= 1073741824 ? (bytes / 1073741824).toFixed(1) + ' GiB'
+    : bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MiB'
+    : bytes ? Math.ceil(bytes / 1024) + ' KiB' : '0 B';
+}
+function usageText(used, total) { return sizeText(used) + ' / ' + sizeText(total); }
+function updateArchiveUsage(events) {
+  const bytes = Object.values(events).flat().reduce((sum, ev) => sum + (Number(ev.size) || 0), 0);
+  document.getElementById('sync-archive').textContent = sizeText(bytes);
+}
+function renderSync(live) {
+  const health = live.sync || {};
+  const phase = health.phase || (live.running ? 'starting' : 'stopped');
+  const label = t(SYNC_LABELS[phase] || SYNC_LABELS.starting);
+  const dot = document.getElementById('livedot');
+  const status = document.getElementById('live');
+  status.dataset.phase = phase;
+  status.title = label;
+  document.getElementById('livetxt').textContent = label;
+  document.getElementById('sync-summary').textContent = label;
+  const error = ['read_error', 'copy_error', 'stale', 'unreachable'].includes(phase);
+  dot.style.background = error ? 'var(--accent)' : phase === 'ready' ? 'var(--positive)' : 'var(--amber)';
+  const message = {
+    empty: health.camera_dir ? '已找到 TeslaCam，尚未发现可归档的录像。' : '镜像内还没有 TeslaCam 目录。',
+    waiting: '片段需要连续两次扫描保持稳定后才会入库。',
+    writing: '镜像最近有写入，可能正在录制或更新文件，等待下一次扫描。',
+    ready: '当前镜像已完成扫描。',
+    paused: '另一个任务正在使用虚拟 U 盘，同步稍后继续。',
+    managed: '恢复车机导出后继续同步。',
+    stale: '同步进程没有按时报告扫描状态，请查看设备日志。',
+  };
+  document.getElementById('sync-detail').textContent =
+    (phase === 'read_error' || phase === 'copy_error' ? health.detail || live.last : t(message[phase] || '')) || '';
+  document.getElementById('sync-success').textContent = health.last_success
+    ? new Date(health.last_success * 1000).toLocaleString() : '—';
+  document.getElementById('sync-pending').textContent = (live.pending || 0) + (health.incomplete || 0);
+  const storage = live.storage || {};
+  const disk = storage.disk || (live.disk && live.disk.src === 'loop' ? live.disk : null);
+  document.getElementById('sync-image').textContent = storage.image
+    ? usageText(storage.image.allocated, storage.image.capacity) : '—';
+  document.getElementById('sync-disk').textContent = disk ? usageText(disk.used, disk.total) : '—';
+  document.getElementById('sync-usb-row').hidden = !storage.usb;
+  if (storage.usb) document.getElementById('sync-usb').textContent = usageText(storage.usb.used, storage.usb.total);
   const sw = document.getElementById('storwrap');
-  if (live.disk && live.disk.total > 0) {
-    const GB = 1073741824, d = live.disk;
-    sw.style.display = '';
-    document.getElementById('storlab').textContent = t(d.src === 'usb' ? '车载U盘存储' : '盒子归档存储');
-    document.getElementById('storval').textContent =
-      (d.used / GB).toFixed(1) + 'GB / ' + (d.total / GB).toFixed(1) + 'GB';
-    const pct = Math.min(100, d.used / d.total * 100);
+  sw.style.display = disk && disk.total > 0 ? '' : 'none';
+  if (disk && disk.total > 0) {
+    document.getElementById('storlab').textContent = t('设备分区已用');
+    document.getElementById('storval').textContent = usageText(disk.used, disk.total);
+    const pct = Math.min(100, disk.used / disk.total * 100);
     const fill = document.getElementById('storfill');
     fill.style.width = pct.toFixed(1) + '%';
     fill.style.background = pct >= 90 ? 'var(--accent)' : 'var(--muted2)';
-  } else {
-    sw.style.display = 'none';
   }
+}
+async function refreshLive() {
+  if (saver && cur) return;
+  try {
+    const response = await fetch('/api/live');
+    if (!response.ok) throw new Error('sync status');
+    renderSync(await response.json());
+  } catch (e) { renderSync({ sync: { phase: 'unreachable' } }); }
   // 事件有变化时无缝重绘 (不打断播放器)
   try {
     const d = await (await fetch('/api/events')).json();
     const s = sigOf(d);
     if (s !== lastSig) {
       lastSig = s; data = d;
+      updateArchiveUsage(d);
       const tabs = document.getElementById('tabs');
       [...tabs.children].forEach((b, i) => {
         const c = Object.keys(d)[i];
@@ -451,10 +480,13 @@ function render(cat) {
 
 function layoutPlayer() {
   const vg = document.getElementById('vgrid');
-  if (vg.querySelector('.vcell.focused')) return;  // 单路放大时保持满屏
   const n = vg.children.length;
   if (!n) return;
   const d = gridDims(n);
+  const wrap = vg.parentElement;
+  const heightFraction = window.innerWidth > 700 ? 0.51 : 0.44;
+  const cellHeight = (window.innerHeight * heightFraction - 3 * (d[1] - 1)) / d[1];
+  wrap.style.maxWidth = Math.min(1180, Math.max(250, cellHeight * 16 / 9 * d[0] + 3 * (d[0] - 1))) + 'px';
   vg.style.gridTemplateColumns = `repeat(${d[0]},1fr)`;
   // 显式像素行高: 不依赖 CSS aspect-ratio (老版 iOS Safari 不支持时格子会塌陷/视频层溢出遮挡)
   const w = vg.clientWidth || 0;
@@ -464,60 +496,115 @@ function layoutPlayer() {
     vg.style.gridAutoRows = Math.round(cw * 9 / 16) + 'px';
   }
 }
-/* 点击任意一路: 单路铺满; 再点一次(或 Esc)恢复多路 */
-function focusCell(cell) {
-  const vg = document.getElementById('vgrid');
-  const cells = [...vg.children];
-  const wasFocused = cell.classList.contains('focused');
-  cells.forEach(c => { c.classList.remove('focused'); c.style.display = ''; });
-  if (wasFocused) { layoutPlayer(); return; }
-  cell.classList.add('focused');
-  cells.forEach(c => { if (c !== cell) c.style.display = 'none'; });
-  vg.style.gridTemplateColumns = '1fr';
-  vg.style.gridTemplateRows = '1fr';
+function defaultCamera(vids, meta) {
+  const trigger = isSentryEv(meta) && meta.camera != null ? CAM_IDX[+meta.camera] : '';
+  return (vids.find(v => v.cam === trigger) || vids.find(v => v.cam === 'front') || vids[0] || {}).cam || '';
 }
-function openPlayer(ev) {
+function openPlayer(ev, camera) {
   cur = ev;
+  selectedCamera = camera || (saver ? defaultCamera(ev.videos || [], ev.meta || {}) : '');
   curClips = groupVideos(ev.videos);
   curClipIx = curClips.length ? curClips.length - 1 : 0;
   renderClip();
 }
-function renderClip() {
-  const ev = cur;
-  const clip = curClips[curClipIx] || { key: '', vids: [] };
-  const vg = document.getElementById('vgrid'); vg.innerHTML = '';
-  camSort(clip.vids).forEach(v => {
+function releasePlayback(vg) {
+  vg.querySelectorAll('video').forEach(video => {
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+  });
+  vg.innerHTML = '';
+}
+function rebuildPlayback(forcePause = false) {
+  const leader = document.querySelector('#vgrid video');
+  const active = leader && mediaStarted && !leader.paused;
+  const time = leader && leader.readyState ? leader.currentTime : resumeTime;
+  const autoplay = !forcePause && !!active;
+  renderPlayback(autoplay, time, autoplay || (!saver && mediaStarted && !forcePause));
+}
+function chooseCamera(camera) {
+  if (selectedCamera === camera) return;
+  selectedCamera = camera;
+  rebuildPlayback();
+}
+function renderPlayback(autoplay, time = 0, started = autoplay) {
+  const clip = curClips[curClipIx] || { vids: [] };
+  const vg = document.getElementById('vgrid');
+  releasePlayback(vg);
+  mediaStarted = false;
+  resumeTime = time;
+  const sorted = camSort(clip.vids);
+  if (selectedCamera && !sorted.some(v => v.cam === selectedCamera)) {
+    selectedCamera = defaultCamera(sorted, cur.meta || {});
+  }
+  const choices = document.getElementById('camera-choices');
+  choices.innerHTML = '';
+  for (const camera of [{cam: '', name: t('全景')}, ...sorted.map(v => ({cam: v.cam, name: camLabel(v.cam)}))]) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'camera-choice';
+    b.textContent = camera.name;
+    b.dataset.cam = camera.cam;
+    b.setAttribute('aria-pressed', String(selectedCamera === camera.cam));
+    b.onclick = () => chooseCamera(camera.cam);
+    choices.appendChild(b);
+  }
+  document.getElementById('data-saver').setAttribute('aria-pressed', String(saver));
+  document.getElementById('qhint').style.display = 'none';
+  const videos = sorted.filter(v => !selectedCamera || v.cam === selectedCamera);
+  const primaryCamera = defaultCamera(sorted, cur.meta || {});
+  const eventThumb = sentryThumbSrc(cur, [clip]);
+  for (const v of videos) {
     const cell = document.createElement('div'); cell.className = 'vcell';
     cell.dataset.cam = v.cam || '';
     const vid = document.createElement('video');
-    vid.src = qUrl(v.url); vid.muted = true; vid.defaultMuted = true; vid.preload = 'auto';
-    /* 每格加载状态: 转码/缓冲时显示提示, 避免黑屏让人以为坏了 */
+    vid.dataset.src = qUrl(v.url);
+    vid.muted = true; vid.defaultMuted = true; vid.preload = saver ? 'none' : 'auto';
+    vid.playbackRate = baseRate;
+    if (saver) vid.poster = (v.cam === primaryCamera && eventThumb)
+      || v.url.replace('/media/', '/thumb/');
     const cl = document.createElement('div'); cl.className = 'cload';
     cl.innerHTML = '<span class="spin"></span><span>缓冲中…</span>';
+    cl.style.display = 'none';
     const clDone = () => { cl.style.display = 'none'; };
     vid.addEventListener('loadeddata', clDone);
     vid.addEventListener('playing', clDone);
     vid.addEventListener('error', () => {
+      if (!vid.isConnected || !vid.hasAttribute('src')) return;
+      cl.style.display = '';
       cl.className = 'cload err';
-      cl.innerHTML = '<span>' + t('加载失败, 点其他片段再试') + '</span>';
+      const reason = saver && curQ !== 'orig' ? '低码率画面不可用，可手动切换原画' : '加载失败, 点其他片段再试';
+      cl.textContent = t(reason);
+      document.getElementById('qhint').style.display = 'none';
     });
     vid.addEventListener('waiting', () => { cl.style.display = ''; });
-    /* 低清晰度首次播放需要后台转码, 缓冲时给出提示 */
-    vid.addEventListener('waiting', () => {
-      if (curQ !== 'orig') {
-        const h = document.getElementById('qhint');
-        h.textContent = t('正在缓冲 (首次播放新片段需后台转码十几秒, 转好一次后秒开)…');
-        h.style.display = 'block';
+    vid.addEventListener('loadedmetadata', () => {
+      if (resumeTime) {
+        try { vid.currentTime = Math.min(vid.duration, resumeTime); } catch (e) {}
       }
-    });
-    vid.addEventListener('canplay', () => { document.getElementById('qhint').style.display = 'none'; });
-    vid.setAttribute('muted', ''); vid.setAttribute('playsinline', '');
-    vid.setAttribute('webkit-playsinline', ''); vid.setAttribute('x5-playsinline', '');
+    }, { once: true });
+    vid.setAttribute('playsinline', '');
+    vid.setAttribute('webkit-playsinline', '');
     const lb = document.createElement('span'); lb.className = 'clabel'; lb.textContent = camShort(v.cam);
-    cell.appendChild(vid); cell.appendChild(cl); cell.appendChild(lb);
-    cell.onclick = () => focusCell(cell);
+    cell.append(vid, cl, lb);
+    if (videos.length > 1) {
+      cell.classList.add('switchable');
+      cell.onclick = () => chooseCamera(v.cam);
+    }
     vg.appendChild(cell);
-  });
+  }
+  document.getElementById('seek').value = 0;
+  document.getElementById('ptime').textContent = fmtSec(time);
+  document.getElementById('startmask').classList.toggle('show', !autoplay && !!videos.length);
+  pauseAll();
+  layoutPlayer();
+  requestAnimationFrame(layoutPlayer);
+  if (autoplay) playAll();
+  else if (started || !saver) startMedia();
+}
+function renderClip() {
+  const ev = cur;
+  const clip = curClips[curClipIx] || { key: '', vids: [] };
   document.getElementById('ic-time').textContent = fmtFull(ev.name);
   const pt = document.getElementById('ptitle');
   if (pt) pt.textContent = t(CATS_NAME[currentCat] || currentCat) + ' · ' + fmtFull(ev.name);
@@ -541,125 +628,131 @@ function renderClip() {
   }
   const md = ev.meta || {};
   let rh = '';
-  rh += '<div data-k="time"><span class="ick">时间</span>' + (md.timestamp ? md.timestamp.replace('T', ' ') : fmtFull(ev.name)) + '</div>';
-  if (md.city) rh += '<div data-k="city"><span class="ick">城市</span>' + md.city + '</div>';
-  if (md.street) rh += '<div data-k="street"><span class="ick">位置</span>' + md.street + '</div>';
-  if (md.est_lat && md.est_lon) rh += '<div data-k="coord"><span class="ick">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>';
-  if (md.reason) rh += '<div><span class="ick">触发原因</span>' + (reasonLabel(md.reason) || md.reason) + '</div>';
+  rh += '<div data-k="time"><span class="ick">时间</span>' + esc((md.timestamp ? md.timestamp.replace('T', ' ') : fmtFull(ev.name))) + '</div>';
+  if (md.city) rh += '<div data-k="city"><span class="ick">城市</span>' + esc(md.city) + '</div>';
+  if (md.street) rh += '<div data-k="street"><span class="ick">位置</span>' + esc(md.street) + '</div>';
+  if (md.est_lat && md.est_lon) rh += '<div data-k="coord"><span class="ick">坐标</span>' + esc(md.est_lat) + ', ' + esc(md.est_lon) + '</div>';
+  if (md.reason) rh += '<div><span class="ick">触发原因</span>' + esc((reasonLabel(md.reason) || md.reason)) + '</div>';
   /* camera 字段只有哨兵事件有意义; 手动保存等也会带 camera:"0" */
-  if (md.camera && isSentryEv(md)) { const cn = CAM_IDX[+md.camera]; rh += '<div data-k="camera"><span class="ick">触发画面</span>' + (cn ? camLabel(cn) : '摄像头') + ' #' + md.camera + '</div>'; }
-  if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + md.campaign_id + '</div>';
+  if (md.camera != null && isSentryEv(md)) { const cn = CAM_IDX[+md.camera]; rh += '<div data-k="camera"><span class="ick">触发画面</span>' + (cn ? camLabel(cn) : '摄像头') + ' #' + esc(md.camera) + '</div>'; }
+  if (md.campaign_id) rh += '<div><span class="ick">活动ID</span>' + esc(md.campaign_id) + '</div>';
   rh += '<div><span class="ick">画面</span>' + clip.vids.length + ' 路</div>';
   if (curClips.length > 1) rh += '<div><span class="ick">片段</span>共 ' + curClips.length + ' 段, 当前第 ' + (curClipIx + 1) + ' 段</div>';
-  rh += camSort(clip.vids).map(v => '<div><span class="ick">' + camLabel(v.cam) + '</span>' + v.url.split('/').pop() + '</div>').join('');
+  rh += camSort(clip.vids).map(v => '<div><span class="ick">' + camLabel(v.cam) + '</span>' + esc(v.url.split('/').pop()) + '</div>').join('');
   if (!md.timestamp) rh += '<div><span class="ick">元数据</span>无 event.json（该事件未写入元数据）</div>';
   const rows = document.getElementById('ic-rows');
   rows.innerHTML = rh;
   rows.classList.remove('open');
   document.getElementById('ic-fold').textContent = '展开详细数据 ⌄';
-  layoutPlayer();
   document.getElementById('player').classList.add('open');
-  requestAnimationFrame(layoutPlayer);  // 可见后再算一次, 保证拿到真实宽度设置像素行高
-  const sm = document.getElementById('startmask');
-  if ('ontouchstart' in window) { sm.classList.add('show'); }
-  playAll();
+  renderPlayback(!saver);
   if (syncTimer) clearInterval(syncTimer);
   syncTimer = setInterval(tick, 250);
-  const sortedVids = camSort(clip.vids);
-  loadTelemetry(sortedVids.length ? sortedVids[0].url : null, md);
+  loadTelemetry(clip, md);
 }
 
-/* ---------- 行车遥测面板 (SEI, 视频上方) ---------- */
-let telT0 = null, TEL_META = {};
-function loadTelemetry(url, meta) {
-  TEL = null;
-  TEL_META = meta || {};
-  const p = document.getElementById('tpanel'), card = document.getElementById('infocard');
-  p.classList.remove('show', 'plain');
-  if (card) card.classList.remove('plain');
-  p.classList.add('folded');   // 详细数据默认折叠
-  document.getElementById('tp-fold').textContent = '展开详细数据 ⌄';
-  document.getElementById('tp-loc').textContent =
-    [TEL_META.city, TEL_META.street].filter(Boolean).join(' · ');
-  // 触发画面摄像头: 只有哨兵事件显示 (手动保存等也会带无意义的 camera:"0")
-  const camTag = document.getElementById('tp-tag');
-  if (TEL_META.camera && isSentryEv(TEL_META)) {
-    const cn = CAM_IDX[+TEL_META.camera];
-    camTag.innerHTML = '触发画面 <b>' + (cn ? camLabel(cn) : '摄像头') + ' #' + TEL_META.camera + '</b>';
-    camTag.classList.add('show');
-  } else {
-    camTag.classList.remove('show');
-    camTag.innerHTML = '';
-  }
-  telT0 = null;
-  if (!url) return;
-  const m = url.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})-(\d{2})/);
-  if (m) telT0 = new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]);
-  // 顶部时间: 优先 event.json 的 timestamp, 否则退回片段文件名里的时间
-  const ts = String(TEL_META.timestamp || '').replace('T', ' ').replace(/\.\d+/, '').replace(/Z$/, '').slice(0, 19);
-  document.getElementById('tp-date').textContent = ts || (telT0 ? fmtTelDate(telT0) : '—');
-  const fp = url.replace('/media/', '/archive/');
-  fetch('/api/telemetry?path=' + encodeURIComponent(fp))
-    .then(r => r.json())
-    .then(d => {
-      if (!d.ok || !d.frames || !d.frames.length) { showPlainPanel(); return; }
-      TEL = d;
-      p.classList.add('show');
-      renderHud(d.frames[0]);
-      // 事件信息已搬到上方遥测面板, 下方卡片去掉重复项
-      ['time', 'city', 'street', 'coord', 'camera'].forEach(k => {
-        const el = document.querySelector('#ic-rows > div[data-k="' + k + '"]');
-        if (el) el.remove();
-      });
-      document.getElementById('ic-rows').insertAdjacentHTML('beforeend',
-        '<div><span class="ick">刹车占比</span>' + d.brake_ratio + '%</div>' +
-        '<div><span class="ick">遥测</span>SEI 元数据 · ' + d.count + ' 帧 @ ' + d.fps + 'fps</div>');
-    }).catch(() => showPlainPanel());
+let telT0 = null, TEL_META = {}, telemetryRequest = null, lastHudFrame = null;
+const HUD_FIELDS = [
+  ['车速', f => reading(f[2], ' km/h')],
+  ['挡位', f => f[1]],
+  ['油门开度', f => reading(f[3], '%')],
+  ['刹车', f => t(f[5] ? '踩下' : '松开')],
+  ['方向盘角度', f => reading(f[4], '°')],
+  ['左转向灯', f => t(f[6] & 1 ? '开启' : '关闭')],
+  ['右转向灯', f => t(f[6] & 2 ? '开启' : '关闭')],
+  ['辅助驾驶', f => assistLabel(f[7])],
+  ['GPS 纬度', f => reading(f[8], '', 6)],
+  ['GPS 经度', f => reading(f[9], '', 6)],
+  ['航向', f => reading(f[10], '°')],
+  ['加速度 X', f => reading(f[11], ' m/s²', 2)],
+  ['加速度 Y', f => reading(f[12], ' m/s²', 2)],
+  ['加速度 Z', f => reading(f[13], ' m/s²', 2)],
+  ['数据版本', f => f[14] ?? '—'],
+  ['帧序号', f => f[15] ?? '—'],
+];
+const HUD_STATS = ['最高车速', '平均车速', '刹车采样占比', '遥测采样'];
+function reading(value, units, precision) {
+  if (!Number.isFinite(value)) return '—';
+  return (precision === undefined ? value : value.toFixed(precision)) + units;
 }
-/* 哨兵/停车片段没有 SEI 遥测: 顶部仍然显示 时间 + 城市·位置, 只是不带车速/挡位 */
-function showPlainPanel() {
-  const p = document.getElementById('tpanel'), card = document.getElementById('infocard');
-  p.classList.add('show', 'plain');
-  if (card) card.classList.add('plain');
-  ['time', 'city', 'street', 'camera'].forEach(k => {
-    const el = document.querySelector('#ic-rows > div[data-k="' + k + '"]');
-    if (el) el.remove();
-  });
-  layoutPlayer();
+function assistLabel(value) {
+  return t(({ 0: '未启用', 1: 'FSD', 2: '自动辅助转向', 3: '主动巡航' })[value] || '未知状态');
+}
+function renderTelemetryFields() {
+  const rows = document.getElementById('tp-rows');
+  rows.innerHTML = [...HUD_FIELDS.map(([label]) => label), ...HUD_STATS].map(label =>
+    '<div><dt>' + esc(t(label)) + '</dt><dd>—</dd></div>').join('');
+}
+async function loadTelemetry(clip, meta) {
+  if (telemetryRequest) telemetryRequest.abort();
+  const request = new AbortController();
+  telemetryRequest = request;
+  TEL = null;
+  lastHudFrame = undefined;
+  TEL_META = meta || {};
+  telT0 = clipEpoch(clip.key) || null;
+  if (telT0) telT0 = new Date(telT0);
+  const panel = document.getElementById('tpanel');
+  const status = document.getElementById('tp-status');
+  panel.classList.add('show', 'plain');
+  document.getElementById('tp-loc').textContent = [TEL_META.city, TEL_META.street].filter(Boolean).join(' · ');
+  document.getElementById('tp-date').textContent = telT0 ? fmtTelDate(telT0)
+    : String(TEL_META.timestamp || '—').replace('T', ' ').slice(0, 19);
+  status.textContent = t('正在读取行车数据');
+  const videos = clip.vids.slice().sort((a, b) => Number(b.cam === 'front') - Number(a.cam === 'front'));
+  let failed = false;
+  for (const video of videos) {
+    try {
+      const path = video.url.replace('/media/', '/archive/');
+      const response = await fetch('/api/telemetry?path=' + encodeURIComponent(path), { signal: request.signal });
+      if (request.signal.aborted) return;
+      if (!response.ok) { failed = true; continue; }
+      const data = await response.json();
+      if (request.signal.aborted) return;
+      if (!data.ok || !Array.isArray(data.frames) || !data.frames.length) continue;
+      TEL = data;
+      renderTelemetryFields();
+      const rows = document.getElementById('tp-rows').querySelectorAll('dd');
+      const stats = [reading(data.max_speed, ' km/h'), reading(data.avg_speed, ' km/h'),
+        reading(data.brake_ratio, '%'), data.frames.length + ' / ' + data.count + ' · ' + data.fps + ' fps'];
+      stats.forEach((value, i) => { rows[HUD_FIELDS.length + i].textContent = value; });
+      panel.classList.remove('plain');
+      status.textContent = t('行车数据') + ' · ' + camLabel(video.cam);
+      const leader = document.querySelector('#vgrid video');
+      updateHud(leader ? leader.currentTime : 0);
+      return;
+    } catch (e) {
+      if (request.signal.aborted) return;
+      failed = true;
+    }
+  }
+  if (!request.signal.aborted) status.textContent = t(failed ? '行车数据读取失败' : '此片段没有行车数据');
 }
 function fmtTelDate(dt) {
   const z = n => (n < 10 ? '0' : '') + n;
   return dt.getFullYear() + '/' + z(dt.getMonth()+1) + '/' + z(dt.getDate()) + ' ' +
     z(dt.getHours()) + ':' + z(dt.getMinutes()) + ':' + z(dt.getSeconds());
 }
-function renderHud(f) {
-  // f: 0=t 1=挡位 2=车速km/h 3=油门% 4=方向盘角度 5=刹车 6=转向灯 7=AP 8=lat 9=lon 10=heading 11=Ax 12=Ay 13=Az
+function renderHud(frame, time) {
   const q = id => document.getElementById(id);
-  q('tp-gear').textContent = f[1];
-  q('tp-spd').textContent = Math.round(f[2]);
-  q('tp-date').textContent = telT0 ? fmtTelDate(new Date(telT0.getTime() + f[0]*1000)) : '—';
-  q('tp-thr-n').textContent = f[3] + '%';
-  q('tp-brk').classList.toggle('on', !!f[5]);   // 刹车只有布尔量, 不给百分比
-  q('tp-bl').classList.toggle('on', f[6] === 1);
-  q('tp-br').classList.toggle('on', f[6] === 2);
-  const apNames = { 1: 'FSD', 2: 'AP', 3: 'TACC' };
-  const ap = q('tp-ap');
-  if (f[7]) { ap.style.display = ''; ap.textContent = apNames[f[7]] || 'AP'; }
-  else ap.style.display = 'none';
-  q('tp-st').title = '方向盘角度 ' + f[4] + '°';
-  const md = TEL_META || {};
-  q('tp-rows').innerHTML =
-    (md.est_lat && md.est_lon ? '<div><span class="k">坐标</span>' + md.est_lat + ', ' + md.est_lon + '</div>' : '') +
-    '<div><span class="k">方向盘角度</span>' + f[4] + '°</div>' +
-    '<div><span class="k">横向加速度 Ax</span>' + f[11].toFixed(2) + ' m/s²</div>' +
-    '<div><span class="k">前后加速度 Ay</span>' + f[12].toFixed(2) + ' m/s²</div>' +
-    '<div><span class="k">垂直加速度 Az</span>' + f[13].toFixed(2) + ' m/s²</div>';
-}
-function toggleTelRows() {
-  const p = document.getElementById('tpanel'), b = document.getElementById('tp-fold');
-  p.classList.toggle('folded');
-  b.textContent = p.classList.contains('folded') ? '展开详细数据 ⌄' : '收起详细数据 ⌃';
-  layoutPlayer();
+  if (telT0) q('tp-date').textContent = fmtTelDate(new Date(telT0.getTime() + time * 1000));
+  if (frame === lastHudFrame) return;
+  lastHudFrame = frame;
+  const f = frame || [];
+  q('tp-spd').textContent = Number.isFinite(f[2]) ? Math.round(f[2]) : '—';
+  q('tp-gears').dataset.gear = f[1] || '';
+  q('tp-gears').setAttribute('aria-label', t('挡位') + ' ' + (f[1] || '—'));
+  q('tp-bl').classList.toggle('on', !!(f[6] & 1));
+  q('tp-br').classList.toggle('on', !!(f[6] & 2));
+  q('tp-steer').textContent = reading(f[4], '°');
+  q('tp-wheel').style.transform = 'rotate(' + (f[4] || 0) + 'deg)';
+  q('tp-throttle').textContent = reading(f[3], '%');
+  q('tp-pedal').value = f[3] || 0;
+  q('tp-brake').classList.toggle('on', !!f[5]);
+  q('tp-brake-value').textContent = frame ? t(f[5] ? '踩下' : '松开') : '—';
+  q('tp-assist').textContent = frame ? assistLabel(f[7]) : '—';
+  const rows = q('tp-rows').querySelectorAll('dd');
+  HUD_FIELDS.forEach(([, value], i) => { rows[i].textContent = frame ? value(f) : '—'; });
 }
 
 /* ---------- 导出视频水印 (与遥测面板同款) ---------- */
@@ -740,10 +833,10 @@ function drawWm(ctx, t, W) {
   xr -= gr * 2 + Math.round(10 * s);
   // 转向灯三角 (右/左)
   const triS = Math.round(9 * s);
-  ctx.fillStyle = f[6] === 2 ? '#f59e0b' : '#4a545f';
+  ctx.fillStyle = (f[6] & 2) ? '#f59e0b' : '#4a545f';
   ctx.beginPath(); ctx.moveTo(xr - triS, yc - triS * 0.62); ctx.lineTo(xr - triS, yc + triS * 0.62); ctx.lineTo(xr, yc); ctx.closePath(); ctx.fill();
   xr -= triS + Math.round(7 * s);
-  ctx.fillStyle = f[6] === 1 ? '#f59e0b' : '#4a545f';
+  ctx.fillStyle = (f[6] & 1) ? '#f59e0b' : '#4a545f';
   ctx.beginPath(); ctx.moveTo(xr, yc - triS * 0.62); ctx.lineTo(xr, yc + triS * 0.62); ctx.lineTo(xr - triS, yc); ctx.closePath(); ctx.fill();
   xr -= triS + Math.round(12 * s);
   // 车速 (先画右侧单位, 再画数字, 保证 "数字 km/h" 顺序)
@@ -759,15 +852,11 @@ function drawWm(ctx, t, W) {
   ctx.fillText(sp, xr, yc + Math.round(1 * s));
   ctx.restore();
 }
-function updateHud(t) {
+function updateHud(time) {
   if (!TEL || !TEL.frames || !TEL.frames.length) return;
-  const fr = TEL.frames;
-  let lo = 0, hi = fr.length - 1, ans = fr[0];
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (fr[mid][0] <= t) { ans = fr[mid]; lo = mid + 1; } else { hi = mid - 1; }
-  }
-  renderHud(ans);
+  const frame = telFrameAt(time);
+  const samplingGap = Math.max(0.75, 2 * (TEL.sample_stride || 3) / (TEL.fps || 1));
+  renderHud(frame[0] <= time && time - frame[0] <= samplingGap ? frame : null, time);
 }
 window.addEventListener('resize', () => { if (document.getElementById('player').classList.contains('open')) layoutPlayer(); });
 
@@ -803,7 +892,7 @@ function renderLive(ev) {
   document.getElementById('lv-name').textContent = '最新片段: ' + ev.name.replace(/_/g, ' ');
   const vids = camSort(ev.videos || []);
   if (!vids.length) return;
-  if (liveCam !== '__all' && !vids.find(v => v.cam === liveCam)) liveCam = '__all';
+  if (liveCam !== '__all' && !vids.find(v => v.cam === liveCam)) liveCam = vids[0].cam;
   const row = document.getElementById('lv-cams');
   row.innerHTML = '';
   const mkBtn = (cam, label) => {
@@ -826,7 +915,7 @@ function renderLive(ev) {
     clearLiveGrid();
     vid.style.display = '';
     const v = vids.find(x => x.cam === liveCam) || vids[0];
-    if (v && vid.src.indexOf(v.url) === -1) { vid.src = v.url; vid.play().catch(() => {}); }
+    if (v && vid.src.indexOf(v.url) === -1) { vid.src = qUrl(v.url); vid.play().catch(() => {}); }
   }
 }
 /* 全览: 每路一个 video, 同屏播放并互相对齐进度 */
@@ -857,7 +946,7 @@ function buildLiveGrid(vids) {
     g.appendChild(cell);
     /* 逐路上屏: 每路错开 350ms, 避免 4 路同时抢占上行 */
     el.oncanplay = null;
-    setTimeout(() => { if (!el.getAttribute('src')) el.src = v.url; }, ix * 350);
+    setTimeout(() => { if (el.isConnected && !el.getAttribute('src')) el.src = qUrl(v.url); }, ix * 350);
   });
   /* 每秒对齐一次进度, 任一路拖进度条/暂停 → 其余跟随 */
   if (liveSyncTimer) clearInterval(liveSyncTimer);
@@ -1103,7 +1192,17 @@ function doExportZip() {
 }
 document.getElementById('startmask').addEventListener('click', playAll);
 function tryPlay(v) { const p = v.play(); if (p && p.catch) p.catch(() => {}); }
+function startMedia() {
+  if (mediaStarted) return;
+  const videos = [...document.querySelectorAll('#vgrid video')];
+  videos.forEach(v => {
+    v.src = v.dataset.src;
+    v.parentElement.querySelector('.cload').style.display = '';
+  });
+  mediaStarted = true;
+}
 function playAll() {
+  startMedia();
   const vs = [...document.querySelectorAll('#vgrid video')];
   // iOS/微信只允许在用户手势里逐个调 play(); 同步循环内依次触发
   vs.forEach(tryPlay);
@@ -1130,7 +1229,7 @@ function cycleSpeed() {
 function togglePlay() {
   const vs = [...document.querySelectorAll('#vgrid video')];
   if (!vs.length) return;
-  if (vs.some(v => v.paused)) playAll(); else pauseAll();
+  if (!mediaStarted || vs.some(v => v.paused)) playAll(); else pauseAll();
 }
 function tick() {
   const vs = [...document.querySelectorAll('#vgrid video')];
@@ -1178,15 +1277,19 @@ document.getElementById('seek').onchange = function () {
   applySeekAll(+this.value);   // 松手必须对齐全部, 否则节流会吞掉最后位置
 };
 function closePlayer() {
+  if (!cur) return;
   pauseAll();
-  if (syncTimer) clearInterval(syncTimer);
-  [...document.querySelectorAll('#vgrid .vcell')].forEach(c => { c.classList.remove('focused'); c.style.display = ''; });
+  if (syncTimer) { clearInterval(syncTimer); syncTimer = null; }
+  if (telemetryRequest) telemetryRequest.abort();
+  releasePlayback(document.getElementById('vgrid'));
   document.getElementById('player').classList.remove('open');
+  cur = null;
+  TEL = null;
+  refreshLive();
 }
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
-  const f = document.querySelector('#vgrid .vcell.focused');
-  if (f) { focusCell(f); return; }
+  if (cur && selectedCamera && !saver) { chooseCamera(''); return; }
   closeExport(); closePlayer(); closePanel();
 });
 
@@ -1884,7 +1987,7 @@ Object.assign(window, {
   toggleExpQ,
   togglePlay,
   toggleQ,
-  toggleTelRows,
+  toggleDataSaver,
   usbAttach,
   usbDetach,
   wrapAttach

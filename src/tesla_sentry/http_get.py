@@ -286,9 +286,14 @@ class GetRoutesMixin:
             self._send(404, b"not found")
             return
         # 清晰度: ?q=360p/480p/720p 时返回按需转码的缓存副本 (失败回退原文件)
-        qv = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).get("q", ["orig"])[0]
+        query = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+        qv = query.get("q", ["orig"])[0]
         if qv in media.RES_SCALE and qv != "orig":
-            fp = transcode.get_variant(fp, qv)
+            variant = transcode.get_variant(fp, qv)
+            if variant == fp and query.get("strict") == ["1"]:
+                self._send(503, b"Requested video quality unavailable")
+                return
+            fp = variant
         size = os.path.getsize(fp)
         rng = self.headers.get("Range")
         if rng:

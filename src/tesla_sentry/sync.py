@@ -90,21 +90,20 @@ def copy_entry(exfat, entry, dest_path):
     return written
 
 
-def iter_media(exfat, dir_entry, prefix=()):
+def iter_media(exfat, dir_entry, prefix=(), progress=None):
     """遍历目录, 产出 (相对路径元组, 文件 Entry)"""
     if not dir_entry or not dir_entry.is_dir:
         return
-    try:
-        entries = exfat.list_subdir(dir_entry)
-    except Exception as e:
-        log("读取目录失败 %s: %s" % (dir_entry.name, e))
-        return
+    entries = exfat.list_subdir(dir_entry)
     for e in entries:
-        if not e.valid:
+        is_video = not e.is_dir and e.name.lower().endswith(".mp4")
+        if not e.valid or (is_video and (e.size <= 0 or e.vdl < e.size)):
+            if is_video and progress is not None:
+                progress["incomplete"] += 1
             continue
         if e.is_dir:
-            yield from iter_media(exfat, e, prefix + (e.name,))
-        elif (e.name.lower().endswith(".mp4") or e.name.lower() == "event.json") and e.size > 0:
+            yield from iter_media(exfat, e, prefix + (e.name,), progress)
+        elif (is_video or e.name.lower() == "event.json") and e.size > 0:
             yield prefix, e
 
 
@@ -125,36 +124,45 @@ def save_state(st):
         pass
 
 
-def scan(exfat):
+def save_health(state, phase, **details):
+    state["health"] = dict(state.get("health") or {}, phase=phase, heartbeat=int(time.time()),
+                           **details)
+    save_state(state)
+
+
+def scan(exfat, progress=None):
     """返回 {(分类, 事件名, 文件名): Entry}"""
     found = {}
-    try:
-        root = exfat.list_dir(exfat.root_cluster)
-    except Exception as e:
-        log("读根目录失败: %s" % e)
-        return found
+    root = exfat.list_dir(exfat.root_cluster)
     cam = exfat.find(root, "TeslaCam")
     if not cam or not cam.is_dir:
         return found
+    if not cam.valid:
+        raise ValueError("TeslaCam 目录校验失败")
+    if progress is not None:
+        progress["camera_dir"] = True
     cat_list = exfat.list_subdir(cam)
     for cat in CATS:
         catdir = exfat.find(cat_list, cat)
         if not catdir or not catdir.is_dir:
             continue
+        if not catdir.valid:
+            raise ValueError("%s 目录校验失败" % cat)
         if cat == "RecentClips":
             # 平铺文件: 按文件名时间戳分组, 让网页能按事件展示
-            try:
-                items = exfat.list_subdir(catdir)
-            except Exception:
-                continue
+            items = exfat.list_subdir(catdir)
             for e in items:
-                if e.is_dir or not e.name.lower().endswith(".mp4") or e.size <= 0 or not e.valid:
+                if e.is_dir or not e.name.lower().endswith(".mp4"):
+                    continue
+                if e.size <= 0 or not e.valid or e.vdl < e.size:
+                    if progress is not None:
+                        progress["incomplete"] += 1
                     continue
                 m = TS_RE.match(e.name)
                 group = m.group(1) if m else "_misc"
                 found[(cat, group, e.name)] = e
         else:
-            for prefix, e in iter_media(exfat, catdir):
+            for prefix, e in iter_media(exfat, catdir, progress=progress):
                 if not prefix:
                     continue
                 found[(cat, prefix[0], e.name)] = e
@@ -172,7 +180,8 @@ def load_pruned():
 @locking.archive_locked
 def do_sync(exfat, state, quiet=False):
     """跑一轮; 返回 (新增文件数, 字节数)"""
-    cur = scan(exfat)
+    progress = {"camera_dir": False, "incomplete": 0}
+    cur = scan(exfat, progress)
     pruned = load_pruned()
     cut = archive_policy.recent_cutoff([ev for cat, ev, name in cur if cat == "RecentClips"], ROLL_MIN)
     pending_key = "__pending__"
@@ -180,6 +189,9 @@ def do_sync(exfat, state, quiet=False):
     new_pending = {}
     copied = 0
     bytes_ = 0
+    error = ""
+    videos = sum(name.lower().endswith(".mp4") for _, _, name in cur)
+    archived_videos = 0
     for (cat, ev, name), e in cur.items():
         if not archive_policy.archive_allowed(cat, ev, pruned, cut):
             continue
@@ -198,11 +210,27 @@ def do_sync(exfat, state, quiet=False):
             n = copy_entry(exfat, e, dest)
             copied += 1
             bytes_ += n
+            archived_videos += int(name.lower().endswith(".mp4"))
             log("已同步 %s (%d KB)" % (key, n // 1024))
         except Exception as ex:
             log("同步失败 %s: %s" % (key, ex))
             new_pending[key] = sig
+            error = str(ex)[:240]
     state[pending_key] = new_pending
+    now = int(time.time())
+    health = state["health"] = dict(state.get("health") or {}, heartbeat=now, last_scan=now,
+                                    detail=error, videos=videos, **progress)
+    if archived_videos:
+        health["last_success"] = now
+        health["last_copied"] = archived_videos
+    if error:
+        health["phase"] = "copy_error"
+    elif new_pending or progress["incomplete"]:
+        health["phase"] = "waiting"
+    elif not videos:
+        health["phase"] = "empty"
+    else:
+        health["phase"] = "ready"
     save_state(state)
     return copied, bytes_
 
@@ -263,6 +291,7 @@ def main(argv=None, stop_event=None):
                 if os.path.ismount(MNT):
                     if args.once or args.dump:
                         return 75
+                    save_health(state, "paused")
                 else:
                     stat = os.stat(IMG)
                     if volume is None or (stat.st_dev, stat.st_ino) != (volume.fd_dev, volume.fd_ino):
@@ -279,6 +308,8 @@ def main(argv=None, stop_event=None):
                         return 0
             except (OSError, ValueError) as error:
                 log("同步暂不可用: %s" % error)
+                if not args.dump:
+                    save_health(state, "read_error", detail=str(error)[:240])
                 if args.once or args.dump:
                     return 1
             finally:

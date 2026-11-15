@@ -21,6 +21,7 @@ const paths = {
   upload: '<path d="M12 16V4m-5 5 5-5 5 5M4 16v4a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-4"/>',
   play: '<path d="m8 4 12 8-12 8V4Z"/>',
   pause: '<path d="M8 5v14M16 5v14" stroke-width="3"/>',
+  steering: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M3.2 11h6m5.6 0h6M12 14.6V21"/>',
   storage: '<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 14h18M7 17h.01m4 0h.01"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/>',
   calendar: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18"/>',

@@ -22,11 +22,23 @@
 <nav class="tabs" id="tabs" aria-label="录像分类"></nav>
 <div class="storwrap" id="storwrap" style="display:none">
   <div class="storcard">
-    <div class="storrow"><span class="storlab" id="storlab">车载U盘存储</span><span class="storval" id="storval"></span></div>
+    <div class="storrow"><span class="storlab" id="storlab">设备分区已用</span><span class="storval" id="storval"></span></div>
     <div class="storbar"><i id="storfill"></i></div>
   </div>
 </div>
 </section>
+<details class="sync-details" id="sync-details">
+  <summary><span data-icon="storage"></span><span>同步诊断</span><strong id="sync-summary">正在读取</strong></summary>
+  <p id="sync-detail"></p>
+  <dl class="sync-metrics">
+    <div><dt>上次成功归档</dt><dd id="sync-success">—</dd></div>
+    <div><dt>待确认片段</dt><dd id="sync-pending">—</dd></div>
+    <div><dt>虚拟 U 盘镜像占用</dt><dd id="sync-image">—</dd></div>
+    <div><dt>已归档录像</dt><dd id="sync-archive">—</dd></div>
+    <div><dt>设备分区已用</dt><dd id="sync-disk">—</dd></div>
+    <div id="sync-usb-row" hidden><dt>车载 U 盘已用</dt><dd id="sync-usb">—</dd></div>
+  </dl>
+</details>
 <div class="filter-panel">
 <nav class="filters" id="filters"></nav>
 <nav class="filters" id="dfilters"></nav>
@@ -45,27 +57,35 @@
     <button class="pdl" onclick="openExport()" title="导出"><span data-icon="download"></span><span>导出视频</span></button>
   </div>
   <div class="pscroll">
-    <div class="tpanel" id="tpanel">
-        <div class="tp-top">
-          <span class="tp-l"><span class="tp-date" id="tp-date">—</span><span class="tp-loc" id="tp-loc"></span><span class="tp-tag" id="tp-tag"></span></span>
-          <span class="tp-tr"><span class="tp-sig" id="tp-bl">⬅</span><span class="tp-sig" id="tp-br">➡</span><span class="tp-gear" id="tp-gear">D</span></span>
-        </div>
-        <div class="tp-mid">
-          <span class="tp-spd" id="tp-spd">0</span><span class="tp-unit">km/h</span>
-          <span class="tp-badges">
-            <span class="tp-badge brk" id="tp-brk" title="刹车 (数据源只有踩下/未踩, 无踏板开度)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="2.5"/><path d="M17.4 6.6l2.7-2.7"/></svg><b>刹车</b></span>
-            <span class="tp-badge thr" id="tp-thr" title="油门"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="M9.4 3.6h5.2a1.7 1.7 0 0 1 1.68 1.93l-1.35 12.3a1.8 1.8 0 0 1-1.79 1.6h-2.28a1.8 1.8 0 0 1-1.79-1.6L7.72 5.53A1.7 1.7 0 0 1 9.4 3.6z"/><path d="M8.6 15.1h6.8"/></svg><b id="tp-thr-n">0%</b></span>
-            <span class="tp-c st" id="tp-st" title="方向盘角度"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M3.2 10.5h6M14.8 10.5h6M12 14.6V21"/></svg></span>
-            <span class="tp-c ap" id="tp-ap" style="display:none">AP</span>
-          </span>
-        </div>
-        <button class="tp-fold" id="tp-fold" onclick="toggleTelRows()">收起详细数据 ⌃</button>
-        <div class="tp-rows" id="tp-rows"></div>
-    </div>
     <div class="vwrap">
-      <div class="startmask" id="startmask"><span data-icon="play"></span><span>轻触开始同步播放</span></div>
       <div class="vgrid" id="vgrid"></div>
+      <button class="startmask" id="startmask" type="button"><span data-icon="play"></span><span>播放录像</span></button>
     </div>
+    <div class="camera-bar">
+      <div class="camera-choices" id="camera-choices" aria-label="切换摄像头"></div>
+      <button class="mini" id="data-saver" type="button" aria-pressed="false" onclick="toggleDataSaver()">省流模式</button>
+    </div>
+    <section class="tpanel" id="tpanel" aria-label="行车数据">
+      <div class="tp-top">
+        <div class="tp-l"><time class="tp-date" id="tp-date">—</time><span class="tp-loc" id="tp-loc"></span></div>
+        <span id="tp-status" class="tp-status"></span>
+      </div>
+      <div class="tp-instruments">
+        <div class="tp-speed"><strong id="tp-spd">—</strong><span>km/h</span></div>
+        <div class="tp-gear-block">
+          <div class="tp-gears" id="tp-gears"><span>P</span><span>R</span><span>N</span><span>D</span></div>
+          <div class="tp-signals"><span id="tp-bl" title="左转向灯">◀</span><span id="tp-br" title="右转向灯">▶</span></div>
+        </div>
+        <div class="tp-steering">
+          <span class="tp-wheel" id="tp-wheel" data-icon="steering"></span><strong id="tp-steer">—</strong>
+          <span>方向盘</span>
+        </div>
+        <div class="tp-pedal"><span>油门</span><strong id="tp-throttle">—</strong><meter id="tp-pedal" min="0" max="100" value="0"></meter></div>
+        <div class="tp-pedal tp-brake" id="tp-brake"><span>刹车</span><strong id="tp-brake-value">—</strong></div>
+        <div class="tp-assist"><span>辅助驾驶</span><strong id="tp-assist">—</strong></div>
+      </div>
+      <details class="tp-details" id="tp-details"><summary>全部行车数据</summary><dl class="tp-rows" id="tp-rows"></dl></details>
+    </section>
     <div class="infocard" id="infocard">
       <div class="ic-top"><span class="ic-time" id="ic-time">—</span><span class="ic-badge" id="ic-cat">—</span></div>
       <div class="ic-mid"><span class="ic-big" id="ic-big">—</span><span class="ic-sub" id="ic-sub"></span></div>
@@ -75,7 +95,7 @@
     </div>
   </div>
   <div class="pbar">
-    <button class="pp" id="ppbtn" onclick="togglePlay()" aria-label="播放或暂停"><span data-icon="pause"></span></button>
+    <button class="pp" id="ppbtn" onclick="togglePlay()" aria-label="播放或暂停"><span data-icon="play"></span></button>
     <input type="range" id="seek" min="0" max="1000" value="0">
     <span class="t" id="ptime">00:00</span>
     <button class="spd" id="spdbtn" onclick="cycleSpeed()">1x</button>

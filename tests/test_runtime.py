@@ -146,6 +146,80 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(lock.acquire(blocking=False))
         lock.release()
 
+    def test_sync_status_keeps_latest_error_and_last_success_separate(self):
+        store = Path(self.env["TSF_DIR"])
+        store.mkdir()
+        image = store / "teslacam.img"
+        with image.open("wb") as stream:
+            stream.truncate(8 * 1024 * 1024)
+        (store / "tesla-live.log").write_text("[x] 已同步 earlier\n[x] 镜像读取失败\n")
+        state = {"__pending__": {}, "health": {"last_success": 950}}
+        with patch.object(self.runtime.sync.time, "time", return_value=1000), \
+             patch.object(self.runtime.media, "_proc_running", return_value=True):
+            self.runtime.sync.save_health(state, "read_error", detail="镜像读取失败")
+            status = self.runtime.media.live_status()
+        self.assertEqual(status["sync"]["phase"], "read_error")
+        self.assertEqual(status["sync"]["last_success"], 950)
+        self.assertEqual(status["last"], "镜像读取失败")
+        self.assertEqual(status["storage"]["image"]["capacity"], 8 * 1024 * 1024)
+        self.assertLessEqual(status["storage"]["image"]["allocated"], status["storage"]["image"]["capacity"])
+
+    def test_data_saver_does_not_fall_back_to_original_video(self):
+        video = self.archive / "RecentClips" / "2026-11-14_16-00-00" / "front.mp4"
+        video.parent.mkdir(parents=True)
+        video.write_bytes(b"original video")
+        server = self.server()
+        route = "/media/RecentClips/2026-11-14_16-00-00/front.mp4?q=360p"
+        with patch.object(self.runtime.transcode, "get_variant", side_effect=lambda path, quality: path):
+            code, _, body = self.request(server, "GET", route + "&strict=1")
+            self.assertEqual(code, 503)
+            self.assertNotIn(b"original video", body)
+            code, _, body = self.request(server, "GET", route)
+            self.assertEqual((code, body), (200, b"original video"))
+
+    def test_telemetry_reads_official_fields_from_avc_and_hevc_mp4(self):
+        telemetry = self.runtime.telemetry
+        fields = bytes((8, 1, 16, 1, 24, 42, 56, 1, 64, 1, 72, 1, 80, 2))
+        for number, value in {4: 20, 5: 37.5, 6: -18.5}.items():
+            fields += bytes(((number << 3) | 5,)) + struct.pack("<f", value)
+        fields += b"\x75" + struct.pack("<f", 0.5)
+        fields += b"\x7d" + struct.pack("<f", -0.75)
+        fields += b"\x85\x01" + struct.pack("<f", 9.8)
+        for number, value in {11: 31.25, 12: 121.5, 13: 180.0}.items():
+            fields += bytes(((number << 3) | 1,)) + struct.pack("<d", value)
+        escaped = bytearray()
+        zeros = 0
+        for byte in fields:
+            if zeros >= 2 and byte <= 3:
+                escaped.append(3)
+                zeros = 0
+            escaped.append(byte)
+            zeros = zeros + 1 if byte == 0 else 0
+
+        def box(name, content):
+            return struct.pack(">I4s", len(content) + 8, name) + content
+
+        for codec, header, config_box, config_length in (
+            ("avc", b"\x06", b"avcC", 5), ("hevc", b"\x4e\x01", b"hvcC", 22)
+        ):
+            with self.subTest(codec=codec):
+                nal = header + bytes((5, len(escaped) + 16)) + b"B" * 15 + b"i" + escaped + b"\x80"
+                sample = struct.pack(">I", len(nal)) + nal
+                mdat = box(b"mdat", sample * 2)
+                stbl = box(b"stsd", box(config_box, bytes(config_length - 1) + b"\x03"))
+                stbl += box(b"stsz", struct.pack(">III", 0, len(sample), 2))
+                stbl += box(b"co64", struct.pack(">IIQ", 0, 1, 8))
+                stbl += box(b"stsc", struct.pack(">IIIII", 0, 1, 1, 2, 1))
+                moov = box(b"moov", box(b"trak", box(b"mdia", box(b"minf", box(b"stbl", stbl)))))
+                path = self.root / (codec + ".mp4")
+                path.write_bytes(mdat + moov)
+                with patch.object(self.runtime.transcode, "probe_duration", return_value=2):
+                    data = telemetry.parse_telemetry(str(path), stride=1)
+                self.assertEqual(data["frames"], [
+                    [i, "D", 72.0, 37.5, -18.5, 1, 3, 2, 31.25, 121.5, 180.0, 0.5, -0.75, 9.8, 1, "42"]
+                    for i in (0, 1)
+                ])
+
     def test_exfat_parser_closes_descriptor_when_boot_sector_is_invalid(self):
         image = self.root / "invalid.img"
         image.write_bytes(bytes(512))
@@ -244,7 +318,10 @@ class RuntimeTests(unittest.TestCase):
                      patch.object(self.runtime.sync, "log"):
                     state = {}
                     self.assertEqual(self.runtime.sync.do_sync(reader, state), (0, 0))
+                    self.assertEqual(state["health"]["phase"], "waiting")
                     self.assertEqual(self.runtime.sync.do_sync(reader, state), (1, len(clip)))
+                    self.assertEqual(state["health"]["phase"], "ready")
+                    self.assertEqual(state["health"]["last_copied"], 1)
                 self.assertEqual(dest.read_bytes(), clip)
 
     def test_package_import_graph_has_no_cycles_or_implicit_shared_globals(self):

@@ -136,61 +136,55 @@ a { color:var(--accent); text-underline-offset:3px; }
 .pscroll { flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:2px 14px 14px; display:flex; flex-direction:column; gap:12px; }
 .pscroll > * { flex:0 0 auto; }
 .vwrap { position:relative; border-radius:14px; overflow:hidden; max-width:1180px; width:100%; margin:0 auto; background:var(--stage); }
-/* 行车遥测面板 (视频上方, Tesla App 样式, 不遮挡画面) */
-.tpanel { display:none; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:14px 18px 10px; max-width:1180px; width:100%; margin:0 auto; }
+/* Vehicle instruments sit directly below the footage and camera selector. */
+.tpanel { display:none; background:var(--panel); border:1px solid var(--line); padding:16px 20px; max-width:1180px; width:100%; margin:0 auto; }
 .tpanel.show { display:block; }
-.tpanel.folded .tp-rows { display:none; }
-/* 无遥测事件(哨兵/停车): 顶部只保留 时间 + 城市·位置 一行, 不留空白块 */
-.tpanel.plain { padding:12px 18px; }
-.tpanel.plain .tp-mid,
-.tpanel.plain .tp-fold,
-.tpanel.plain .tp-rows,
-.tpanel.plain .tp-tr { display:none; }
-.infocard.plain .ic-time { display:none; }
-.infocard.plain .ic-badge { margin-left:0; }
-.tp-top { display:flex; justify-content:space-between; align-items:center; }
-.tp-l { display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
-.tp-date { font-size:13.5px; color:var(--text); font-variant-numeric:tabular-nums; }
-.tp-loc { font-size:12.5px; color:var(--muted); }
-/* 哨兵/纪念事件: 触发画面摄像头 (来自 event.json 的 camera 字段) */
-.tp-tag { display:none; align-items:center; gap:4px; height:22px; padding:0 9px; border-radius:11px;
-  background:var(--amberbg); color:var(--amber); font-size:11.5px; font-weight:600;
-  border:1px solid var(--amberline); white-space:nowrap; align-self:center; }
-.tp-tag.show { display:inline-flex; }
-.tp-tag b { color:var(--amberb); font-weight:800; font-variant-numeric:tabular-nums; }
-.tp-tr { display:flex; align-items:center; gap:9px; }
-.tp-sig { font-size:16px; color:var(--muted2); line-height:1; }
-.tp-sig.on { color:#f59e0b; }
-.tp-gear { background:var(--panel2); color:var(--text); border:1px solid var(--line2); font-weight:600; font-size:14px; width:26px; height:26px;
-  border-radius:50%; display:inline-flex; align-items:center; justify-content:center; }
-.tp-mid { display:flex; align-items:center; margin-top:8px; }
-.tp-spd { font-size:34px; font-weight:800; color:var(--text); line-height:1.1; font-variant-numeric:tabular-nums; }
-.tp-unit { font-size:13px; color:var(--muted); font-weight:600; margin-left:6px; }
-.tp-badges { display:flex; align-items:center; gap:10px; margin-left:auto; }
-.tp-c { width:34px; height:34px; border-radius:50%; display:inline-flex; align-items:center;
-  justify-content:center; font-size:11.5px; font-weight:700; flex:none; }
-.tp-c.t { background:var(--panel2); color:var(--text); font-size:15px; }
-.tp-badge { display:inline-flex; align-items:center; gap:5px; height:30px; padding:0 11px 0 8px;
-  border-radius:15px; font-size:12.5px; font-weight:700; font-variant-numeric:tabular-nums; flex:none; }
-.tp-badge svg { width:16px; height:16px; flex:none; }
-.tp-badge.thr { background:var(--panel2); color:var(--text); border:1px solid var(--line2); }
-.tp-badge.brk { background:var(--panel2); color:var(--muted); }
-.tp-badge.brk.on { background:var(--accent-fill); color:#fff; box-shadow:none; }
-.tp-c.ap { background:var(--amberbg); color:var(--amber); border:1px solid var(--amberline); font-size:10.5px; }
-.tp-c.st { background:var(--panel2); color:var(--muted); }
-.tp-c.st svg { width:20px; height:20px; }
-.tp-fold { display:block; margin:8px 0 0 auto; background:none; border:none; color:var(--muted);
-  font-size:12px; cursor:pointer; padding:4px 2px; }
-.tp-rows { border-top:1px solid var(--line); margin-top:2px; padding-top:8px; display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1px 20px; }
-.tp-rows div { color:var(--text); font-size:13px; padding:3px 0; font-variant-numeric:tabular-nums; }
-.tp-rows .k { color:var(--muted); margin-right:9px; }
+.tpanel.plain .tp-instruments,.tpanel.plain .tp-details { display:none; }
+.tp-top,.tp-l { display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 12px; }
+.tp-top { justify-content:space-between; color:var(--muted); font-size:12px; }
+.tp-date { color:var(--text); font-variant-numeric:tabular-nums; }
+.tp-instruments { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; margin-top:13px; }
+.tp-instruments > div { min-height:74px; display:grid; justify-items:center; align-content:center; gap:4px; background:var(--panel2); border-radius:10px; padding:6px; font-size:11px; color:var(--muted); text-align:center; }
+.tp-instruments strong { color:var(--text); font-size:15px; font-variant-numeric:tabular-nums; }
+.tp-speed strong { font-size:29px; line-height:1; }
+.tp-gears,.tp-signals { display:flex; gap:5px; align-items:center; }
+.tp-gears span { padding:3px 4px; border-radius:4px; }
+.tp-gears[data-gear="P"] span:nth-child(1),.tp-gears[data-gear="R"] span:nth-child(2),
+.tp-gears[data-gear="N"] span:nth-child(3),.tp-gears[data-gear="D"] span:nth-child(4) { background:var(--text); color:var(--panel); font-weight:700; }
+.tp-signals { gap:10px; }
+.tp-signals .on { color:var(--positive); }
+.tp-wheel { display:inline-flex; color:var(--text); }
+.tp-wheel .icon { width:21px; height:21px; }
+.tp-pedal meter { width:80%; height:8px; accent-color:var(--positive); }
+.tp-brake.on { background:var(--accent-fill); }
+.tp-brake.on span,.tp-brake.on strong { color:#fff; }
+.tp-details { margin-top:13px; border-top:1px solid var(--line); padding-top:10px; }
+.tp-details summary { color:var(--muted); font-size:12px; cursor:pointer; }
+.tp-rows { display:grid; grid-template-columns:repeat(auto-fit,minmax(135px,1fr)); gap:8px 16px; margin:12px 0 0; }
+.tp-rows > div { display:grid; gap:3px; font-size:12px; min-width:0; }
+.tp-rows dt { color:var(--muted); }
+.tp-rows dd { margin:0; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.camera-bar { width:100%; max-width:1180px; margin:0 auto; display:flex; align-items:center; gap:8px; justify-content:space-between; }
+.camera-choices { display:flex; gap:5px; flex-wrap:wrap; }
+.camera-choice { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-size:12px; }
+.camera-choice[aria-pressed="true"],#data-saver[aria-pressed="true"] { color:var(--accent); background:var(--accent-soft); }
+.sync-details { margin:12px 0 4px; padding:11px 14px; border:1px solid var(--line); border-radius:12px; background:var(--panel); font-size:12px; }
+.sync-details summary { display:flex; align-items:center; gap:9px; cursor:pointer; }
+.sync-details summary .icon { display:block; width:16px; height:16px; }
+.sync-details summary::after { content:'⌄'; color:var(--muted); }
+.sync-details[open] summary::after { content:'⌃'; }
+.sync-details strong { margin-left:auto; color:var(--muted); font-weight:500; }
+.sync-details p { color:var(--muted); margin-top:12px; overflow-wrap:anywhere; }
+.sync-details p:empty { display:none; }
+.sync-metrics { display:grid; grid-template-columns:repeat(auto-fit,minmax(125px,1fr)); gap:12px; margin:13px 0 2px; }
+.sync-metrics dt { color:var(--muted); margin-bottom:4px; }
+.sync-metrics dd { margin:0; font-variant-numeric:tabular-nums; }
 .vgrid { display:grid; gap:3px; background:var(--stage); }
-.vcell { position:relative; overflow:hidden; background:var(--stage); cursor:zoom-in; aspect-ratio:16/9; }
-.vcell.focused { grid-column:1/-1; grid-row:1/-1; cursor:zoom-out; }
+.vcell { position:relative; overflow:hidden; background:var(--stage); aspect-ratio:16/9; }
+.vcell.switchable { cursor:zoom-in; }
 .vcell video { width:100%; height:100%; background:var(--stage); object-fit:cover; display:block; }
 /* 以下是叠在视频画面上的浮层, 永远在深色画面上, 用固定颜色 */
-.startmask { position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.55); color:#fff; font-size:16px; display:none; align-items:center; justify-content:center; cursor:pointer; letter-spacing:1px; }
+.startmask { border:0; width:100%; position:absolute; inset:0; z-index:5; background:rgba(0,0,0,.55); color:#fff; font-size:16px; display:none; align-items:center; justify-content:center; cursor:pointer; letter-spacing:1px; }
 .startmask.show { display:flex; }
 .vcell .clabel { position:absolute; right:7px; bottom:7px; font-size:11px; color:#e8eef4; background:rgba(20,24,29,.72); border-radius:6px; padding:2px 7px; pointer-events:none; }
 .vcell .cload { position:absolute; left:0; top:0; right:0; bottom:0; display:flex; align-items:center; justify-content:center; gap:7px; font-size:12.5px; color:#c6cdd4; background:rgba(10,13,18,.6); pointer-events:none; }
@@ -454,12 +448,11 @@ select.ninput { cursor:pointer; padding-right:22px; }
   .ptitle { font-size:10px; }
   .pscroll { padding:12px 10px; gap:10px; }
   .tpanel { padding:12px; }
-  .tp-spd { font-size:28px; }
-  .tp-date,.tp-loc { font-size:11px; }
-  .tp-tag { font-size:10px; }
-  .tp-badges { gap:6px; }
-  .tp-badge { font-size:11px; padding:0 7px; }
-  .tp-c { width:28px; height:28px; }
+  .tp-instruments { grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }
+  .tp-instruments > div { min-height:62px; }
+  .camera-bar { align-items:flex-start; }
+  .camera-choice { padding:7px; font-size:10.5px; }
+  #data-saver { padding:7px 9px; font-size:11px; }
   .infocard { padding:12px; }
   .ic-big { font-size:25px; }
   .pbar { gap:8px; padding-left:12px; padding-right:12px; }
