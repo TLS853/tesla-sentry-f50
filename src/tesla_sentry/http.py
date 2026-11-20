@@ -8,7 +8,7 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
-from . import archive, assets, auth, config, http_get, http_post, media, usb, routes
+from . import archive, assets, auth, config, http_get, http_post, media, usb, routes, vehicle_assets
 import logging
 
 class Handler(http_get.GetRoutesMixin, http_post.PostRoutesMixin, BaseHTTPRequestHandler):
@@ -266,6 +266,13 @@ class Handler(http_get.GetRoutesMixin, http_post.PostRoutesMixin, BaseHTTPReques
                 self._json({"ok": True})
             else:
                 self._json({"ok": False, "msg": "not found"}, 404)
+        elif path.startswith("/api/audio/library/"):
+            try:
+                vehicle_assets.delete_chime(path[len("/api/audio/library/"):])
+            except ValueError as error:
+                self._json({"ok": False, "msg": str(error)}, 400)
+            else:
+                self._json({"ok": True})
         elif path.startswith("/api/audio/"):
             name = archive.safe_name(path[len("/api/audio/"):].split("?")[0])
             done = "done=1" in self.path

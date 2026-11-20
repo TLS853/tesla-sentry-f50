@@ -1318,6 +1318,7 @@ function stab(which) {
   if (which === 'notify') ntLoad();
   if (which === 'auth') pwLoad();
   if (which === 'wraps') refreshWraps();
+  if (which === 'audio') refreshAudio();
 }
 
 /* ---------- 推送设置 ---------- */
@@ -1589,7 +1590,7 @@ function openPanel(which = 'files') {
   document.body.classList.add('dialog-open');
   document.querySelectorAll('.library,.app-header').forEach(el => { el.inert = true; });
   stab(which);
-  refreshSkins(); refreshAudio(); refreshFiles();
+  refreshSkins(); refreshFiles();
   document.getElementById('st-' + which).focus();
 }
 document.getElementById('gear').onclick = () => openPanel();
@@ -1674,46 +1675,97 @@ document.getElementById('skin-file').onchange = async function () {
 };
 
 /* 锁车语音 */
+let audioBusy = false;
 async function refreshAudio() {
-  const j = await (await fetch('/api/audio')).json();
-  const mk = (arr, elid, isDone) => {
-    const list = document.getElementById(elid); list.innerHTML = '';
-    if (!arr.length) { list.innerHTML = '<div class="hint" style="margin:0">无</div>'; return; }
-    for (const f of arr) {
-      const d = document.createElement('div'); d.className = 'item';
-      const lockTag = f === 'LockChime.wav' ? '<span class="tag">锁车音</span>' : '';
-      d.innerHTML = `<span class="n">${f}</span>${lockTag}` +
-        (isDone ? '' : `<button class="primary" onclick="setLock('${f}')">设为锁车音</button>`) +
-        `<button class="danger" onclick="delAudio('${f}',${isDone})">删除</button>`;
-      list.appendChild(d);
+  const list = document.getElementById('audio-list');
+  try {
+    const response = await fetch('/api/audio');
+    if (!response.ok) throw new Error(response.status);
+    const j = await response.json();
+    list.replaceChildren();
+    if (!j.clips.length) {
+      const empty = document.createElement('div');
+      empty.className = 'hint';
+      empty.textContent = t('音效库为空');
+      list.append(empty);
     }
-  };
-  mk(j.queue, 'audio-list', false);
-  mk(j.done, 'audio-done', true);
+    for (const clip of j.clips) {
+      const row = document.createElement('div');
+      row.className = 'item';
+      const name = document.createElement('span');
+      name.className = 'n';
+      name.textContent = clip.name;
+      row.append(name);
+      const current = clip.id === j.current;
+      if (current || clip.id === j.pending) {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = t(current ? '已写入' : '待写入车机 U 盘');
+        row.append(tag);
+      }
+      const apply = document.createElement('button');
+      apply.className = 'primary';
+      apply.textContent = t(current ? '重新写入' : '设为锁车音');
+      apply.disabled = audioBusy;
+      apply.onclick = () => setLock(clip);
+      row.append(apply);
+      if (!current) {
+        const remove = document.createElement('button');
+        remove.className = 'danger';
+        remove.textContent = t('删除');
+        remove.disabled = audioBusy;
+        remove.onclick = () => delAudio(clip);
+        row.append(remove);
+      }
+      list.append(row);
+    }
+  } catch (error) {
+    list.textContent = t('读取音效库失败，请重新打开此页。');
+  }
 }
-async function setLock(f) {
-  const r = await fetch('/api/audio/setlockchime', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name: f }) });
-  const j = await r.json();
-  toast(j.ok ? '✅ 已设为锁车音 (LockChime.wav)' : '❌ ' + j.msg);
-  refreshAudio();
+async function setLock(clip) {
+  if (audioBusy || !confirm(t('请停车后写入。写入时将短暂暂停车机 U 盘。'))) return;
+  const msg = document.getElementById('audio-msg');
+  const buttons = document.querySelectorAll('#audio-list button');
+  audioBusy = true;
+  buttons.forEach(button => { button.disabled = true; });
+  msg.textContent = t('正在写入车机 U 盘…');
+  try {
+    const r = await fetch('/api/audio/setlockchime', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: clip.id}),
+    });
+    const j = await r.json();
+    msg.textContent = j.msg;
+  } catch (error) {
+    msg.textContent = t('连接中断，重新打开音效库可查看写入结果。');
+  } finally {
+    audioBusy = false;
+    await refreshAudio();
+  }
 }
-async function delAudio(f, isDone) {
-  if (!confirm('删除 ' + f + ' ?')) return;
-  await fetch('/api/audio/' + encodeURIComponent(f) + '?done=' + (isDone ? 1 : 0), { method: 'DELETE' });
-  refreshAudio();
+async function delAudio(clip) {
+  if (audioBusy || !confirm(t('删除') + ' ' + clip.name + ' ?')) return;
+  try {
+    const r = await fetch('/api/audio/library/' + clip.id, {method: 'DELETE'});
+    const j = await r.json();
+    if (!j.ok) document.getElementById('audio-msg').textContent = j.msg;
+    await refreshAudio();
+  } catch (error) {
+    document.getElementById('audio-msg').textContent = t('删除失败');
+  }
 }
 document.getElementById('audio-file').onchange = async function () {
   const msg = document.getElementById('audio-msg');
   this.disabled = true;
-  msg.textContent = '正在上传并转换锁车音…';
+  msg.textContent = t('正在上传并转换锁车音…');
   try {
     const j = await uploadFile(this, '/api/upload/audio', {
       start: document.getElementById('audio-start').value || '0',
       duration: document.getElementById('audio-duration').value || '5',
     });
-    msg.textContent = j ? j.msg : '未选择音频';
-    if (j && j.ok) refreshAudio();
-  } catch (e) { msg.textContent = '转换失败: ' + e; }
+    msg.textContent = j ? j.msg : t('未选择音频');
+    if (j && j.ok) await refreshAudio();
+  } catch (e) { msg.textContent = t('音频上传或转换失败'); }
   finally { this.disabled = false; this.value = ''; }
 };
 
@@ -1726,19 +1778,28 @@ function fmtSize(n) {
   return (n / 1048576).toFixed(1) + ' MB';
 }
 /* ---------- 涂装 (Wraps) ---------- */
-function wrapStatusHtml(attached) {
-  return usbStatusHtml(attached, 'wraps');
+async function changeUsb(action, context) {
+  const message = document.getElementById(context === 'wraps' ? 'wraps-action-msg' : 'usb-action-msg');
+  const button = document.querySelector((context === 'wraps' ? '#wraps-status' : '#usb-status') + ' button');
+  if (button) button.disabled = true;
+  message.textContent = t(action === 'attach' ? '正在连接车机 U 盘…' : '正在恢复车机导出…');
+  try {
+    const response = await fetch('/api/usb/' + action, {method: 'POST'});
+    const j = await response.json();
+    message.textContent = j.msg;
+  } catch (error) {
+    message.textContent = t('连接中断，请刷新后查看 U 盘状态。');
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 async function wrapAttach() {
-  toast('⏳ 正在连接, 管理期间车机读取将暂停…');
-  const j = await (await fetch('/api/usb/attach', { method: 'POST' })).json();
-  toast(j.ok ? '✅ 已连接车机U盘' : '❌ ' + j.msg);
-  refreshWraps();
+  await changeUsb('attach', 'wraps');
+  await refreshWraps();
 }
 async function wrapDetach() {
-  const j = await (await fetch('/api/usb/detach', { method: 'POST' })).json();
-  toast((j.ok ? '✅ ' : '❌ ') + j.msg);
-  refreshWraps();
+  await changeUsb('detach', 'wraps');
+  await refreshWraps();
 }
 async function refreshWraps() {
   const st = document.getElementById('wraps-status');
@@ -1747,7 +1808,7 @@ async function refreshWraps() {
   try {
     j = await (await fetch('/api/usb/browse?dir=' + encodeURIComponent('Wraps'))).json();
   } catch (e) { return; }
-  st.innerHTML = wrapStatusHtml(j.attached);
+  st.innerHTML = usbStatusHtml(j.attached, "wraps", j.restore);
   document.getElementById('wraps-file').disabled = !j.attached;
   grid.innerHTML = '';
   if (!j.ok) { grid.innerHTML = '<div class="hint">Wraps 目录不存在, 连接 U 盘后上传图片会自动创建</div>'; return; }
@@ -1801,29 +1862,28 @@ function switchArea(a) {
   document.getElementById('area-archive').classList.toggle('active', a === 'archive');
   document.getElementById('usb-hint').style.display = a === 'usb' ? '' : 'none';
   document.getElementById('arch-hint').style.display = a === 'archive' ? '' : 'none';
+  document.getElementById('usb-action-msg').hidden = a !== 'usb';
   curDir = a === 'usb' ? '' : '/archive/files';
   refreshFiles();
 }
-function usbStatusHtml(attached, context = 'files') {
+function usbStatusHtml(attached, context = 'files', restore = false) {
   const wrap = context === 'wraps';
+  if (restore) {
+    const action = wrap ? 'wrapDetach()' : 'usbDetach()';
+    return '<div class="notice"><div class="notice-content"><div class="notice-title">' + t('车机 U 盘等待恢复导出') + '</div><button class="mini primary" onclick="' + action + '">' + t('恢复车机导出') + '</button></div></div>';
+  }
   if (!attached) {
     return '<div class="notice"><span class="notice-icon">' + icon('storage') + '</span><div class="notice-content"><div class="notice-title">' + t('尚未进入 U 盘管理模式') + '</div><p>' + t('连接后车机读写会暂停，请在停车后操作。') + '</p><button class="mini primary" onclick="' + (wrap ? 'wrapAttach()' : 'usbAttach()') + '">' + t('连接车机 U 盘') + '</button></div></div>';
   }
   return '<div class="notice positive"><span class="notice-icon">' + icon('storage') + '</span><div class="notice-content"><div class="notice-title">' + t('U 盘管理已连接') + '</div><p>' + t(wrap ? '图片将直接写入 Wraps 目录，完成后请恢复车机导出。' : '网页改动会写入车机 U 盘，操作完成后请恢复导出。') + '</p><button class="mini" onclick="' + (wrap ? 'wrapDetach()' : 'usbDetach()') + '">' + t('完成并恢复导出') + '</button><small>' + t('闲置后系统会尝试自动恢复导出') + '</small></div></div>';
 }
 async function usbAttach() {
-  toast('⏳ 正在连接 (车机读取将断开几秒)...');
-  const r = await fetch('/api/usb/attach', { method: 'POST' });
-  const j = await r.json();
-  toast(j.ok ? '✅ 已连接车机U盘' : '❌ ' + j.msg);
-  curDir = '';
-  refreshFiles();
+  await changeUsb('attach', 'files');
+  if (area === 'usb') await refreshFiles('');
 }
 async function usbDetach() {
-  const j = await (await fetch('/api/usb/detach', { method: 'POST' })).json();
-  toast(j.ok ? '✅ ' + t('已恢复车机导出') : '❌ ' + t(j.msg));
-  document.getElementById('dir-nav').style.display = 'none';
-  refreshFiles();
+  await changeUsb('detach', 'files');
+  if (area === 'usb') await refreshFiles();
 }
 function goDir(d) {
   if (area === 'usb') {
@@ -1845,7 +1905,7 @@ async function refreshFiles(dir) {
   if (area === 'usb') {
     j = await (await fetch('/api/usb/browse?dir=' + encodeURIComponent(curDir))).json();
     statusEl.style.display = 'block';
-    statusEl.innerHTML = usbStatusHtml(j.attached);
+    statusEl.innerHTML = usbStatusHtml(j.attached, "files", j.restore);
     if (!j.attached) { nav.style.display = 'none'; return; }
     nav.style.display = 'block';
   } else {

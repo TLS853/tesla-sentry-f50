@@ -208,12 +208,12 @@ class PostRoutesMixin:
             return
         try:
             converted, duration = vehicle_assets.lock_chime(fn, data, fields.get("start", 0), fields.get("duration", 5))
-            vehicle_assets.queue_chime(converted)
+            clip = vehicle_assets.save_chime(fn, converted)
         except ValueError as error:
             self._json({"ok": False, "msg": str(error)}, 400)
             return
-        self._json({"ok": True, "name": "LockChime.wav", "duration": duration, "size": len(converted),
-                    "msg": "已转换为 LockChime.wav (%.1f 秒 / %d KB), 归档同步时自动写入 USB 根目录" % (duration, len(converted) // 1024)})
+        self._json(dict(clip, ok=True, duration=duration, size=len(converted),
+                        msg="已加入音效库（%.1f 秒 / %d KB）" % (duration, len(converted) // 1024)))
 
 
     @usb.usb_operation
@@ -311,16 +311,24 @@ class PostRoutesMixin:
 
 
     def _post_api_audio_setlockchime(self, path):
-        length = int(self.headers.get("Content-Length", 0))
         try:
-            name = json.loads(self.rfile.read(length)).get("name")
-        except Exception:
-            name = None
-        try:
-            data = vehicle_assets.queued_audio(name)
-            converted, duration = vehicle_assets.lock_chime(name, data)
-            vehicle_assets.queue_chime(converted)
-        except ValueError as error:
+            length = int(self.headers.get("Content-Length", 0))
+            if not 0 < length <= 4096:
+                raise ValueError("音效参数无效")
+            body = json.loads(self.rfile.read(length))
+            if not isinstance(body, dict):
+                raise ValueError("音效参数无效")
+            audio_id = body.get("id")
+            if audio_id is None:
+                name = body.get("name")
+                if not isinstance(name, str):
+                    raise ValueError("请选择音效")
+                data = vehicle_assets.queued_audio(name)
+                converted, _ = vehicle_assets.lock_chime(name, data)
+                audio_id = vehicle_assets.save_chime(name, converted)["id"]
+            vehicle_assets.check_chime(audio_id)
+        except (ValueError, UnicodeError) as error:
             self._json({"ok": False, "msg": str(error)}, 400)
             return
-        self._json({"ok": True, "name": "LockChime.wav", "duration": duration, "size": len(converted)})
+        result = usb.write_to_usb(lambda mount: vehicle_assets.apply_chime(mount, audio_id))
+        self._json(result, 200 if result["ok"] else 409)

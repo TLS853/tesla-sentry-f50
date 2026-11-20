@@ -1,9 +1,11 @@
 """Validate vehicle files, normalize lock audio, and commit USB writes atomically."""
 import hashlib
 import io
+import json
 import logging
 import math
 import os
+from pathlib import Path
 import re
 import struct
 import subprocess
@@ -89,6 +91,139 @@ def lock_chime(name, data, start=0, duration=5):
         _CONVERT.release()
 
 
+def _chime_library():
+    path = archive.safe_archive_dir(os.path.join(config.settings.archive, ".lock-chimes"))
+    if not path:
+        raise ValueError("锁车音效库路径无效")
+    return Path(path)
+
+
+def _store_chime(name, data):
+    name = os.path.basename(name.replace("\\", "/"))
+    if (not name or name in (".", "..") or len(name.encode()) > 255
+            or any(ord(char) < 32 for char in name)):
+        raise ValueError("音效文件名无效")
+    audio_id = hashlib.sha256(name.encode() + b"\0" + data).hexdigest()
+    folder = _chime_library() / audio_id
+    if folder.is_symlink():
+        raise ValueError("音效库目录无效")
+    path = folder / name
+    if not path.is_file() or path.is_symlink():
+        storage.atomic_write(str(path), data)
+    return {"id": audio_id, "name": name}
+
+
+def _chime_path(audio_id):
+    if not isinstance(audio_id, str) or not re.fullmatch(r"[0-9a-f]{64}", audio_id):
+        raise ValueError("无效的音效编号")
+    folder = _chime_library() / audio_id
+    if not folder.is_symlink() and folder.is_dir():
+        for path in folder.iterdir():
+            if path.suffix and path.is_file() and not path.is_symlink():
+                return path
+    raise ValueError("音效不存在")
+
+
+def _read_chime(path):
+    with path.open("rb") as stream:
+        return stream.read(MAX_AUDIO + 1)
+
+
+def _legacy_chime(base):
+    path = Path(base) / CHIME_NAME
+    if archive.safe_archive_path(str(path)) and not path.is_symlink():
+        try:
+            data, _ = lock_chime(CHIME_NAME, _read_chime(path))
+        except ValueError as error:
+            LOG.warning("Invalid legacy lock chime: %s", error)
+            return None
+        return _store_chime(CHIME_NAME, data)["id"]
+    return None
+
+
+def _current_chime():
+    try:
+        with (_chime_library() / "current.json").open() as stream:
+            return json.load(stream)["id"]
+    except FileNotFoundError:
+        return _legacy_chime(config.settings.audio_done)
+
+
+def _write_chime(mount, audio_id, data):
+    target = os.path.join(mount, CHIME_NAME)
+    backup = archive.safe_archive_dir(os.path.join(config.settings.audio_done, CHIME_NAME))
+    if not backup or os.path.islink(target):
+        raise ValueError("锁车音写入路径无效")
+    storage.atomic_write(target, data, mode=None)
+    storage.atomic_write(backup, data)
+    storage.atomic_json(str(_chime_library() / "current.json"), {"id": audio_id})
+
+
+@locking.archive_locked
+def check_chime(audio_id):
+    _chime_path(audio_id)
+
+
+@locking.archive_locked
+def save_chime(name, data):
+    return _store_chime(name, data)
+
+
+@locking.archive_locked
+def chime_library():
+    current = _current_chime()
+    pending = _legacy_chime(config.settings.audio_queue)
+    clips = []
+    library = _chime_library()
+    if library.is_dir():
+        for folder in library.iterdir():
+            if folder.is_symlink() or not folder.is_dir():
+                continue
+            try:
+                path = _chime_path(folder.name)
+            except ValueError:
+                continue
+            clips.append({"id": folder.name, "name": path.name, "size": path.stat().st_size})
+    clips.sort(key=lambda item: (item["name"].casefold(), item["id"]))
+    return {
+        "clips": clips, "current": current, "pending": pending,
+        "queue": _legacy_audio_files(config.settings.audio_queue),
+        "done": _legacy_audio_files(config.settings.audio_done),
+    }
+
+
+def _legacy_audio_files(folder):
+    path = Path(folder)
+    return sorted(entry.name for entry in path.iterdir() if entry.is_file()) if path.is_dir() else []
+
+
+@locking.archive_locked
+def apply_chime(mount, audio_id):
+    path = _chime_path(audio_id)
+    data, _ = lock_chime(path.name, _read_chime(path))
+    # Keep the preview even when a manual choice supersedes an older queued write.
+    pending = _legacy_chime(config.settings.audio_queue)
+    if pending:
+        queued = Path(config.settings.audio_queue) / CHIME_NAME
+        queued.unlink()
+        storage.sync_directory(str(queued.parent))
+    _write_chime(mount, audio_id, data)
+
+
+@locking.archive_locked
+def delete_chime(audio_id):
+    path = _chime_path(audio_id)
+    if audio_id == _current_chime():
+        raise ValueError("请先切换到另一段锁车音")
+    if audio_id == _legacy_chime(config.settings.audio_queue):
+        queued = Path(config.settings.audio_queue) / CHIME_NAME
+        queued.unlink()
+        storage.sync_directory(str(queued.parent))
+    path.unlink()
+    path.parent.rmdir()
+    storage.sync_directory(str(path.parent.parent))
+
+
 @locking.archive_locked
 def queue_chime(data):
     dest = archive.safe_archive_dir(os.path.join(config.settings.audio_queue, CHIME_NAME))
@@ -133,8 +268,11 @@ def flush_audio(mount):
                 raise ValueError("队列文件超过 20 MB")
             if name == CHIME_NAME:
                 data, _duration = lock_chime(name, data)
-            storage.atomic_write(target, data, mode=None)
-            storage.atomic_write(os.path.join(done, name), data)
+                audio_id = _store_chime(name, data)["id"]
+                _write_chime(mount, audio_id, data)
+            else:
+                storage.atomic_write(target, data, mode=None)
+                storage.atomic_write(os.path.join(done, name), data)
             os.unlink(source)
             storage.sync_directory(queue)
             count += 1

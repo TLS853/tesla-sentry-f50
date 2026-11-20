@@ -177,13 +177,59 @@ class VehicleAssetTests(unittest.TestCase):
             self.assets.write_wrap(str(self.mount), "valid.png", png())
         self.assertEqual(list(outside.iterdir()), [])
 
+    def test_http_applies_two_saved_chimes_and_keeps_their_display_names(self):
+        usb = self.runtime.usb
+        server = self.server()
+        uploads = [("我的第一段.wav", wav()), ("第二段.wav", wav(2))]
+        entries = []
+        for name, audio in uploads:
+            body, headers = multipart(name, audio)
+            status, _, response = self.request(server, "POST", "/api/upload/audio", body, headers)
+            self.assertEqual(status, 200, response)
+            entries.append(json.loads(response))
+        self.assets.queue_chime(wav(3))  # Pending data from a device upgraded from 2.11.
+        active = False
+
+        def mount():
+            nonlocal active
+            active = True
+
+        def unmount():
+            nonlocal active
+            active = False
+
+        with patch.object(usb, "MNT", str(self.mount)), patch.object(usb, "_arm_usb_timer"), \
+             patch.object(usb.UsbVolume, "open", side_effect=mount) as opened, \
+             patch.object(usb.UsbVolume, "close", side_effect=unmount), \
+             patch.object(usb.os.path, "ismount", side_effect=lambda path: active):
+            for entry, (name, audio) in zip(entries, uploads):
+                body = json.dumps({"id": entry["id"]})
+                status, _, response = self.request(server, "POST", "/api/audio/setlockchime", body)
+                self.assertEqual(status, 200, response)
+                self.assertFalse(active, "the one-shot write must restore USB export")
+                self.assertEqual((self.mount / "LockChime.wav").read_bytes(), audio)
+                self.assertEqual([file.name for file in self.mount.iterdir()], ["LockChime.wav"])
+                status, _, result = self.request(server, "GET", "/api/audio")
+                self.assertEqual(status, 200)
+                library = json.loads(result)
+                self.assertEqual(library["current"], entry["id"])
+                self.assertEqual({clip["name"] for clip in library["clips"]},
+                                 {"我的第一段.wav", "第二段.wav", "LockChime.wav"})
+                self.assertIsNone(library["pending"])
+            bad, _, _ = self.request(server, "POST", "/api/audio/setlockchime", b'{"id":"invalid"}')
+            self.assertEqual(bad, 400)
+            self.assertEqual(opened.call_count, 2)
+            status, _, _ = self.request(server, "DELETE", "/api/audio/library/" + entries[0]["id"])
+            self.assertEqual(status, 200)
+            self.assertEqual((self.mount / "LockChime.wav").read_bytes(), uploads[1][1])
+
     def test_http_audio_conversion_and_wrap_management_gate(self):
         server = self.server()
         body, headers = multipart("用户音频.wav", wav(7), {"start": 1, "duration": 3})
         status, _, response = self.request(server, "POST", "/api/upload/audio", body, headers)
         self.assertEqual(status, 200, response)
         self.assertEqual(json.loads(response)["duration"], 3)
-        self.assertEqual(json.loads(response)["name"], "LockChime.wav")
+        self.assertEqual(json.loads(response)["name"], "用户音频.wav")
         body, headers = multipart("custom.png", png())
         status, _, _ = self.request(server, "POST", "/api/upload/wrap", body, headers)
         self.assertEqual(status, 400)

@@ -6,7 +6,9 @@ import importlib
 import json
 import logging
 import os
+import signal
 import sys
+import time
 
 from . import __version__, config
 
@@ -44,6 +46,42 @@ def bootstrap_flat_install():
     return True
 
 
+def sync_archive():
+    """Cron entry point. A busy vehicle or management session leaves the disk alone."""
+    from . import archive_policy, usb, vehicle_assets
+
+    log = logging.getLogger(__name__)
+
+    if os.path.ismount(usb.MNT):
+        log.info("skip: mirror is mounted")
+        return 0
+    idle = int(config.get("TSF_IDLE") or "600")
+    age = time.time() - os.path.getmtime(usb.IMG)
+    if age < idle:
+        log.info("skip: image written %.0f seconds ago", age)
+        return 0
+
+    def stop(*_):
+        raise SystemExit(1)
+
+    previous = {sig: signal.signal(sig, stop) for sig in (signal.SIGHUP, signal.SIGTERM)}
+    volume = usb.UsbVolume()
+    try:
+        volume.open()
+        pushed = vehicle_assets.flush_audio(usb.MNT)
+        log.info("wrote %d audio files to the USB root", pushed)
+        copied = archive_policy.copy_mounted_archive(usb.MNT)
+        log.info("archived %d new files", copied)
+        return 0
+    finally:
+        try:
+            if volume.restore:
+                volume.close()
+        finally:
+            for sig, handler in previous.items():
+                signal.signal(sig, handler)
+
+
 def main(argv=None, entrypoint="viewer"):
     args = list(sys.argv[1:] if argv is None else argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -51,6 +89,11 @@ def main(argv=None, entrypoint="viewer"):
         if args and args[0] == "--usb-lock-exec":
             from .locking import usb_lock_exec
             return usb_lock_exec(args[1:])
+        if args[:1] == ["--archive-sync"]:
+            from . import locking
+            if len(args) != 1 or locking.inherited_usb_lock() is None:
+                raise ValueError("archive-sync requires USB lock ownership")
+            return sync_archive()
         if args[:1] == ["--archive-copy"]:
             from . import archive_policy, locking
             if len(args) != 2 or locking.inherited_usb_lock() is None:

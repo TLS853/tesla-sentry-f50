@@ -173,21 +173,21 @@
     <div id="skin-list"></div>
   </div>
   <div id="tab-audio" style="display:none">
-    <div class="setting-intro"><h3>锁车音效</h3><p>上传喜欢的声音，自动转换为车机锁车音效。</p></div>
-    <div class="hint">上传后自动裁剪、转换为 44.1kHz / 16-bit / 单声道 PCM WAV，并命名为 LockChime.wav。默认取前 5 秒，输出小于 1 MB；源文件最大 20 MB。支持 WAV / MP3 / M4A / AAC / FLAC / OGG / OPUS / WEBM。</div>
+    <div class="setting-intro"><h3>锁车音效</h3><p>保存多个音效，停车后选择要写入车机的一段。</p></div>
+    <div class="hint">支持 WAV、MP3、M4A、AAC、FLAC、OGG、OPUS 和 WEBM，源文件最大 20 MB。上传后自动裁剪并转换为适合车机的 WAV。</div>
     <label class="nrow"><span>从第几秒开始</span><input class="ninput num" id="audio-start" type="number" min="0" max="3600" step="0.1" value="0"></label>
     <label class="nrow"><span>保留时长（秒）</span><input class="ninput num" id="audio-duration" type="number" min="0.1" max="5" step="0.1" value="5"></label>
     <label class="upbtn">＋ 上传并转换锁车音<input type="file" id="audio-file" accept=".wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.webm" hidden></label>
-    <div class="hint" id="audio-msg">转换成功后替换待写入的锁车音。等待镜像空闲后的归档同步，自动写入 USB 根目录；车机内再选「玩具箱 → Boombox → 锁车音 → USB」。需要车辆支持外部扬声器及自定义锁车音。</div>
-    <div class="section-label">待写入车机 U 盘</div>
+    <div class="hint">在音效库点击「设为锁车音」，即可写入车机 U 盘。车机上选择「玩具箱 → Boombox → 锁车音 → USB」。</div>
+    <div class="hint" id="audio-msg" role="status"></div>
+    <div class="section-label">音效库</div>
     <div id="audio-list"></div>
-    <div class="section-label">已写入</div>
-    <div id="audio-done"></div>
   </div>
   <div id="tab-wraps" style="display:none">
     <div class="setting-intro"><h3>车身涂装</h3><p>为车机上的车辆可视化换一套外观。</p></div>
     <div class="hint">自定义车身涂装：上传对应车型模板制作的静态 PNG，512×512–1024×1024，单文件 ≤1 MB，USB 最多 10 个。自动创建根目录 Wraps/ 并规范文件名。普通照片不能自动变成贴合车身的涂装。</div>
     <div class="hint"><a href="https://github.com/teslamotors/custom-wraps" target="_blank" rel="noopener noreferrer">Tesla 官方车型模板</a> · 恢复导出后，在车机「玩具箱 → 喷漆车间 → 涂装」选用。请停车后管理 U 盘，管理期间车机录制暂停。</div>
+    <div class="hint" id="wraps-action-msg" role="status"></div>
     <div id="wraps-status" style="margin-bottom:10px"></div>
     <label class="upbtn" id="wraps-upbtn">＋ 上传涂装到 Wraps/（PNG，≤1 MB）<input type="file" id="wraps-file" accept=".png,image/png" hidden multiple></label>
     <div id="wraps-grid" class="wraps-grid"></div>
@@ -199,6 +199,7 @@
       <button id="area-archive" class="stab" onclick="switchArea('archive')">设备归档</button>
     </div>
     <div id="usb-status" style="display:none;margin-bottom:10px"></div>
+    <div class="hint" id="usb-action-msg" role="status"></div>
     <div id="usb-hint" class="hint">管理车机 U 盘时会暂停车机读写。完成操作后请恢复导出；5 分钟无操作也会尝试自动恢复。</div>
     <div id="arch-hint" class="hint" style="display:none">归档区 (F50 内部存储): 查看器用的视频副本、皮肤、文件中转。</div>
     <div id="dir-nav" style="display:none">

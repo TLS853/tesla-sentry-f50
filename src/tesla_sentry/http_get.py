@@ -7,7 +7,7 @@ import time
 import urllib.parse
 import urllib.request
 import zipfile
-from . import archive, assets, auth, config, media, notifications, telemetry, transcode, updates, usb
+from . import archive, assets, auth, config, media, notifications, telemetry, transcode, updates, usb, vehicle_assets
 
 class GetRoutesMixin:
 
@@ -147,9 +147,7 @@ class GetRoutesMixin:
 
 
     def _get_api_audio(self, path):
-        q = sorted(f for f in os.listdir(config.settings.audio_queue) if os.path.isfile(os.path.join(config.settings.audio_queue, f)))
-        d = sorted(f for f in os.listdir(config.settings.audio_done) if os.path.isfile(os.path.join(config.settings.audio_done, f)))
-        self._json({"queue": q, "done": d})
+        self._json(vehicle_assets.chime_library())
 
 
     def _get_api_browse(self, path):

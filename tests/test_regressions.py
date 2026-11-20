@@ -9,7 +9,7 @@ import sys
 import tempfile
 import types
 import unittest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -105,11 +105,14 @@ class RegressionTests(unittest.TestCase):
         lease = self.runtime.locking.ProcessLock(self.env["TSF_USB_LOCK"])
         lease.acquire()
         self.runtime.usb.usb_lease = lease
+        self.runtime.usb.usb_volume = self.runtime.usb.UsbVolume()
+        self.runtime.usb.usb_volume.loop = "/dev/loop3"
+        self.runtime.usb.usb_volume.lun = Mock(read_text=Mock(return_value=""))
         self.addCleanup(lease.release)
         with patch.object(self.runtime.usb.os.path, "ismount", return_value=True), \
-             patch.object(self.runtime.usb.subprocess, "run", return_value=Mock(returncode=1)), \
+             patch.object(self.runtime.usb.subprocess, "run", return_value=Mock(returncode=1, stderr="busy")), \
              patch.object(self.runtime.usb.time, "sleep"), patch.object(self.runtime.usb, "_arm_usb_timer") as retry, \
-             patch.object(self.runtime.usb, "_gadget_rebind") as rebind:
+             patch.object(self.runtime.usb.UsbVolume, "restore_export") as rebind:
             self.assertFalse(self.runtime.usb.usb_detach()[0])
             self.assertIs(self.runtime.usb.usb_lease, lease)
             rebind.assert_not_called()
@@ -118,10 +121,15 @@ class RegressionTests(unittest.TestCase):
         self.assertFalse(other.acquire(blocking=False))
 
     def test_failed_stop_export_prevents_mount(self):
-        with patch.object(self.runtime.usb, "_gadget_rebind", return_value=False), \
+        volume = MagicMock()
+        volume.__enter__.return_value = Mock(
+            volume_offset=0, heap_byte=1024, cluster_count=6, cluster_size=512, vol_len=8, bytes_per_sector=512)
+        with patch.object(self.runtime.exfat, "ExFat", return_value=volume), \
+             patch.object(self.runtime.usb, "_lun", side_effect=OSError("cannot access LUN")) as lun, \
              patch.object(self.runtime.usb.os.path, "ismount", return_value=False), \
              patch.object(self.runtime.usb.subprocess, "run") as run:
             self.assertFalse(self.runtime.usb.usb_attach()[0])
+            lun.assert_called_once()
             run.assert_not_called()
         lock = self.runtime.locking.ProcessLock(self.env["TSF_USB_LOCK"])
         self.assertTrue(lock.acquire(blocking=False))
@@ -181,37 +189,42 @@ procd_set_param() {
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), "yes")
 
-    def test_shell_unmount_failure_leaves_usb_disconnected(self):
-        bin_dir = self.root / "bin"
-        bin_dir.mkdir()
-        mounted = self.root / "mounted"
-        commands = {
-            "ls": '#!/bin/sh\necho controller\n',
-            "date": '#!/bin/sh\necho 1000\n',
-            "sleep": '#!/bin/sh\nexit 0\n',
-            "sync": '#!/bin/sh\nexit 0\n',
-            "losetup": '#!/bin/sh\n[ "$1" != -f ] || echo /dev/fake\nexit 0\n',
-            "mount": '#!/bin/sh\ntouch "$TEST_MOUNTED"\n',
-            "umount": '#!/bin/sh\nexit 1\n',
-            "grep": '#!/bin/sh\nfor arg do\n if [ "$arg" = /proc/mounts ]; then\n  [ -f "$TEST_MOUNTED" ]; exit $?\n fi\ndone\nexec /usr/bin/grep "$@"\n',
-        }
-        for name, text in commands.items():
-            fp = bin_dir / name
-            fp.write_text(text)
-            fp.chmod(0o755)
+    def test_cron_unmount_failure_leaves_usb_medium_disconnected(self):
+        usb = self.runtime.usb
         gadget = self.root / "gadget"
-        (gadget / "configs").mkdir(parents=True)
-        (gadget / "UDC").write_text("controller")
-        install = Path(self.env["TSF_DIR"])
-        install.mkdir()
-        (install / "sentry-viewer.py").symlink_to(ROOT / "sentry-viewer.py")
-        env = dict(self.env, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"],
-                   TSF_GADGET=str(gadget), TSF_PYTHON=sys.executable,
-                   TSF_MNT=str(self.root / "mount"), TSF_IDLE="0", TEST_MOUNTED=str(mounted))
-        result = subprocess.run(["/bin/sh", str(ROOT / "scripts/tesla-sync.sh")], env=env, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertEqual((gadget / "UDC").read_text().strip(), "")
-        self.assertIn("umount failed", (install / "tesla-sync.log").read_text())
+        lun = gadget / "functions/mass_storage.0/lun.0/file"
+        lun.parent.mkdir(parents=True)
+        udc = gadget / "UDC"
+        udc.write_text("controller")
+        image = (self.root / "image").resolve()
+        image.write_bytes(b"test")
+        lun.write_text(str(image))
+        mounted = False
+
+        def command(label, *args):
+            nonlocal mounted
+            if args[-1] == "-f":
+                return "/dev/loop3"
+            if args[0] == "mount":
+                mounted = True
+            if args[0] == "umount":
+                raise RuntimeError(label)
+            return ""
+
+        volume = Mock(volume_offset=512, heap_byte=1024, cluster_count=5, cluster_size=512,
+                      vol_len=8, bytes_per_sector=512)
+        reader = MagicMock()
+        reader.return_value.__enter__.return_value = volume
+        with patch.object(usb, "IMG", str(image)), patch.object(usb, "_lun", return_value=lun), \
+             patch.object(usb.exfat, "ExFat", reader), patch.object(usb, "MNT", str(self.root / "mount")), \
+             patch.object(usb.os.path, "ismount", side_effect=lambda path: mounted), \
+             patch.object(usb, "_command", side_effect=command), patch.dict(usb.config.environment, TSF_IDLE="0"), \
+             patch.object(self.runtime.archive_policy, "copy_mounted_archive", return_value=0), \
+             patch.object(self.runtime.vehicle_assets, "flush_audio", return_value=0):
+            with self.assertRaisesRegex(RuntimeError, "卸载失败"):
+                self.runtime.cli.sync_archive()
+        self.assertEqual(lun.read_text().strip(), "")
+        self.assertEqual(udc.read_text(), "controller")
 
     def test_http_routes_keep_authentication_and_response_contracts(self):
         handler = object.__new__(self.runtime.http.Handler)
@@ -263,7 +276,7 @@ procd_set_param() {
         self.assertTrue(self.runtime.cli.bootstrap_flat_install())
         self.assertFalse(self.runtime.cli.bootstrap_flat_install())
         self.assertIn('ENTRYPOINT = "sync"', (root / "tesla-live-sync.py").read_text())
-        self.assertIn("--archive-copy", (root / "tesla-sync.sh").read_text())
+        self.assertIn("--archive-sync", (root / "tesla-sync.sh").read_text())
         self.runtime.deployment.rollback_release(str(root))
         self.assertEqual((root / "sentry-viewer.py").read_text(), "previous viewer")
 

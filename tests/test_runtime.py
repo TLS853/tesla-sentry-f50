@@ -308,7 +308,7 @@ class RuntimeTests(unittest.TestCase):
 
         for layout in ("raw", "mbr", "gpt"):
             with self.subTest(layout=layout):
-                path = self.root / (layout + ".img")
+                path = (self.root / (layout + ".img")).resolve()
                 path.write_bytes(disk_image(layout))
                 dest = self.archive / "SavedClips" / event / "front.mp4"
                 if dest.exists():
@@ -323,6 +323,26 @@ class RuntimeTests(unittest.TestCase):
                     self.assertEqual(state["health"]["phase"], "ready")
                     self.assertEqual(state["health"]["last_copied"], 1)
                 self.assertEqual(dest.read_bytes(), clip)
+                usb = self.runtime.usb
+                gadget = self.root / "gadget"
+                lun = gadget / "functions/mass_storage.0/lun.0/file"
+                lun.parent.mkdir(parents=True, exist_ok=True)
+                lun.write_text(str(path))
+                udc = gadget / "UDC"
+                udc.write_text("controller")
+                with patch.object(usb, "IMG", str(path)), patch.object(usb, "MNT", str(self.root / "mount")), \
+                     patch.object(usb, "_lun", return_value=lun), \
+                     patch.object(usb, "_command", side_effect=["/dev/loop4", "", "", ""]) as run:
+                    mount = usb.UsbVolume()
+                    mount.open()
+                    self.assertEqual(lun.read_text(), "\n")
+                    args = [] if layout == "raw" else ["-o", str(2048 * sector)]
+                    run.assert_any_call("连接 U 盘镜像失败", usb.LOSETUP, *args, "/dev/loop4", str(path))
+                    run.assert_any_call("挂载 exFAT 镜像失败", "mount", "-t", "exfat", "-o", "rw",
+                                        "/dev/loop4", str(self.root / "mount"))
+                    mount.close()
+                    self.assertEqual(lun.read_text().strip(), str(path))
+                    self.assertEqual(udc.read_text(), "controller")
 
     def test_package_import_graph_has_no_cycles_or_implicit_shared_globals(self):
         package = ROOT / "src/tesla_sentry"
