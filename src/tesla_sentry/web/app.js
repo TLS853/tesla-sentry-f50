@@ -1735,7 +1735,7 @@ async function setLock(clip) {
       method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: clip.id}),
     });
     const j = await r.json();
-    msg.textContent = j.msg;
+    msg.textContent = t(j.msg);
   } catch (error) {
     msg.textContent = t('连接中断，重新打开音效库可查看写入结果。');
   } finally {
@@ -1786,7 +1786,7 @@ async function changeUsb(action, context) {
   try {
     const response = await fetch('/api/usb/' + action, {method: 'POST'});
     const j = await response.json();
-    message.textContent = j.msg;
+    message.textContent = t(j.msg);
   } catch (error) {
     message.textContent = t('连接中断，请刷新后查看 U 盘状态。');
   } finally {

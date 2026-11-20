@@ -99,7 +99,7 @@ class Handler(http_get.GetRoutesMixin, http_post.PostRoutesMixin, BaseHTTPReques
         return False
 
     def _login_page(self, msg="", nxt="/", code=200):
-        lang = assets.lang_from_accept(self.headers.get("Accept-Language") or "", "zh")
+        lang = assets.lang_from_accept(self.headers.get("Accept-Language"))
         days = str(max(1, auth.AUTH_TTL // 86400))
         foot = assets.tr("仅限本人访问", lang) + " · " + assets.tr("登录状态保留", lang) + " " + days + " " + assets.tr("天", lang)
         html = (assets.LOGIN_HTML.replace("__USER__", auth.AUTH_USER)

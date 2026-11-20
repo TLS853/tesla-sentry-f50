@@ -397,6 +397,11 @@ class RuntimeTests(unittest.TestCase):
         for table in self.runtime.assets.LANG_TABLE.values():
             self.assertTrue(all(isinstance(value, str) for value in table.values()))
         self.assertEqual(self.runtime.assets.tr("路", "en"), "cams")
+        assets = self.runtime.assets
+        self.assertEqual([code for code, _ in assets.LANG_NAMES], ["zh", "en"])
+        self.assertEqual(set(assets.LANG_TABLE), {"en"})
+        self.assertEqual(assets.lang_from_accept("de-DE,zh-CN;q=0.8,en;q=0.6"), "zh")
+        self.assertEqual(assets.lang_from_accept("ja-JP"), "en")
 
 
 if __name__ == "__main__":

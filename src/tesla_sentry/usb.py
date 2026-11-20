@@ -1,4 +1,5 @@
 """Usb service."""
+import errno
 import functools
 import logging
 import os
@@ -61,6 +62,21 @@ def _backing_image(path):
     return os.path.realpath(value) if value else ""
 
 
+def _stop_export(lun):
+    try:
+        lun.write_text("\n")
+    except OSError as error:
+        if error.errno != errno.EBUSY:
+            raise
+        forced_eject = lun.with_name("forced_eject")
+        if not forced_eject.is_file():
+            raise RuntimeError("主机锁定了车机 U 盘，请在主机端弹出后重试") from error
+        if usb_img_age() < 10:
+            raise RuntimeError("车机 U 盘仍有写入，请暂停录制后重试") from error
+        LOG.info("USB host locked an idle medium; ejecting the storage LUN")
+        forced_eject.write_text("1\n")
+
+
 def _mounted_loop():
     """Recover an interrupted session only when the mount belongs to this image."""
     with open("/proc/mounts") as mounts:
@@ -99,7 +115,7 @@ class UsbVolume:
             raise RuntimeError("车机导出的 U 盘与当前镜像配置不一致")
         os.makedirs(MNT, exist_ok=True)
         if backing:
-            lun.write_text("\n")
+            _stop_export(lun)
         self.lun = lun
         self.restore = True
         if _backing_image(lun):

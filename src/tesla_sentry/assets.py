@@ -3,9 +3,7 @@ import json
 import pkgutil
 from pathlib import Path
 
-LANG_NAMES = [("zh", "中文"), ("en", "English"), ("de", "Deutsch"), ("fr", "Français"),
-              ("it", "Italiano"), ("es", "Español"), ("nl", "Nederlands"), ("ru", "Русский"),
-              ("ja", "日本語"), ("ko", "한국어")]
+LANG_NAMES = [("zh", "中文"), ("en", "English")]
 
 
 def resource(name):
@@ -37,15 +35,12 @@ LANG_JS = json.dumps(LANG_NAMES, ensure_ascii=False, separators=(",", ":"))
 def tr(text, lang="en"):
     if not text or lang == "zh":
         return text
-    return (LANG_TABLE.get(lang) or {}).get(text) or LANG_TABLE.get("en", {}).get(text) or text
+    return LANG_TABLE["en"].get(text, text)
 
 
-def lang_from_accept(header, default="zh"):
-    supported = dict(LANG_NAMES)
+def lang_from_accept(header):
     for part in (header or "").split(","):
-        tag = part.split(";")[0].strip().lower()
-        if tag in supported:
+        tag = part.split(";")[0].strip().lower().split("-")[0]
+        if tag in ("zh", "en"):
             return tag
-        if tag.split("-")[0] in supported:
-            return tag.split("-")[0]
-    return default
+    return "en" if header else "zh"

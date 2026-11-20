@@ -1,15 +1,15 @@
 const I18N = window.__I18N || {};
-const LANGS = window.__LANGS || [['zh', '中文']];
+const LANGS = window.__LANGS || [['zh', '中文'], ['en', 'English']];
 export let LANG = (localStorage.getItem('tsf_lang') || '').trim();
 if (!LANGS.some(l => l[0] === LANG)) {
-  const nav = String((navigator.languages && navigator.languages[0]) || navigator.language || 'zh').toLowerCase();
-  const hit = LANGS.find(l => nav === l[0] || nav.indexOf(l[0] + '-') === 0);
-  LANG = hit ? hit[0] : 'en';
+  const preferences = navigator.languages?.length ? navigator.languages : [navigator.language || 'zh'];
+  LANG = preferences
+    .map(tag => tag.toLowerCase().split('-')[0])
+    .find(code => LANGS.some(l => l[0] === code)) || 'en';
 }
 export function t(s) {
   if (!s || LANG === 'zh') return s;
-  const m = I18N[LANG] || {};
-  return m[s] || (I18N.en || {})[s] || s;
+  return (I18N.en || {})[s] || s;
 }
 export function langName(code) {
   const l = LANGS.find(x => x[0] === code);

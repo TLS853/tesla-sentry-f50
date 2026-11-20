@@ -1,4 +1,5 @@
 """Hardware-free regressions for archive, configuration, locks and releases."""
+import errno
 import hashlib
 import io
 import json
@@ -134,6 +135,21 @@ class RegressionTests(unittest.TestCase):
         lock = self.runtime.locking.ProcessLock(self.env["TSF_USB_LOCK"])
         self.assertTrue(lock.acquire(blocking=False))
         lock.release()
+
+    def test_host_locked_usb_only_ejects_an_idle_medium(self):
+        usb = self.runtime.usb
+        lun = Mock()
+        lun.write_text.side_effect = OSError(errno.EBUSY, "locked by USB host")
+        fallback = lun.with_name.return_value
+        fallback.is_file.return_value = True
+        with patch.object(usb, "usb_img_age", return_value=1):
+            with self.assertRaisesRegex(RuntimeError, "仍有写入"):
+                usb._stop_export(lun)
+        fallback.write_text.assert_not_called()
+        with patch.object(usb, "usb_img_age", return_value=15):
+            usb._stop_export(lun)
+        fallback.write_text.assert_called_once_with("1\n")
+        lun.with_name.assert_called_with("forced_eject")
 
     def test_openwrt_and_generic_services_export_added_configuration(self):
         install = (ROOT / "install.sh").read_text()
