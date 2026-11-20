@@ -11,7 +11,7 @@ import subprocess
 import sys
 import threading
 import unittest
-from unittest.mock import patch, Mock
+from unittest.mock import MagicMock, patch, Mock
 
 import test_regressions as fixtures
 
@@ -148,17 +148,46 @@ class RuntimeTests(unittest.TestCase):
         self.assertTrue(all(not worker.is_alive() for worker in services.workers))
 
     def test_sync_closes_volume_and_releases_usb_lease_on_exception(self):
-        volume = Mock()
-        stat = os.stat(self.root)
-        volume.fd_dev, volume.fd_ino = stat.st_dev, stat.st_ino
-        with patch.object(self.runtime.sync.os, "stat", return_value=stat), \
-             patch.object(self.runtime.exfat, "ExFat", return_value=volume), \
+        volume = MagicMock(identity=["test-volume"])
+        volume.__enter__.return_value = volume
+        with patch.object(self.runtime.exfat, "ExFat", return_value=volume), \
              patch.object(self.runtime.sync, "do_sync", side_effect=ValueError("invalid volume")):
             self.assertEqual(self.runtime.sync.main(["--once"]), 1)
-        volume.close.assert_called_once()
+        volume.__exit__.assert_called_once()
         lock = self.runtime.locking.ProcessLock(self.env["TSF_USB_LOCK"])
         self.assertTrue(lock.acquire(blocking=False))
         lock.release()
+
+    def test_live_sync_reads_new_volume_after_reformatting_same_image(self):
+        sync = self.runtime.sync
+        image = self.root / "retained-inode.img"
+
+        def create_volume(serial, root):
+            vbr = bytearray(4096)
+            vbr[3:11] = b"EXFAT   "
+            struct.pack_into("<QIIIIII", vbr, 72, 8, 1, 1, 2, 6, root, serial)
+            vbr[108:111] = bytes((9, 0, 1))
+            with image.open("r+b") as stream:
+                stream.write(vbr)
+
+        image.touch()
+        create_volume(1, 2)
+        original_inode = image.stat().st_ino
+        stop = Mock()
+        stop.is_set.side_effect = [False, False, True]
+        stop.wait.side_effect = lambda *_: create_volume(2, 3)
+        observations = []
+
+        def scan(volume, state):
+            observations.append((volume.root_cluster, state.get("__pending__")))
+            state["__pending__"] = {"old recording": [50, 50, 1]}
+            return 0, 0
+
+        with patch.object(sync, "IMG", str(image)), patch.object(sync, "load_state", return_value={}), \
+             patch.object(sync, "do_sync", side_effect=scan):
+            self.assertEqual(sync.main([], stop_event=stop), 0)
+        self.assertEqual(image.stat().st_ino, original_inode)
+        self.assertEqual(observations, [(2, None), (3, None)])
 
     def test_sync_status_keeps_latest_error_and_last_success_separate(self):
         store = Path(self.env["TSF_DIR"])

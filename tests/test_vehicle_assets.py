@@ -222,7 +222,8 @@ class VehicleAssetTests(unittest.TestCase):
         self.assets.queue_chime(wav(3))  # Pending data from a device upgraded from 2.11.
         active = False
 
-        def mount():
+        def mount(*, force=False):
+            self.assertTrue(force)
             nonlocal active
             active = True
 
@@ -254,6 +255,41 @@ class VehicleAssetTests(unittest.TestCase):
             status, _, _ = self.request(server, "DELETE", "/api/audio/library/" + entries[0]["id"])
             self.assertEqual(status, 200)
             self.assertEqual((self.mount / "LockChime.wav").read_bytes(), uploads[1][1])
+
+    def test_delayed_sound_persists_until_a_safe_queued_write_and_can_cancel(self):
+        server = self.server()
+        first = self.assets.save_chime("first.wav", wav())
+        second = self.assets.save_chime("second.wav", wav(7))
+        with patch.object(self.runtime.usb, "write_to_usb") as active_write:
+            for item, mode in ((first, "later"), (first, "cancel"), (second, "later")):
+                body = json.dumps({"id": item["id"], "mode": mode})
+                status, _, result = self.request(server, "POST", "/api/audio/setlockchime", body)
+                self.assertEqual(status, 200, result)
+        active_write.assert_not_called()
+        self.assertEqual(self.assets.chime_library()["pending"], second["id"])
+        self.assertIsNone(self.assets.chime_library()["current"])
+        with patch.object(self.assets, "_write_chime", side_effect=OSError("USB full")):
+            self.assertEqual(self.assets.flush_audio(str(self.mount)), 0)
+        self.assertEqual(self.assets.chime_library()["pending"], second["id"])
+        self.assertEqual(self.assets.flush_audio(str(self.mount)), 1)
+        self.assertEqual((self.mount / self.assets.CHIME_NAME).read_bytes(), wav(7))
+        state = self.assets.chime_library()
+        self.assertIsNone(state["pending"])
+        self.assertEqual(state["current"], second["id"])
+        self.assertEqual({item["name"] for item in state["clips"]}, {"first.wav", "second.wav"})
+
+    def test_apply_rejects_mismatching_usb_readback(self):
+        server = self.server()
+        clip = self.assets.save_chime("test.wav", wav())
+        with patch.object(self.runtime.usb, "write_to_usb",
+                          return_value={"ok": True, "written": True, "msg": "written"}), \
+             patch.object(self.assets, "usb_chime_status", return_value="different"):
+            status, _, response = self.request(server, "POST", "/api/audio/setlockchime",
+                                               json.dumps({"id": clip["id"]}))
+        self.assertEqual(status, 409)
+        result = json.loads(response)
+        self.assertFalse(result["written"])
+        self.assertEqual(result["usb_status"], "different")
 
     def test_http_audio_conversion_and_wrap_management_gate(self):
         server = self.server()

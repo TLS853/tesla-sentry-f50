@@ -257,7 +257,7 @@ def dump(exfat):
 
 
 def main(argv=None, stop_event=None):
-    """Poll under the USB lease; always close the reader on exit or image replacement."""
+    """Read fresh volume geometry each poll, including after an in-place format."""
     import signal
     import threading
     parser = argparse.ArgumentParser(description="Read-only exFAT archive sync")
@@ -272,14 +272,11 @@ def main(argv=None, stop_event=None):
     if threading.current_thread() is threading.main_thread():
         for sig in (signal.SIGINT, signal.SIGTERM):
             previous_signals[sig] = signal.signal(sig, lambda *unused: stop.set())
-    volume = None
     state = load_state()
     running_source = os.path.realpath(sys.argv[0])
     try:
         while not stop.is_set():
             if os.path.realpath(sys.argv[0]) != running_source:
-                if volume is not None:
-                    volume.close()
                 os.execv(sys.executable, [sys.executable] + sys.argv)
             lease = locking.ProcessLock(locking.usb_lock_path())
             if not lease.acquire(blocking=False):
@@ -293,16 +290,14 @@ def main(argv=None, stop_event=None):
                         return 75
                     save_health(state, "paused")
                 else:
-                    stat = os.stat(IMG)
-                    if volume is None or (stat.st_dev, stat.st_ino) != (volume.fd_dev, volume.fd_ino):
-                        if volume is not None:
-                            volume.close()
-                            volume = None
-                        volume = exfat_reader.ExFat(IMG)
-                    if args.dump:
-                        dump(volume)
-                        return 0
-                    n, size = do_sync(volume, state)
+                    with exfat_reader.ExFat(IMG) as volume:
+                        if args.dump:
+                            dump(volume)
+                            return 0
+                        if state.get("volume") != volume.identity:
+                            state.pop("__pending__", None)
+                            state["volume"] = volume.identity
+                        n, size = do_sync(volume, state)
                     if args.once:
                         log("单轮完成: %d 个新片段, %.1f MB" % (n, size / 1048576))
                         return 0
@@ -316,8 +311,6 @@ def main(argv=None, stop_event=None):
                 lease.release()
             stop.wait(args.interval)
     finally:
-        if volume is not None:
-            volume.close()
         for sig, handler in previous_signals.items():
             signal.signal(sig, handler)
     return 0

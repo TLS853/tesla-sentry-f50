@@ -2,6 +2,7 @@
 
 from . import feishu
 import json
+import logging
 import os
 import re
 import subprocess
@@ -9,6 +10,9 @@ import tempfile
 import urllib.parse
 import urllib.request
 from . import archive, auth, config, notifications, qqbot, transcode, update_package, updates, usb, vehicle_assets
+
+LOG = logging.getLogger(__name__)
+
 
 class PostRoutesMixin:
 
@@ -319,17 +323,35 @@ class PostRoutesMixin:
             body = json.loads(self.rfile.read(length))
             if not isinstance(body, dict):
                 raise ValueError("音效参数无效")
+            mode = body.get("mode", "now")
+            if mode not in ("now", "later", "cancel"):
+                raise ValueError("无效的写入方式")
             audio_id = body.get("id")
-            if audio_id is None:
+            if audio_id is None and mode == "now":
                 name = body.get("name")
                 if not isinstance(name, str):
                     raise ValueError("请选择音效")
                 data = vehicle_assets.queued_audio(name)
                 converted, _ = vehicle_assets.lock_chime(name, data)
                 audio_id = vehicle_assets.save_chime(name, converted)["id"]
+            if mode == "later":
+                vehicle_assets.schedule_chime(audio_id)
+                self._json({"ok": True, "queued": True, "msg": "已排队，等待 U 盘安全空闲后写入"})
+                return
+            if mode == "cancel":
+                vehicle_assets.cancel_chime(audio_id)
+                self._json({"ok": True, "msg": "已取消延迟写入"})
+                return
             vehicle_assets.check_chime(audio_id)
         except (ValueError, UnicodeError) as error:
             self._json({"ok": False, "msg": str(error)}, 400)
             return
         result = usb.write_to_usb(lambda mount: vehicle_assets.apply_chime(mount, audio_id))
+        if result.get("written"):
+            status = vehicle_assets.usb_chime_status(audio_id)
+            result["usb_status"] = status
+            if status in ("missing", "different"):
+                result.update(ok=False, written=False, msg="U 盘锁车音回读不匹配，请检查 U 盘文件系统")
+        LOG.info("Apply lock sound id=%s ok=%s readback=%s message=%r",
+                 audio_id, result["ok"], result.get("usb_status"), result["msg"])
         self._json(result, 200 if result["ok"] else 409)

@@ -377,6 +377,19 @@
     "转换后的 WAV 必须小于 1 MB，请缩短音效或启用裁剪": "The converted WAV must be smaller than 1 MB. Shorten the sound or enable trimming.",
     "U 盘文件缺失": "USB file missing",
     "U 盘音效不同": "USB sound differs",
-    "上次写入": "Last written"
+    "上次写入": "Last written",
+    "U 盘报告介质故障，请先检查文件系统": "The USB drive reported a media error. Check its file system before writing.",
+    "U 盘尚未正常卸载，请先从主机安全卸载或检查文件系统": "The USB drive was not cleanly unmounted. Safely unmount it from the host or check its file system.",
+    "U 盘锁车音回读不匹配，请检查 U 盘文件系统": "The file read back from the USB drive differed. Check the USB file system.",
+    "何时写入锁车音？": "When should the lock sound be written?",
+    "请停车后再立即写入。必要时会短暂强制弹出车机 U 盘。延迟写入会等待主机安全释放。": "Park before writing now. The vehicle USB drive may briefly eject. Delayed writes wait for the host to release it safely.",
+    "立即写入": "Write now",
+    "延迟写入": "Write later",
+    "取消延迟写入": "Cancel delayed write",
+    "正在更新待写入队列…": "Updating the pending write…",
+    "已排队，等待 U 盘安全空闲后写入": "Queued. Waiting for the USB drive to become safe to write.",
+    "已取消延迟写入": "Delayed write cancelled",
+    "这段音效已不在待写入队列中": "This sound is no longer queued.",
+    "主机仍在使用车机 U 盘，等待安全释放": "The host is using the vehicle USB drive. Waiting for a safe release."
   }
 }

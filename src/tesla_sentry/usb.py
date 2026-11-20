@@ -62,12 +62,14 @@ def _backing_image(path):
     return os.path.realpath(value) if value else ""
 
 
-def _stop_export(lun):
+def _stop_export(lun, *, force=False):
     try:
         lun.write_text("\n")
     except OSError as error:
         if error.errno != errno.EBUSY:
             raise
+        if not force:
+            raise RuntimeError("主机仍在使用车机 U 盘，等待安全释放") from error
         forced_eject = lun.with_name("forced_eject")
         if not forced_eject.is_file():
             raise RuntimeError("主机锁定了车机 U 盘，请在主机端弹出后重试") from error
@@ -93,6 +95,13 @@ def _mounted_loop():
     raise RuntimeError("挂载点被其它文件系统占用")
 
 
+def _check_volume_state(volume):
+    if volume.vol_flags & exfat.MEDIA_FAILURE:
+        raise RuntimeError("U 盘报告介质故障，请先检查文件系统")
+    if volume.vol_flags & exfat.VOLUME_DIRTY:
+        raise RuntimeError("U 盘尚未正常卸载，请先从主机安全卸载或检查文件系统")
+
+
 class UsbVolume:
     """One read/write mount with the USB process lease already held by the caller."""
 
@@ -101,10 +110,11 @@ class UsbVolume:
         self.loop = None
         self.restore = False
 
-    def open(self):
+    def open(self, *, force=False):
         if os.path.ismount(MNT):
             raise RuntimeError("已有残留挂载，请先恢复车机 U 盘")
         with exfat.ExFat(IMG) as volume:
+            _check_volume_state(volume)
             offset = volume.volume_offset
             end = volume.heap_byte + volume.cluster_count * volume.cluster_size
             if end > volume.vol_len * volume.bytes_per_sector:
@@ -115,11 +125,15 @@ class UsbVolume:
             raise RuntimeError("车机导出的 U 盘与当前镜像配置不一致")
         os.makedirs(MNT, exist_ok=True)
         if backing:
-            _stop_export(lun)
+            _stop_export(lun, force=force)
         self.lun = lun
         self.restore = True
         if _backing_image(lun):
             raise RuntimeError("车机 U 盘未能停止导出")
+        if backing:
+            # The host may finish a write while releasing the storage LUN.
+            with exfat.ExFat(IMG) as volume:
+                _check_volume_state(volume)
         loop = _command("找不到空闲的 loop 设备", LOSETUP, "-f")
         if not re.fullmatch(r"/dev/loop[0-9]+", loop):
             raise RuntimeError("losetup 未返回有效的 loop 设备")
@@ -202,7 +216,7 @@ def usb_attach():
         if not _acquire_usb():
             return False, "镜像正由同步服务使用，请稍后重试"
         try:
-            usb_volume.open()
+            usb_volume.open(force=True)
         except (OSError, RuntimeError, ValueError) as error:
             if usb_volume.restore:
                 ok, message = usb_detach()

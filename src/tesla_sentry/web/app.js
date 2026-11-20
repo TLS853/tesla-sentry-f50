@@ -1288,7 +1288,7 @@ function closePlayer() {
   refreshLive();
 }
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
+  if (e.key !== 'Escape' || document.getElementById('audio-write-dialog').open) return;
   if (cur && selectedCamera && !saver) { chooseCamera(''); return; }
   closeExport(); closePlayer(); closePanel();
 });
@@ -1621,7 +1621,7 @@ SETTING_TABS.forEach(key => {
 });
 document.addEventListener('keydown', event => {
   const panel = document.getElementById('panel');
-  if (event.key !== 'Tab' || !panel.classList.contains('open')) return;
+  if (event.key !== 'Tab' || !panel.classList.contains('open') || document.getElementById('audio-write-dialog').open) return;
   const focusable = [...panel.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),a[href],summary,[tabindex="0"]')]
     .filter(el => el.offsetParent !== null && el.tabIndex >= 0);
   const first = focusable[0], last = focusable[focusable.length - 1];
@@ -1706,18 +1706,26 @@ async function refreshAudio() {
       name.textContent = clip.name;
       row.append(name);
       const current = clip.id === j.current;
-      if (current || clip.id === j.pending) {
+      const pending = clip.id === j.pending;
+      if (current || pending) {
         const tag = document.createElement('span');
         tag.className = 'tag';
-        tag.textContent = t(current ? audioStatuses[j.usb_status] || '上次写入' : '待写入车机 U 盘');
+        tag.textContent = t(pending ? '待写入车机 U 盘' : audioStatuses[j.usb_status] || '上次写入');
         row.append(tag);
       }
       const apply = document.createElement('button');
       apply.className = 'primary';
       apply.textContent = t(current ? '重新写入' : '设为锁车音');
       apply.disabled = audioBusy;
-      apply.onclick = () => setLock(clip);
+      apply.onclick = () => chooseAudioWrite(clip);
       row.append(apply);
+      if (pending) {
+        const cancel = document.createElement('button');
+        cancel.textContent = t('取消延迟写入');
+        cancel.disabled = audioBusy;
+        cancel.onclick = () => setLock(clip, 'cancel');
+        row.append(cancel);
+      }
       if (!current) {
         const remove = document.createElement('button');
         remove.className = 'danger';
@@ -1732,16 +1740,28 @@ async function refreshAudio() {
     list.textContent = t('读取音效库失败，请重新打开此页。');
   }
 }
-async function setLock(clip) {
-  if (audioBusy || !confirm(t('请停车后写入。写入时将短暂暂停车机 U 盘。'))) return;
+function chooseAudioWrite(clip) {
+  const dialog = document.getElementById('audio-write-dialog');
+  if (audioBusy || dialog.open) return;
+  document.getElementById('audio-write-name').textContent = clip.name;
+  dialog.returnValue = '';
+  dialog.addEventListener('close', () => {
+    if (dialog.returnValue === 'now' || dialog.returnValue === 'later') {
+      setLock(clip, dialog.returnValue);
+    }
+  }, {once: true});
+  dialog.showModal();
+}
+async function setLock(clip, mode) {
+  if (audioBusy) return;
   const msg = document.getElementById('audio-msg');
   const buttons = document.querySelectorAll('#audio-list button');
   audioBusy = true;
   buttons.forEach(button => { button.disabled = true; });
-  msg.textContent = t('正在写入车机 U 盘…');
+  msg.textContent = t(mode === 'now' ? '正在写入车机 U 盘…' : '正在更新待写入队列…');
   try {
     const r = await fetch('/api/audio/setlockchime', {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: clip.id}),
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id: clip.id, mode}),
     });
     const j = await r.json();
     msg.textContent = t(j.msg);

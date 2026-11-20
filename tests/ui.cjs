@@ -67,7 +67,7 @@ async function main() {
       const page = await context.newPage(), errors = [], requests = [];
       page.on('pageerror', error => errors.push(error.message));
       page.on('request', request => requests.push({ url: request.url(), method: request.method() }));
-      let currentChime = 'first';
+      let currentChime = 'first', pendingChime = null;
       const chimes = [{id: 'first', name: '音效 A.mp3'}, {id: 'second', name: '音效 B.wav'}];
       await page.route('**/api/**', async route => {
         const pathname = new URL(route.request().url()).pathname;
@@ -79,10 +79,12 @@ async function main() {
             image: { capacity: 64 * 1073741824, allocated: 24.6 * 1073741824 } } };
         else if (pathname === '/api/skin') return route.fulfill({ contentType: 'text/css', body: '' });
         else if (pathname === '/api/skins') data = { skins: [], active: '' };
-        else if (pathname === '/api/audio') data = { clips: chimes, current: currentChime, pending: null, usb_status: "matched" };
+        else if (pathname === '/api/audio') data = { clips: chimes, current: currentChime, pending: pendingChime, usb_status: "matched" };
         else if (pathname === '/api/audio/setlockchime') {
-          currentChime = route.request().postDataJSON().id;
-          data = { ok: true, msg: '已写入车机 U 盘' };
+          const {id, mode} = route.request().postDataJSON();
+          if (mode === 'now') currentChime = id;
+          pendingChime = mode === 'later' ? id : null;
+          data = { ok: true, msg: '已更新锁车音状态' };
         } else if (pathname === '/api/usb/attach') data = { ok: false, msg: '设备正同步，稍后重试' };
         else if (pathname === '/api/usb/browse') data = { ok: false, attached: false, dirs: [], files: [] };
         else if (pathname === '/api/notify') data = { provider: 'qq', mode: 'dm', qq_target_type: 'user', media: 'thumb', quality: '480p', delay: 20, vdur: 30, enabled: false };
@@ -189,8 +191,17 @@ async function main() {
           await trim.uncheck();
           const second = page.locator('#audio-list .item').filter({hasText: '音效 B.wav'});
           await page.locator('#audio-list .item').first().locator('.tag').waitFor();
-          page.once('dialog', dialog => dialog.accept());
+          const choice = page.locator('#audio-write-dialog');
           await second.locator('button.primary').click();
+          await choice.locator('button[value="later"]').click();
+          await second.locator('.tag').waitFor();
+          assert.equal(currentChime, 'first');
+          assert.equal(pendingChime, 'second');
+          await second.locator('button').nth(1).click();
+          await second.locator('.tag').waitFor({state:'hidden'});
+          assert.equal(pendingChime, null);
+          await second.locator('button.primary').click();
+          await choice.locator('button[value="now"]').click();
           await second.locator('.tag').waitFor();
           assert.deepEqual(await page.locator('#audio-list .n').allTextContents(), chimes.map(chime => chime.name));
           assert.equal(await page.locator('#audio-list .tag').count(), 1);

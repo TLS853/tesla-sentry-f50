@@ -125,6 +125,7 @@ def _store_chime(name, data):
     path = folder / name
     if not path.is_file() or path.is_symlink():
         storage.atomic_write(str(path), data)
+        LOG.info("Saved lock sound %r (%d bytes, id=%s)", name, len(data), audio_id)
     return {"id": audio_id, "name": name}
 
 
@@ -164,12 +165,57 @@ def _current_chime():
         return _legacy_chime(config.settings.audio_done)
 
 
+def _scheduled_chime():
+    try:
+        with (_chime_library() / "pending.json").open() as stream:
+            return json.load(stream)["id"]
+    except FileNotFoundError:
+        return None
+
+
+def _remove_pending_file(path):
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    storage.sync_directory(str(path.parent))
+
+
+@locking.archive_locked
+def schedule_chime(audio_id):
+    _chime_path(audio_id)
+    legacy = _legacy_chime(config.settings.audio_queue)
+    storage.atomic_json(str(_chime_library() / "pending.json"), {"id": audio_id})
+    if legacy:
+        _remove_pending_file(Path(config.settings.audio_queue) / CHIME_NAME)
+    LOG.info("Queued lock sound id=%s for the next safe USB write", audio_id)
+
+
+def _cancel_chime(audio_id):
+    queued = Path(config.settings.audio_queue) / CHIME_NAME
+    if audio_id == _legacy_chime(config.settings.audio_queue):
+        _remove_pending_file(queued)
+    if audio_id == _scheduled_chime():
+        _remove_pending_file(_chime_library() / "pending.json")
+
+
+@locking.archive_locked
+def cancel_chime(audio_id):
+    pending = _scheduled_chime() or _legacy_chime(config.settings.audio_queue)
+    if not pending or audio_id != pending:
+        raise ValueError("这段音效已不在待写入队列中")
+    _cancel_chime(audio_id)
+
+
 def _write_chime(mount, audio_id, data):
     target = os.path.join(mount, CHIME_NAME)
     backup = archive.safe_archive_dir(os.path.join(config.settings.audio_done, CHIME_NAME))
     if not backup or os.path.islink(target):
         raise ValueError("锁车音写入路径无效")
     storage.atomic_write(target, data, mode=None)
+    with open(target, "rb") as stream:
+        if stream.read(CHIME_LIMIT) != data:
+            raise ValueError("U 盘锁车音回读不匹配，请检查 U 盘文件系统")
     storage.atomic_write(backup, data)
     storage.atomic_json(str(_chime_library() / "current.json"), {"id": audio_id})
 
@@ -187,7 +233,7 @@ def save_chime(name, data):
 @locking.archive_locked
 def chime_library():
     current = _current_chime()
-    pending = _legacy_chime(config.settings.audio_queue)
+    pending = _scheduled_chime() or _legacy_chime(config.settings.audio_queue)
     clips = []
     library = _chime_library()
     if library.is_dir():
@@ -233,17 +279,20 @@ def _legacy_audio_files(folder):
     return sorted(entry.name for entry in path.iterdir() if entry.is_file()) if path.is_dir() else []
 
 
-@locking.archive_locked
-def apply_chime(mount, audio_id):
+def _apply_chime(mount, audio_id):
     path = _chime_path(audio_id)
     data, _ = lock_chime(path.name, _read_chime(path))
-    # Keep the preview even when a manual choice supersedes an older queued write.
-    pending = _legacy_chime(config.settings.audio_queue)
-    if pending:
-        queued = Path(config.settings.audio_queue) / CHIME_NAME
-        queued.unlink()
-        storage.sync_directory(str(queued.parent))
+    # Preserve the old library sound even when a newer selection supersedes its queued write.
+    legacy = _legacy_chime(config.settings.audio_queue)
     _write_chime(mount, audio_id, data)
+    if legacy:
+        _remove_pending_file(Path(config.settings.audio_queue) / CHIME_NAME)
+    _remove_pending_file(_chime_library() / "pending.json")
+
+
+@locking.archive_locked
+def apply_chime(mount, audio_id):
+    _apply_chime(mount, audio_id)
 
 
 @locking.archive_locked
@@ -251,10 +300,7 @@ def delete_chime(audio_id):
     path = _chime_path(audio_id)
     if audio_id == _current_chime():
         raise ValueError("请先切换到另一段锁车音")
-    if audio_id == _legacy_chime(config.settings.audio_queue):
-        queued = Path(config.settings.audio_queue) / CHIME_NAME
-        queued.unlink()
-        storage.sync_directory(str(queued.parent))
+    _cancel_chime(audio_id)
     path.unlink()
     path.parent.rmdir()
     storage.sync_directory(str(path.parent.parent))
@@ -288,7 +334,17 @@ def flush_audio(mount):
         raise ValueError("音频队列路径无效")
     os.makedirs(queue, exist_ok=True)
     os.makedirs(done, exist_ok=True)
+    scheduled = _scheduled_chime()
+    if scheduled:
+        try:
+            _apply_chime(mount, scheduled)
+            LOG.info("Wrote queued lock sound id=%s", scheduled)
+            count += 1
+        except (OSError, ValueError) as error:
+            LOG.warning("Lock sound id=%s remains queued: %s", scheduled, error)
     for name in sorted(os.listdir(queue)):
+        if scheduled and name == CHIME_NAME:
+            continue
         if not archive.safe_name(name) or not name.lower().endswith((".wav", ".mp3")):
             continue
         source = os.path.join(queue, name)

@@ -3,6 +3,9 @@ import os
 import struct
 import time
 
+VOLUME_DIRTY = 0x02
+MEDIA_FAILURE = 0x04
+
 
 def _partitions(fd, disk_size, mbr):
     """Yield bounded (offset, length) pairs from a disk image's partition table."""
@@ -78,8 +81,6 @@ class ExFat:
         self.fd = os.open(path, os.O_RDONLY)
         try:
             stat = os.fstat(self.fd)
-            self.fd_ino = stat.st_ino
-            self.fd_dev = stat.st_dev
             vbr = os.pread(self.fd, 512, 0)
             self.volume_offset = 0
             capacity = stat.st_size
@@ -99,6 +100,8 @@ class ExFat:
             self.cluster_count = struct.unpack_from("<I", vbr, 92)[0]
             self.root_cluster = struct.unpack_from("<I", vbr, 96)[0]
             self.vol_flags = struct.unpack_from("<H", vbr, 106)[0]
+            # Include geometry and volume serial, but exclude flags that change during normal writes.
+            self.identity = [stat.st_dev, stat.st_ino, self.volume_offset, vbr[64:106].hex(), vbr[108:111].hex()]
             if not 9 <= vbr[108] <= 12 or vbr[108] + vbr[109] > 25:
                 raise ValueError("invalid exFAT sector/cluster size")
             self.bytes_per_sector = 1 << vbr[108]

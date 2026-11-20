@@ -124,7 +124,7 @@ class RegressionTests(unittest.TestCase):
     def test_failed_stop_export_prevents_mount(self):
         volume = MagicMock()
         volume.__enter__.return_value = Mock(
-            volume_offset=0, heap_byte=1024, cluster_count=6, cluster_size=512, vol_len=8, bytes_per_sector=512)
+            volume_offset=0, heap_byte=1024, cluster_count=6, cluster_size=512, vol_len=8, bytes_per_sector=512, vol_flags=0)
         with patch.object(self.runtime.exfat, "ExFat", return_value=volume), \
              patch.object(self.runtime.usb, "_lun", side_effect=OSError("cannot access LUN")) as lun, \
              patch.object(self.runtime.usb.os.path, "ismount", return_value=False), \
@@ -136,18 +136,34 @@ class RegressionTests(unittest.TestCase):
         self.assertTrue(lock.acquire(blocking=False))
         lock.release()
 
+    def test_dirty_exfat_image_stays_exported(self):
+        usb = self.runtime.usb
+        reader = MagicMock()
+        reader.__enter__.return_value = Mock(vol_flags=self.runtime.exfat.VOLUME_DIRTY)
+        with patch.object(usb.exfat, "ExFat", return_value=reader), \
+             patch.object(usb.os.path, "ismount", return_value=False), \
+             patch.object(usb, "_lun") as lun, patch.object(usb, "_command") as command:
+            ok, message = usb.usb_attach()
+        self.assertFalse(ok)
+        self.assertIn("尚未正常卸载", message)
+        lun.assert_not_called()
+        command.assert_not_called()
+
     def test_host_locked_usb_only_ejects_an_idle_medium(self):
         usb = self.runtime.usb
         lun = Mock()
         lun.write_text.side_effect = OSError(errno.EBUSY, "locked by USB host")
         fallback = lun.with_name.return_value
         fallback.is_file.return_value = True
+        with self.assertRaisesRegex(RuntimeError, "等待安全释放"):
+            usb._stop_export(lun)
+        lun.with_name.assert_not_called()
         with patch.object(usb, "usb_img_age", return_value=1):
             with self.assertRaisesRegex(RuntimeError, "仍有写入"):
-                usb._stop_export(lun)
+                usb._stop_export(lun, force=True)
         fallback.write_text.assert_not_called()
         with patch.object(usb, "usb_img_age", return_value=15):
-            usb._stop_export(lun)
+            usb._stop_export(lun, force=True)
         fallback.write_text.assert_called_once_with("1\n")
         lun.with_name.assert_called_with("forced_eject")
 
@@ -228,7 +244,7 @@ procd_set_param() {
             return ""
 
         volume = Mock(volume_offset=512, heap_byte=1024, cluster_count=5, cluster_size=512,
-                      vol_len=8, bytes_per_sector=512)
+                      vol_len=8, bytes_per_sector=512, vol_flags=0)
         reader = MagicMock()
         reader.return_value.__enter__.return_value = volume
         with patch.object(usb, "IMG", str(image)), patch.object(usb, "_lun", return_value=lun), \

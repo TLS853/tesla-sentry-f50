@@ -318,5 +318,17 @@
   </div>
 </div>
 
+<dialog id="audio-write-dialog" aria-labelledby="audio-write-title">
+  <form method="dialog">
+    <h3 id="audio-write-title">何时写入锁车音？</h3>
+    <p id="audio-write-name"></p>
+    <p class="hint">请停车后再立即写入。必要时会短暂强制弹出车机 U 盘。延迟写入会等待主机安全释放。</p>
+    <div class="audio-write-actions">
+      <button class="mini" value="cancel">取消</button>
+      <button class="mini" value="now">立即写入</button>
+      <button class="mini primary" value="later" autofocus>延迟写入</button>
+    </div>
+  </form>
+</dialog>
 <script>window.__I18N=__I18N__;window.__LANGS=__LANGS__;window.__CATEGORIES=__CAT_NAMES__;</script>
 <script type="module" src="/assets/app.js"></script></body></html>

@@ -269,6 +269,11 @@ select.ninput { cursor:pointer; padding-right:22px; }
 .eyebar .lbl { flex:1; color:var(--muted); font-size:10px; }
 .eyebar .icon { width:14px; height:14px; }
 .eyebar .mini { background:var(--panel); font-size:10px; min-height:30px; padding:4px 9px; }
+#audio-write-dialog { width:min(390px, calc(100% - 32px)); margin:auto; padding:22px; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:16px; }
+#audio-write-dialog::backdrop { background:rgba(0, 0, 0, .5); }
+#audio-write-title { margin:0 0 10px; font-size:18px; }
+#audio-write-name { margin:0 0 8px; overflow-wrap:anywhere; }
+.audio-write-actions { display:flex; flex-wrap:wrap; justify-content:flex-end; gap:8px; }
 .area-switch { display:flex; gap:4px; background:var(--panel2); padding:4px; border-radius:11px; margin-bottom:20px; }
 .area-switch .stab { flex:1; justify-content:center; padding:9px; }
 .area-switch .stab.active { background:var(--panel); color:var(--text); border-color:var(--line); box-shadow:0 2px 4px var(--headline); }
