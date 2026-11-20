@@ -207,7 +207,8 @@ class PostRoutesMixin:
             self._json({"ok": False, "msg": "原始音频超过 20 MB"}, 400)
             return
         try:
-            converted, duration = vehicle_assets.lock_chime(fn, data, fields.get("start", 0), fields.get("duration", 5))
+            duration = fields.get("duration", 5 if "start" in fields else None)
+            converted, duration = vehicle_assets.lock_chime(fn, data, fields.get("start", 0), duration)
             clip = vehicle_assets.save_chime(fn, converted)
         except ValueError as error:
             self._json({"ok": False, "msg": str(error)}, 400)

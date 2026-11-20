@@ -31,7 +31,7 @@
 ## 锁车音自动转换
 
 1. 打开 **设置 → 锁车音效**。支持 WAV、MP3、M4A、AAC、FLAC、OGG、OPUS、WEBM，源文件最大 20 MiB。
-2. 选择起始时间和保留时长，默认取前 5 秒，可保留 0.1–5 秒。设备转换为 44.1 kHz / 16-bit 单声道 PCM WAV，最长 5 秒时约 441 KB。每段声音以上传时的名称保留在音效库。
+2. 默认保留原时长。勾选「裁剪音效」后可指定起始时间和保留时长，初始值为前 5 秒。设备转换为 44.1 kHz / 16-bit 单声道 PCM WAV，输出须小于 1 MB。每段声音以上传时的名称保存在 F50 的 `/archive/.lock-chimes/`。
 3. 停车后点击 **设为锁车音**，系统将所选音效写入 **USB 根目录的 `LockChime.wav`**。写入时车机 U 盘会短暂断开。如已进入 U 盘管理模式，写入完成后点击 **完成并恢复导出**。
 4. 在车机 **玩具箱 → Boombox → 锁车音 → USB** 选用，必要时开启锁车确认音。车辆需要支持外部行人警示扬声器和自定义锁车音。
 
@@ -39,7 +39,7 @@
 
 转换使用设备已有的 ffmpeg。可用配置 `TSF_FFMPEG=/绝对路径/ffmpeg` 指定。符合上述规格的 PCM WAV 可直接裁剪。
 
-本项目选择 44.1kHz / 16-bit / 单声道、最多 5 秒作为输出配置，保证文件足够小；这些参数并非全部都是 Tesla 官方强制要求。车辆支持与锁车音菜单参见 [Tesla 车主手册](https://www.tesla.com/ownersmanual/modely/en_ae/GUID-7A32EC01-A17E-42CC-A15B-2E0A39FD07AB.html)。
+以 44.1 kHz / 16-bit 单声道 PCM 输出时，1 MB 约可容纳 11.3 秒。超过文件大小限制会提示裁剪，不会自动缩短。Tesla 车主手册的五秒说明适用于 Boombox 喇叭播放。 [Tesla 车主手册](https://www.tesla.com/ownersmanual/modely/en_us/GUID-79A49D40-A028-435B-A7F6-8E48846AB9E9.html)
 
 ## 同步诊断与远程回放
 

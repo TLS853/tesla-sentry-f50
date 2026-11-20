@@ -359,7 +359,6 @@
     "从第几秒开始": "Start time (seconds)",
     "保留时长（秒）": "Duration (seconds)",
     "＋ 上传并转换锁车音": "＋ Upload and convert a lock sound",
-    "在音效库点击「设为锁车音」，即可写入车机 U 盘。车机上选择「玩具箱 → Boombox → 锁车音 → USB」。": "Select Set as lock chime to write it to the vehicle USB drive. On the vehicle, select Toybox → Boombox → Lock Sound → USB.",
     "音效库": "Sound library",
     "音效库为空": "No saved lock sounds",
     "重新写入": "Apply again",
@@ -371,6 +370,13 @@
     "正在上传并转换锁车音…": "Uploading and converting the lock sound…",
     "音频上传或转换失败": "Audio upload or conversion failed",
     "正在连接车机 U 盘…": "Connecting the vehicle USB drive…",
-    "正在恢复车机导出…": "Restoring USB access for the vehicle…"
+    "正在恢复车机导出…": "Restoring USB access for the vehicle…",
+    "裁剪音效": "Trim sound",
+    "上传的音效保存在 F50 音效库。点击「设为锁车音」后，所选音效才会写入 U 盘根目录的 LockChime.wav。输出须小于 1 MB。": "Uploads stay in the F50 sound library. Choose Set as lock chime to write the selected sound to LockChime.wav at the root of the USB drive. The output must be under 1 MB.",
+    "车机上选择「玩具箱 → Boombox → 锁车音 → USB」。": "On the vehicle, select Toybox → Boombox → Lock Sound → USB.",
+    "转换后的 WAV 必须小于 1 MB，请缩短音效或启用裁剪": "The converted WAV must be smaller than 1 MB. Shorten the sound or enable trimming.",
+    "U 盘文件缺失": "USB file missing",
+    "U 盘音效不同": "USB sound differs",
+    "上次写入": "Last written"
   }
 }

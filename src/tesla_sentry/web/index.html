@@ -175,10 +175,14 @@
   <div id="tab-audio" style="display:none">
     <div class="setting-intro"><h3>锁车音效</h3><p>保存多个音效，停车后选择要写入车机的一段。</p></div>
     <div class="hint">支持 WAV、MP3、M4A、AAC、FLAC、OGG、OPUS 和 WEBM，源文件最大 20 MB。上传后自动裁剪并转换为适合车机的 WAV。</div>
-    <label class="nrow"><span>从第几秒开始</span><input class="ninput num" id="audio-start" type="number" min="0" max="3600" step="0.1" value="0"></label>
-    <label class="nrow"><span>保留时长（秒）</span><input class="ninput num" id="audio-duration" type="number" min="0.1" max="5" step="0.1" value="5"></label>
+    <label class="nrow"><span>裁剪音效</span><input type="checkbox" id="audio-trim" aria-controls="audio-trim-fields"></label>
+    <div id="audio-trim-fields" hidden>
+      <label class="nrow"><span>从第几秒开始</span><input class="ninput num" id="audio-start" type="number" min="0" max="3600" step="0.1" value="0"></label>
+      <label class="nrow"><span>保留时长（秒）</span><input class="ninput num" id="audio-duration" type="number" min="0.1" step="0.1" value="5"></label>
+    </div>
     <label class="upbtn">＋ 上传并转换锁车音<input type="file" id="audio-file" accept=".wav,.mp3,.m4a,.aac,.flac,.ogg,.opus,.webm" hidden></label>
-    <div class="hint">在音效库点击「设为锁车音」，即可写入车机 U 盘。车机上选择「玩具箱 → Boombox → 锁车音 → USB」。</div>
+    <div class="hint">上传的音效保存在 F50 音效库。点击「设为锁车音」后，所选音效才会写入 U 盘根目录的 LockChime.wav。输出须小于 1 MB。</div>
+    <div class="hint">车机上选择「玩具箱 → Boombox → 锁车音 → USB」。</div>
     <div class="hint" id="audio-msg" role="status"></div>
     <div class="section-label">音效库</div>
     <div id="audio-list"></div>

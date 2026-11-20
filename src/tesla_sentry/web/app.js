@@ -1676,6 +1676,15 @@ document.getElementById('skin-file').onchange = async function () {
 
 /* 锁车语音 */
 let audioBusy = false;
+const audioTrim = document.getElementById('audio-trim');
+const audioStatuses = {
+  matched: '已写入',
+  missing: 'U 盘文件缺失',
+  different: 'U 盘音效不同',
+};
+audioTrim.onchange = () => {
+  document.getElementById('audio-trim-fields').hidden = !audioTrim.checked;
+};
 async function refreshAudio() {
   const list = document.getElementById('audio-list');
   try {
@@ -1700,7 +1709,7 @@ async function refreshAudio() {
       if (current || clip.id === j.pending) {
         const tag = document.createElement('span');
         tag.className = 'tag';
-        tag.textContent = t(current ? '已写入' : '待写入车机 U 盘');
+        tag.textContent = t(current ? audioStatuses[j.usb_status] || '上次写入' : '待写入车机 U 盘');
         row.append(tag);
       }
       const apply = document.createElement('button');
@@ -1759,11 +1768,12 @@ document.getElementById('audio-file').onchange = async function () {
   this.disabled = true;
   msg.textContent = t('正在上传并转换锁车音…');
   try {
-    const j = await uploadFile(this, '/api/upload/audio', {
+    const fields = audioTrim.checked ? {
       start: document.getElementById('audio-start').value || '0',
       duration: document.getElementById('audio-duration').value || '5',
-    });
-    msg.textContent = j ? j.msg : t('未选择音频');
+    } : {};
+    const j = await uploadFile(this, '/api/upload/audio', fields);
+    msg.textContent = j ? t(j.msg) : t('未选择音频');
     if (j && j.ok) await refreshAudio();
   } catch (e) { msg.textContent = t('音频上传或转换失败'); }
   finally { this.disabled = false; this.value = ''; }

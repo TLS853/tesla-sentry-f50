@@ -1,3 +1,3 @@
 """Tesla Sentry Drive: independent runtime modules and standard-library deployment."""
 
-__version__ = "2.12.2"
+__version__ = "2.12.3"

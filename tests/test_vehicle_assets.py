@@ -80,10 +80,42 @@ class VehicleAssetTests(unittest.TestCase):
             with wave.open(io.BytesIO(data)) as sound:
                 self.assertEqual((sound.getnchannels(), sound.getsampwidth(), sound.getframerate()), (1, 2, 44100))
 
+    def test_full_and_trimmed_chimes_share_the_size_limit(self):
+        data = wav(8)
+        self.assertEqual(self.assets.lock_chime("full.wav", data), (data, 8))
+        self.assertEqual(self.assets.lock_chime("trim.wav", wav(13), start=1, duration=7), (wav(7), 7))
+        with self.assertRaisesRegex(ValueError, "小于 1 MB"):
+            self.assets.lock_chime("full.wav", wav(13))
+        with self.assertRaisesRegex(ValueError, "小于 1 MB"):
+            self.assets.lock_chime("trim.wav", wav(13), start=1, duration=11.5)
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "real conversion requires ffmpeg")
+    def test_ffmpeg_keeps_full_duration_and_does_not_silently_truncate(self):
+        with patch.object(self.runtime.media, "FFMPEG_BIN", shutil.which("ffmpeg")):
+            data, duration = self.assets.lock_chime("full.wav", wav(8, channels=2, rate=48000))
+            self.assertEqual(duration, 8)
+            self.assertEqual(len(data), len(wav(8)))
+            with self.assertRaisesRegex(ValueError, "小于 1 MB"):
+                self.assets.lock_chime("full.wav", wav(13, channels=2, rate=48000))
+
+    def test_usb_status_checks_presence_and_content(self):
+        data = wav(8)
+        sound = self.assets.save_chime("long.wav", data)
+        with patch.object(self.assets.exfat, "ExFat") as reader:
+            volume = reader.return_value.__enter__.return_value
+            entry = volume.find.return_value
+            entry.valid, entry.is_dir, entry.size = True, False, len(data)
+            volume.read_file.return_value = [data]
+            self.assertEqual(self.assets.usb_chime_status(sound["id"]), "matched")
+            volume.read_file.return_value = [b"x" * len(data)]
+            self.assertEqual(self.assets.usb_chime_status(sound["id"]), "different")
+            volume.find.return_value = None
+            self.assertEqual(self.assets.usb_chime_status(sound["id"]), "missing")
+
     def test_invalid_audio_and_missing_encoder_preserve_existing_queue(self):
         self.assets.queue_chime(wav())
         before = (self.archive / "boombox-queue/LockChime.wav").read_bytes()
-        for start, duration in (("nan", 5), (0, "inf"), (0, 6), (-1, 5), (0, 0)):
+        for start, duration in (("nan", 5), (0, "inf"), (-1, 5), (0, 0)):
             with self.assertRaises(ValueError):
                 self.assets.lock_chime("sound.wav", wav(), start, duration)
         with patch.object(self.runtime.media, "FFMPEG_BIN", "/no-such-ffmpeg"):
@@ -180,7 +212,7 @@ class VehicleAssetTests(unittest.TestCase):
     def test_http_applies_two_saved_chimes_and_keeps_their_display_names(self):
         usb = self.runtime.usb
         server = self.server()
-        uploads = [("我的第一段.wav", wav()), ("第二段.wav", wav(2))]
+        uploads = [("我的第一段.wav", wav()), ("第二段.wav", wav(8))]
         entries = []
         for name, audio in uploads:
             body, headers = multipart(name, audio)
@@ -225,10 +257,10 @@ class VehicleAssetTests(unittest.TestCase):
 
     def test_http_audio_conversion_and_wrap_management_gate(self):
         server = self.server()
-        body, headers = multipart("用户音频.wav", wav(7), {"start": 1, "duration": 3})
+        body, headers = multipart("用户音频.wav", wav(9), {"start": 1, "duration": 6.5})
         status, _, response = self.request(server, "POST", "/api/upload/audio", body, headers)
         self.assertEqual(status, 200, response)
-        self.assertEqual(json.loads(response)["duration"], 3)
+        self.assertEqual(json.loads(response)["duration"], 6.5)
         self.assertEqual(json.loads(response)["name"], "用户音频.wav")
         body, headers = multipart("custom.png", png())
         status, _, _ = self.request(server, "POST", "/api/upload/wrap", body, headers)

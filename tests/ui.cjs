@@ -79,7 +79,7 @@ async function main() {
             image: { capacity: 64 * 1073741824, allocated: 24.6 * 1073741824 } } };
         else if (pathname === '/api/skin') return route.fulfill({ contentType: 'text/css', body: '' });
         else if (pathname === '/api/skins') data = { skins: [], active: '' };
-        else if (pathname === '/api/audio') data = { clips: chimes, current: currentChime, pending: null };
+        else if (pathname === '/api/audio') data = { clips: chimes, current: currentChime, pending: null, usb_status: "matched" };
         else if (pathname === '/api/audio/setlockchime') {
           currentChime = route.request().postDataJSON().id;
           data = { ok: true, msg: '已写入车机 U 盘' };
@@ -179,6 +179,14 @@ async function main() {
           await page.locator('#usb-action-msg').filter({hasText: '设备正同步'}).waitFor();
         }
         if (tab === 'audio') {
+          const trim = page.locator('#audio-trim');
+          assert.equal(await trim.isChecked(), false);
+          assert.equal(await page.locator('#audio-trim-fields').isVisible(), false);
+          await trim.check();
+          assert.equal(await page.locator('#audio-trim-fields').isVisible(), true);
+          assert.equal(await page.locator('#audio-duration').inputValue(), '5');
+          assert.equal(await page.locator('#audio-duration').getAttribute('max'), null);
+          await trim.uncheck();
           const second = page.locator('#audio-list .item').filter({hasText: '音效 B.wav'});
           await page.locator('#audio-list .item').first().locator('.tag').waitFor();
           page.once('dialog', dialog => dialog.accept());

@@ -147,7 +147,9 @@ class GetRoutesMixin:
 
 
     def _get_api_audio(self, path):
-        self._json(vehicle_assets.chime_library())
+        library = vehicle_assets.chime_library()
+        library["usb_status"] = vehicle_assets.usb_chime_status(library["current"])
+        self._json(library)
 
 
     def _get_api_browse(self, path):

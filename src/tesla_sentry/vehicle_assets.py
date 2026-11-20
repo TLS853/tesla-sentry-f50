@@ -14,49 +14,62 @@ import threading
 import wave
 import zlib
 
-from . import archive, config, locking, media, storage
+from . import archive, config, exfat, locking, media, storage
 
 MAX_AUDIO = 20 * 1024 * 1024
 MAX_WRAP = 1000000
 CHIME_NAME = "LockChime.wav"
+CHIME_RATE = 44100
+CHIME_LIMIT = 1_000_000
+# A normalized mono PCM WAV uses a 44-byte header and two bytes per frame.
+MAX_CHIME_FRAMES = (CHIME_LIMIT - 45) // 2
 _CONVERT = threading.BoundedSemaphore(1)
 LOG = logging.getLogger(__name__)
 
 
-def _wav(data, start=0, duration=5):
-    """Read the normalized profile without requiring ffmpeg (also verifies output)."""
+def _wav(data, start=0, duration=None):
+    """Read and repack the normalized profile without requiring ffmpeg."""
     with wave.open(io.BytesIO(data), "rb") as sound:
-        if (sound.getnchannels(), sound.getsampwidth(), sound.getframerate(), sound.getcomptype()) != (1, 2, 44100, "NONE"):
-            raise ValueError("WAV profile needs conversion")
-        sound.setpos(min(int(start * 44100), sound.getnframes()))
-        frames = sound.readframes(int(duration * 44100))
-    if not frames or len(frames) % 2:
-        raise ValueError("没有可用的音频, 请检查起始时间")
+        if (sound.getnchannels(), sound.getsampwidth(), sound.getframerate(), sound.getcomptype()) != (1, 2, CHIME_RATE, "NONE"):
+            raise wave.Error("WAV profile needs conversion")
+        offset = min(int(start * CHIME_RATE), sound.getnframes())
+        available = sound.getnframes() - offset
+        if duration is not None and duration < available / CHIME_RATE:
+            available = int(duration * CHIME_RATE)
+        if available > MAX_CHIME_FRAMES:
+            raise ValueError("转换后的 WAV 必须小于 1 MB，请缩短音效或启用裁剪")
+        sound.setpos(offset)
+        frames = sound.readframes(available)
+    if not frames or len(frames) != available * 2:
+        raise ValueError("没有可用的音频，请检查文件或裁剪起点")
     out = io.BytesIO()
     with wave.open(out, "wb") as sound:
         sound.setnchannels(1)
         sound.setsampwidth(2)
-        sound.setframerate(44100)
+        sound.setframerate(CHIME_RATE)
         sound.writeframes(frames)
-    return out.getvalue(), len(frames) / 88200.0
+    return out.getvalue(), available / CHIME_RATE
 
 
-def lock_chime(name, data, start=0, duration=5):
-    """Return real PCM WAV, <=5 seconds and <1 MB; never rename encoded input."""
+def lock_chime(name, data, start=0, duration=None):
+    """Return a real PCM WAV smaller than 1 MB, with optional trimming."""
     extension = os.path.splitext(name or "")[1].lower()
     if extension not in (".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".webm"):
         raise ValueError("支持 WAV / MP3 / M4A / AAC / FLAC / OGG / OPUS / WEBM")
     if not data or len(data) > MAX_AUDIO:
         raise ValueError("原始音频须为 1 字节到 20 MB")
     try:
-        start, duration = float(start), float(duration)
+        start = float(start)
+        duration = float(duration) if duration is not None else None
     except (TypeError, ValueError):
         raise ValueError("裁剪时间必须是数字")
-    if not math.isfinite(start) or not math.isfinite(duration) or not 0 <= start <= 3600 or not 0.1 <= duration <= 5:
-        raise ValueError("起始时间为 0–3600 秒, 时长为 0.1–5 秒")
+    if not math.isfinite(start) or not 0 <= start <= 3600:
+        raise ValueError("起始时间须为 0–3600 秒")
+    if duration is not None and (not math.isfinite(duration) or duration < 0.1):
+        raise ValueError("保留时长须至少为 0.1 秒")
     try:
         return _wav(data, start, duration)
-    except (wave.Error, EOFError, ValueError):
+    except (wave.Error, EOFError):
         pass
     if not _CONVERT.acquire(blocking=False):
         raise ValueError("正在转换另一个音频, 请稍后重试")
@@ -65,12 +78,16 @@ def lock_chime(name, data, start=0, duration=5):
             source, target = os.path.join(work, "source" + extension), os.path.join(work, CHIME_NAME)
             with open(source, "wb") as stream:
                 stream.write(data)
+            # Decode slightly past the size limit so oversized clips are rejected
+            # without transcoding an entire long recording or silently clipping it.
+            probe = (MAX_CHIME_FRAMES + 2) / CHIME_RATE
+            convert_for = probe if duration is None else min(duration, probe)
             try:
                 result = subprocess.run([
                     media.FFMPEG_BIN, "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
                     "-protocol_whitelist", "file,pipe", "-ss", str(start), "-i", source,
-                    "-map", "0:a:0", "-vn", "-sn", "-dn", "-t", str(duration),
-                    "-ac", "1", "-ar", "44100", "-c:a", "pcm_s16le", "-threads", "1",
+                    "-map", "0:a:0", "-vn", "-sn", "-dn", "-t", "%.9f" % convert_for,
+                    "-ac", "1", "-ar", str(CHIME_RATE), "-c:a", "pcm_s16le", "-threads", "1",
                     "-map_metadata", "-1", "-f", "wav", target,
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=45)
             except FileNotFoundError:
@@ -80,12 +97,10 @@ def lock_chime(name, data, start=0, duration=5):
             if result.returncode or not os.path.isfile(target):
                 raise ValueError("无法解码音频, 请检查文件格式及裁剪起点")
             with open(target, "rb") as stream:
-                converted = stream.read(1000000)
-            if len(converted) >= 1000000:
-                raise ValueError("转换后的 WAV 超过 1 MB")
+                converted = stream.read(CHIME_LIMIT + 4096)
             try:
-                return _wav(converted, duration=duration)
-            except (wave.Error, EOFError, ValueError):
+                return _wav(converted)
+            except (wave.Error, EOFError):
                 raise ValueError("转换后的 WAV 无效或没有声音数据")
     finally:
         _CONVERT.release()
@@ -190,6 +205,27 @@ def chime_library():
         "queue": _legacy_audio_files(config.settings.audio_queue),
         "done": _legacy_audio_files(config.settings.audio_done),
     }
+
+
+def usb_chime_status(audio_id):
+    """Compare the last selection against the image without interrupting USB export."""
+    if not audio_id:
+        return None
+    try:
+        with locking.usb_exclusive():
+            if os.path.ismount(config.settings.mount):
+                return "unknown"
+            expected = _read_chime(_chime_path(audio_id))
+            with exfat.ExFat(config.settings.image) as volume:
+                entry = volume.find(volume.list_dir(volume.root_cluster), CHIME_NAME)
+                if entry is None:
+                    return "missing"
+                if not entry.valid or entry.is_dir or entry.size != len(expected):
+                    return "different"
+                actual = b"".join(volume.read_file(entry, CHIME_LIMIT))
+                return "matched" if actual == expected else "different"
+    except (OSError, RuntimeError, ValueError):
+        return "unknown"
 
 
 def _legacy_audio_files(folder):
