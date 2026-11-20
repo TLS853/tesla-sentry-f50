@@ -50,7 +50,7 @@ def run(host=None, port=None):
         for sig in (signal.SIGINT, signal.SIGTERM):
             previous_signals[sig] = signal.signal(sig, shutdown)
     try:
-        if os.path.isfile(usb.IMG) and os.path.isdir(usb.GADGET_DIR):
+        if os.path.isfile(usb.IMG):
             ok, message = usb.usb_detach()
             if not ok:
                 LOG.warning("USB startup recovery deferred: %s", message)

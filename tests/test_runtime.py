@@ -53,6 +53,20 @@ class RuntimeTests(unittest.TestCase):
             self.assertTrue(result.stdout.startswith("ok "))
         self.assertFalse(Path(self.env["TSF_DIR"]).exists())
 
+    def test_viewer_reaches_http_loop_with_an_existing_vehicle_image(self):
+        app = self.runtime.app
+        image = self.root / "teslacam.img"
+        image.write_bytes(b"existing vehicle image")
+        server = Mock(server_address=("127.0.0.1", 8080))
+        with patch.object(app.usb, "IMG", str(image)), \
+             patch.object(app.usb, "usb_detach", return_value=(False, "busy")) as recover, \
+             patch.object(app, "create_server", return_value=server), \
+             patch.object(app, "BackgroundServices"):
+            self.assertEqual(app.run(), 0)
+        recover.assert_called_once()
+        server.serve_forever.assert_called_once()
+        server.server_close.assert_called_once()
+
     def test_http_home_assets_query_routing_and_range_download(self):
         video = self.archive / "SentryClips" / "2026-11-07_12-00-00" / "front.mp4"
         video.parent.mkdir(parents=True)

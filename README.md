@@ -26,6 +26,10 @@
 - [离线上传 ZIP 更新](docs/UPDATES.md)
 - [部署细节](docs/DEPLOYMENT.md) · [新增功能完整说明](docs/FEATURES.md) · [模块结构](docs/MODULES.md)
 
+## 2.12.1 更新
+
+- 修复已存在车机 U 盘镜像时哨兵云盘无法启动。
+
 ## 2.12.0 更新
 
 - 修复文件管理、涂装和定时归档对带分区表的 exFAT 镜像的写入挂载。USB 管理只暂时卸下车机存储介质，保留原有 USB 控制器连接。

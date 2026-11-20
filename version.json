@@ -1,10 +1,9 @@
 {
-  "version": "2.12.0",
+  "version": "2.12.1",
   "date": "2026-11-20",
   "notes": [
-    "修复带分区的 exFAT 镜像管理和定时写入",
-    "新增保留原文件名的锁车音效库和即时切换"
+    "修复存在车机 U 盘镜像时哨兵云盘服务启动失败"
   ],
   "bundle": "dist/release.json",
-  "sha256": "5b2a7ddec72fd9eacf1e03efe11adf2bffb5478bc32260e4f4780beefa22b89a"
+  "sha256": "164492a5f4f48d39ddf88892302c3c470a0b1338fb8a80107079e7a367bf63fe"
 }
