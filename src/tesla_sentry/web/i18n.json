@@ -390,6 +390,14 @@
     "已排队，等待 U 盘安全空闲后写入": "Queued. Waiting for the USB drive to become safe to write.",
     "已取消延迟写入": "Delayed write cancelled",
     "这段音效已不在待写入队列中": "This sound is no longer queued.",
-    "主机仍在使用车机 U 盘，等待安全释放": "The host is using the vehicle USB drive. Waiting for a safe release."
+    "主机仍在使用车机 U 盘，等待安全释放": "The host is using the vehicle USB drive. Waiting for a safe release.",
+    "清空归档录像": "Clear archived recordings",
+    "清空 F50 上已归档的哨兵、手动保存和行车记录录像？此操作不可撤销。": "Clear all Sentry, manually saved, and dashcam recordings archived on the F50? This cannot be undone.",
+    "正在清空归档录像…": "Clearing archived recordings…",
+    "归档录像已清空": "Archived recordings cleared",
+    "归档录像已为空": "The recording archive is already empty",
+    "请确认清空归档录像": "Confirm before clearing archived recordings",
+    "部分归档录像未能删除，请重试": "Some archived recordings could not be deleted. Try again.",
+    "无法确认清空结果，请刷新录像资料库。": "Could not confirm the result. Refresh the recording library."
   }
 }

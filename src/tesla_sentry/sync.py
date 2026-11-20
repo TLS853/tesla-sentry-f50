@@ -193,7 +193,7 @@ def do_sync(exfat, state, quiet=False):
     videos = sum(name.lower().endswith(".mp4") for _, _, name in cur)
     archived_videos = 0
     for (cat, ev, name), e in cur.items():
-        if not archive_policy.archive_allowed(cat, ev, pruned, cut):
+        if not archive_policy.archive_allowed(cat, ev, pruned, cut, filename=name):
             continue
         key = "%s/%s/%s" % (cat, ev, name)
         sig = [e.size, e.vdl, e.mtime]

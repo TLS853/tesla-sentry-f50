@@ -205,7 +205,11 @@
     <div id="usb-status" style="display:none;margin-bottom:10px"></div>
     <div class="hint" id="usb-action-msg" role="status"></div>
     <div id="usb-hint" class="hint">管理车机 U 盘时会暂停车机读写。完成操作后请恢复导出；5 分钟无操作也会尝试自动恢复。</div>
-    <div id="arch-hint" class="hint" style="display:none">归档区 (F50 内部存储): 查看器用的视频副本、皮肤、文件中转。</div>
+    <div id="arch-hint" style="display:none">
+      <p class="hint">归档区 (F50 内部存储): 查看器用的视频副本、皮肤、文件中转。</p>
+      <button type="button" class="mini danger" id="archive-clear">清空归档录像</button>
+      <p class="hint" id="archive-clear-msg" role="status"></p>
+    </div>
     <div id="dir-nav" style="display:none">
       <div class="path-row">
         <input id="dest-dir" class="ninput" placeholder="/" aria-label="文件路径">

@@ -26,6 +26,11 @@
 - [离线上传 ZIP 更新](docs/UPDATES.md)
 - [部署细节](docs/DEPLOYMENT.md) · [新增功能完整说明](docs/FEATURES.md) · [模块结构](docs/MODULES.md)
 
+## 2.12.5 更新
+
+- 「设置 → 文件管理 → 设备归档」新增清空归档录像，可删除三个录像分类下已归档的事件。清空记录会阻止同一批旧片段再导入。
+- 内网和远程播放默认使用原画。手动选择的清晰度仍由浏览器记住。
+
 ## 2.12.4 更新
 
 - 写入锁车音前选择立即写入或延迟写入。延迟任务随定时同步安全写入，可在音效库取消。
@@ -529,6 +534,7 @@ USB 根目录/
 | `/api/upload/file` | POST | 上传到归档区（multipart: `file`, `path`） |
 | `/api/upload/skin` | POST | 上传皮肤 |
 | `/api/upload/audio` | POST | 上传并转换锁车音（`file`，可选 `start` 和 `duration`），默认保留原时长，返回文件名、时长与大小 |
+| `/api/archive/clear` | POST | 确认后清空三个录像归档分类，记录已清除的事件 |
 | `/api/audio` | GET | 待写入和已写入的音频列表 |
 | `/api/audio` | GET | 列出音效库、已写入音效及历史待写入项 |
 | `/api/audio/setlockchime` | POST | 按音效 ID 写入 USB 根目录的 LockChime.wav |

@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import urllib.parse
 import urllib.request
-from . import archive, auth, config, notifications, qqbot, transcode, update_package, updates, usb, vehicle_assets
+from . import archive, archive_policy, auth, config, notifications, qqbot, transcode, update_package, updates, usb, vehicle_assets
 
 LOG = logging.getLogger(__name__)
 
@@ -313,6 +313,26 @@ class PostRoutesMixin:
             self._json({"ok": True})
         else:
             self._json({"ok": False, "msg": "皮肤不存在"}, 404)
+
+
+    def _post_api_archive_clear(self, path):
+        try:
+            size = int(self.headers.get("Content-Length", 0))
+            content_type = self.headers.get("Content-Type", "").partition(";")[0].strip().lower()
+            if content_type != "application/json" or not 0 < size <= 256:
+                raise ValueError()
+            body = json.loads(self.rfile.read(size))
+            if not isinstance(body, dict) or body.get("confirm") is not True:
+                raise ValueError()
+        except (ValueError, UnicodeError):
+            self._json({"ok": False, "msg": "请确认清空归档录像"}, 400)
+            return
+        removed, failed = archive_policy.clear_recordings()
+        if failed:
+            message = "部分归档录像未能删除，请重试"
+        else:
+            message = "归档录像已清空" if removed else "归档录像已为空"
+        self._json({"ok": not failed, "msg": message, "removed": removed}, 409 if failed else 200)
 
 
     def _post_api_audio_setlockchime(self, path):

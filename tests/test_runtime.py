@@ -67,6 +67,47 @@ class RuntimeTests(unittest.TestCase):
         server.serve_forever.assert_called_once()
         server.server_close.assert_called_once()
 
+    def test_confirmed_archive_clear_preserves_usb_and_skips_recopying(self):
+        event = "2026-11-20_12-00-00"
+        def make_source(cat, group, name="front.mp4"):
+            return fixtures.RegressionTests.source_file(self, cat, group, name)
+
+        originals = [make_source(cat, event) for cat in self.runtime.config.CATEGORIES]
+        originals.append(make_source("RecentClips", "_misc", "old.mp4"))
+        policy = self.runtime.archive_policy
+        mount = str(self.root / "mount")
+        self.assertEqual(policy.copy_mounted_archive(mount), 4)
+        sounds = self.archive / ".lock-chimes"
+        sounds.mkdir()
+        (sounds / "sound.wav").write_bytes(b"audio")
+        outside = self.root / "unrelated"
+        outside.mkdir()
+        (outside / "photo.jpg").write_bytes(b"photo")
+        archive_link = self.archive / "SavedClips" / "elsewhere"
+        archive_link.symlink_to(outside, target_is_directory=True)
+        server = self.server()
+        headers = {"Content-Type": "application/json"}
+        path = "/api/archive/clear"
+        for invalid in (b"{}", b'{"confirm": false}', b'{"confirm": 1}'):
+            status, _, result = self.request(server, "POST", path, invalid, headers)
+            self.assertEqual(status, 400, result)
+        status, _, result = self.request(server, "POST", path, b'{"confirm": true}', headers)
+        self.assertEqual(status, 200, result)
+        self.assertEqual(json.loads(result)["removed"], 4)
+        for cat in self.runtime.config.CATEGORIES:
+            self.assertFalse((self.archive / cat / event).exists())
+        self.assertTrue(all(path.is_file() for path in originals))
+        self.assertTrue((sounds / "sound.wav").is_file())
+        self.assertTrue((outside / "photo.jpg").is_file())
+        self.assertEqual(policy.copy_mounted_archive(mount), 0)
+        new = "2026-11-20_12-05-00"
+        make_source("SentryClips", new)
+        make_source("RecentClips", "_misc", "new.mp4")
+        self.assertEqual(policy.copy_mounted_archive(mount), 2)
+        self.assertTrue((self.archive / "SentryClips" / new / "front.mp4").is_file())
+        self.assertTrue((self.archive / "RecentClips" / "_misc" / "new.mp4").is_file())
+        self.assertFalse((self.archive / "RecentClips" / "_misc" / "old.mp4").exists())
+
     def test_http_home_assets_query_routing_and_range_download(self):
         video = self.archive / "SentryClips" / "2026-11-07_12-00-00" / "front.mp4"
         video.parent.mkdir(parents=True)

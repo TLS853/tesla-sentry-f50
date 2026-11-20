@@ -17,8 +17,11 @@ const Q_LIST = [['orig', '原画'], ['720p', '720p'], ['480p', '480p'], ['360p',
 const isLanNet = /^(192\.168\.|10\.|127\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname)
   || ['localhost', '[::1]'].includes(location.hostname);
 let saver = (localStorage.getItem('tsf-saver') || (isLanNet ? 'off' : 'on')) === 'on';
-let curQ = localStorage.getItem(saver ? 'tsfq-saver' : 'tsfq') || (saver ? '360p' : 'orig');
-if (!Q_LIST.some(([q]) => q === curQ)) curQ = saver ? '360p' : 'orig';
+let curQ = loadQuality();
+function loadQuality() {
+  const stored = localStorage.getItem(saver ? 'tsfq-saver' : 'tsfq');
+  return Q_LIST.some(([q]) => q === stored) ? stored : 'orig';
+}
 let selectedCamera = '', mediaStarted = false, resumeTime = 0;
 function qUrl(u) {
   if (curQ === 'orig') return u;
@@ -50,8 +53,7 @@ function setQuality(q) {
 function toggleDataSaver() {
   saver = !saver;
   localStorage.setItem('tsf-saver', saver ? 'on' : 'off');
-  curQ = localStorage.getItem(saver ? 'tsfq-saver' : 'tsfq') || (saver ? '360p' : 'orig');
-  if (!Q_LIST.some(([key]) => key === curQ)) curQ = saver ? '360p' : 'orig';
+  curQ = loadQuality();
   renderQSel();
   if (cur) {
     if (saver && !selectedCamera) selectedCamera = defaultCamera(curVids(), cur.meta || {});
@@ -1915,6 +1917,27 @@ async function usbDetach() {
   await changeUsb('detach', 'files');
   if (area === 'usb') await refreshFiles();
 }
+document.getElementById('archive-clear').onclick = async function () {
+  if (!confirm(t('清空 F50 上已归档的哨兵、手动保存和行车记录录像？此操作不可撤销。'))) return;
+  const message = document.getElementById('archive-clear-msg');
+  this.disabled = true;
+  message.textContent = t('正在清空归档录像…');
+  try {
+    const response = await fetch('/api/archive/clear', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({confirm: true}),
+    });
+    const result = await response.json();
+    message.textContent = t(result.msg);
+    if (result.ok || response.status === 409) {
+      await Promise.allSettled([load(), refreshLive()]);
+      if (area === 'archive') await refreshFiles('/archive/files');
+    }
+  } catch (error) {
+    message.textContent = t('无法确认清空结果，请刷新录像资料库。');
+  } finally {
+    this.disabled = false;
+  }
+};
 function goDir(d) {
   if (area === 'usb') {
     d = (d || '').trim().replace(/^\/+|\/+$/g, '');

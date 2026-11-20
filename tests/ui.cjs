@@ -67,12 +67,18 @@ async function main() {
       const page = await context.newPage(), errors = [], requests = [];
       page.on('pageerror', error => errors.push(error.message));
       page.on('request', request => requests.push({ url: request.url(), method: request.method() }));
-      let currentChime = 'first', pendingChime = null;
+      let currentChime = 'first', pendingChime = null, archiveCleared = false;
       const chimes = [{id: 'first', name: '音效 A.mp3'}, {id: 'second', name: '音效 B.wav'}];
       await page.route('**/api/**', async route => {
         const pathname = new URL(route.request().url()).pathname;
         let data = { ok: true };
-        if (pathname === '/api/events') data = events;
+        if (pathname === '/api/events') data = archiveCleared ? {SentryClips: [], SavedClips: [], RecentClips: []} : events;
+        else if (pathname === '/api/browse') data = {ok: true, dir: '/archive/files', dirs: [], files: []};
+        else if (pathname === '/api/archive/clear') {
+          assert.deepEqual(route.request().postDataJSON(), {confirm: true});
+          archiveCleared = true;
+          data = {ok: true, removed: 6, msg: '归档录像已清空'};
+        }
         else if (pathname === '/api/live') data = { running: true, pending: 2,
           sync: { phase: 'copy_error', detail: 'Demo: archive write failed', last_success: 1794100000 },
           storage: { disk: { total: 256 * 1073741824, used: 82.4 * 1073741824 },
@@ -149,7 +155,7 @@ async function main() {
       await page.screenshot({ path: path.join(output, view.name + '-instruments.png') });
       const playing = page.waitForRequest(r => new URL(r.url()).pathname.startsWith('/media/'));
       await page.locator('#startmask').click();
-      assert.match((await playing).url(), /-front\.mp4\?q=360p&strict=1/);
+      assert.match((await playing).url(), /-front\.mp4$/);
       if (process.env.TSF_UI_VIDEO) {
         await page.locator('#tp-spd').filter({hasText: '46'}).waitFor();
         await page.locator('#ppbtn').click();
@@ -233,6 +239,14 @@ async function main() {
       await page.locator('#gear').click();
       await page.keyboard.press('ArrowRight');
       assert.equal(await page.evaluate(() => document.activeElement.id), 'st-audio');
+      await page.keyboard.press('Escape');
+      await page.locator('#gear').click();
+      await page.locator('#area-archive').click();
+      page.once('dialog', dialog => dialog.accept());
+      await page.locator('#archive-clear').click();
+      await page.locator('#archive-clear-msg').filter({hasText: /归档录像已清空|Archived recordings cleared/}).waitFor();
+      await page.locator('.card').first().waitFor({state:'hidden'});
+      assert.equal(await page.locator('.card').count(), 0);
       await page.keyboard.press('Escape');
       assert.deepEqual(errors, [], view.name + ': JavaScript errors');
       results.push({ view: view.name, cards: 5, overflow: false, focus: 'passed', contrast: '4.5:1 or higher' });
