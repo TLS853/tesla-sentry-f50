@@ -124,6 +124,13 @@ def save_state(st):
         pass
 
 
+def live_scan_current():
+    health = load_state().get("health") or {}
+    scanned = health.get("last_scan")
+    return (health.get("phase") in ("ready", "waiting", "empty")
+            and isinstance(scanned, (int, float)) and 0 <= time.time() - scanned <= max(60, 3 * INTERVAL))
+
+
 def save_health(state, phase, **details):
     state["health"] = dict(state.get("health") or {}, phase=phase, heartbeat=int(time.time()),
                            **details)

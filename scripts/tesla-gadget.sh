@@ -38,7 +38,8 @@ find_gadget() {
 }
 
 GADGET=$(find_gadget) || { echo "ERROR: 找不到 USB gadget (configfs 未挂载?)"; exit 1; }
-UDC=$(ls /sys/class/udc/ 2>/dev/null | head -1)
+UDC=$(cat "$GADGET/UDC") || exit 1
+[ -n "$UDC" ] || UDC=$(ls /sys/class/udc/ 2>/dev/null | head -1)
 [ -z "$UDC" ] && { echo "ERROR: 没有 USB Device 控制器 (UDC)"; exit 1; }
 
 # configfs 里的配置名可能不叫 c.1
@@ -51,9 +52,23 @@ state() { cat "/sys/class/udc/$UDC/state" 2>/dev/null; }
 bind()   { echo "$UDC" > "$GADGET/UDC"; }
 unbind() { echo "" > "$GADGET/UDC"; }
 
+# Called only when a bind is already necessary. Keep a working export online.
+bind_storage() {
+    if [ "${TSF_USB2_COMPAT:-0}" != 1 ]; then bind; return; fi
+    previous_speed=$(cat "$GADGET/max_speed") || { bind; return; }
+    if [ "$previous_speed" = high-speed ]; then bind; return; fi
+    if echo high-speed > "$GADGET/max_speed"; then
+        if bind; then log "USB 2.0 compatibility enabled"; return 0; fi
+        echo "$previous_speed" > "$GADGET/max_speed" || return 1
+    fi
+    log "USB 2.0 setting unavailable; using $previous_speed"
+    bind
+}
+
 status() {
     echo "gadget : $GADGET (config=$CONF_NAME)"
     echo "udc    : $UDC  state=$(state)"
+    echo "speed  : $(cat "/sys/class/udc/$UDC/current_speed" 2>/dev/null) (max=$(cat "$GADGET/max_speed" 2>/dev/null))"
     echo "lun    : $(cat "$FUNC_DIR/lun.0/file" 2>/dev/null || echo '未挂载')"
     echo "image  : $IMG ($(du -sh "$IMG" 2>/dev/null | cut -f1) 实际占用)"
     echo "--- gadget 功能 ---"
@@ -63,31 +78,51 @@ status() {
 do_on() {
     grep -qs " ${TSF_MNT:-/tmp/teslamnt} " /proc/mounts && { echo "BUSY: image mounted"; exit 75; }
     [ -f "$IMG" ] || { echo "ERROR: 镜像不存在: $IMG"; exit 1; }
-    if [ -e "$FUNC_DIR" ] && [ "$(cat "$FUNC_DIR/lun.0/file" 2>/dev/null)" = "$IMG" ]; then
-        echo "ALREADY-ON"; exit 0
+    lun="$FUNC_DIR/lun.0/file"
+    linked=false
+    for candidate in "$GADGET/configs/$CONF_NAME/"*; do
+        if [ -d "$FUNC_DIR" ] && [ -L "$candidate" ] && [ "$(readlink -f "$candidate")" = "$(readlink -f "$FUNC_DIR")" ]; then
+            linked=true
+            break
+        fi
+    done
+    current=""
+    if [ -d "$FUNC_DIR" ]; then current=$(cat "$lun") || return 1; fi
+    if [ -n "$current" ] && [ "$(readlink -f "$current")" != "$(readlink -f "$IMG")" ]; then
+        echo "ERROR: LUN already contains another image" >&2; return 1
     fi
-    log "=== ON: exporting $IMG ==="
-    unbind; sleep 1
-
-    mkdir -p "$FUNC_DIR"
-    echo 1 > "$FUNC_DIR/lun.0/removable"
-    echo "$IMG" > "$FUNC_DIR/lun.0/file"
-    # 链接已存在(含悬空链接)时不要再 ln, configfs 下会报 Operation not permitted
-    if [ ! -L "$LINK" ] && [ ! -e "$LINK" ]; then ln -sf "$FUNC_DIR" "$LINK"; fi
-
-    bind; sleep 3
-    st=$(state)
-    log "state after bind: $st"
-    if [ "$st" != "configured" ] && [ "$st" != "addressed" ]; then
-        log "BIND FAILED, rolling back"
-        unbind 2>/dev/null
-        rm -f "$LINK" 2>/dev/null
-        rmdir "$FUNC_DIR" 2>/dev/null
-        sleep 1
-        bind; sleep 2
-        echo "ERROR: 绑定失败已回滚, state=$(state)"; exit 1
+    bound=$(cat "$GADGET/UDC") || return 1
+    if "$linked"; then
+        # Reloading an ejected medium does not require re-enumerating the composite device.
+        if [ -z "$current" ]; then
+            echo "$IMG" > "$lun" || return 1
+            log "restored ejected storage medium"
+        fi
+        if [ -z "$bound" ]; then bind_storage || return 1; log "restored USB controller binding"; fi
+    else
+        if [ -e "$LINK" ] || [ -L "$LINK" ]; then
+            echo "ERROR: storage link is already in use" >&2; return 1
+        fi
+        mkdir -p "$FUNC_DIR" || return 1
+        if [ -z "$current" ]; then
+            echo 1 > "$FUNC_DIR/lun.0/removable" && echo "$IMG" > "$lun" || return 1
+        fi
+        if [ -n "$bound" ]; then unbind || return 1; fi
+        if ! ln -s "$FUNC_DIR" "$LINK"; then
+            if [ -n "$bound" ]; then bind || log "failed to restore original USB binding"; fi
+            return 1
+        fi
+        if ! bind_storage; then
+            # Restore the prior configuration after an actual controller bind error.
+            rm "$LINK" || return 1
+            if [ -n "$bound" ]; then bind || log "failed to restore original USB binding"; fi
+            return 1
+        fi
+        log "added USB storage function (state=$(state))"
     fi
-    echo "TESLA-GADGET-ON (state=$st)"
+    # A sleeping, disconnected or slow host can enumerate later.
+    [ "$(cat "$GADGET/UDC")" = "$UDC" ] && [ "$(readlink -f "$(cat "$lun")")" = "$(readlink -f "$IMG")" ] || return 1
+    echo "TESLA-GADGET-ON (state=$(state))"
 }
 
 do_off() {

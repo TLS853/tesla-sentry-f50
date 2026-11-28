@@ -11,40 +11,14 @@ set -a
 [ ! -f "${TSF_CONF:-/etc/tesla-sentry.conf}" ] || . "${TSF_CONF:-/etc/tesla-sentry.conf}"
 set +a
 
-if [ -z "${TSF_USB_LOCK_FD:-}" ]; then
-    SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-    VIEWER="${TSF_DIR:-/opt/tesla-sentry}/sentry-viewer.py"
-    [ -f "$VIEWER" ] || VIEWER="$SCRIPT_DIR/../sentry-viewer.py"
-    exec "${TSF_PYTHON:-python3}" "$VIEWER" --usb-lock-exec /bin/sh "$0" "$@"
-fi
-
-
 : "${TSF_DIR:=/opt/tesla-sentry}"
-: "${TSF_IMG:=$TSF_DIR/teslacam.img}"
-: "${TSF_MNT:=/tmp/teslamnt}"
-: "${TSF_LOG_DIR:=$TSF_DIR}"
-
-IMG="$TSF_IMG"
-MNT="$TSF_MNT"
-LOG="$TSF_LOG_DIR/tesla-gadget.log"
-GADGET_SH="$TSF_DIR/tesla-gadget.sh"
-
-find_gadget() {
-    if [ -n "$TSF_GADGET" ] && [ -d "$TSF_GADGET" ]; then echo "$TSF_GADGET"; return 0; fi
-    for d in /sys/kernel/config/usb_gadget/*/; do
-        [ -d "$d/configs" ] && { echo "${d%/}"; return 0; }
-    done
-    return 1
-}
-
-[ -f "$IMG" ] || exit 0
-GADGET=$(find_gadget) || exit 0
-LUN="$GADGET/functions/mass_storage.0/lun.0/file"
-
-# 网页正在管理(镜像已挂载) → 不干预
-grep -q " $MNT " /proc/mounts && exit 0
-# LUN 已绑定 → 无需处理
-[ -n "$(cat "$LUN" 2>/dev/null)" ] && exit 0
-
-echo "[$(date +%Y-%m-%d\ %H:%M:%S)] selfheal: LUN empty (host ejected?), re-exporting" >> "$LOG"
-sh "$GADGET_SH" on >>"$LOG" 2>&1
+[ -f "${TSF_IMG:-$TSF_DIR/teslacam.img}" ] || exit 0
+# The on operation takes the USB lease, checks the mount, link, medium and UDC,
+# and only repairs the missing component. A healthy export needs no log entry.
+output=$(/bin/sh "$TSF_DIR/tesla-gadget.sh" on 2>&1)
+result=$?
+case "$result" in
+    0|75) ;;
+    *) echo "[$(date '+%Y-%m-%d %H:%M:%S')] selfheal: $output" >> "${TSF_LOG_DIR:-$TSF_DIR}/tesla-gadget.log" ;;
+esac
+exit "$result"

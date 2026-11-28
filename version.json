@@ -1,10 +1,10 @@
 {
-  "version": "2.12.5",
-  "date": "2026-11-20",
+  "version": "2.12.6",
+  "date": "2026-11-28",
   "notes": [
-    "新增可确认的一键清空归档录像",
-    "内网与远程播放默认使用原画"
+    "维护 USB 导出时避免反复断开车机，增加 USB 2.0 兼容模式",
+    "定时归档和音效写入避开已连接的主机"
   ],
   "bundle": "dist/release.json",
-  "sha256": "2229b717d8bbf87a43acedc2935affb1a590ea676f761e3ae8a9898274d5aadc"
+  "sha256": "006d1ff0c448b71b1e8932b1b90ceee3792bed9dab391d4d5b89bb507f07a79b"
 }

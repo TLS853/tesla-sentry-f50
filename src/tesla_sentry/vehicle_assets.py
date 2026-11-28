@@ -279,6 +279,13 @@ def _legacy_audio_files(folder):
     return sorted(entry.name for entry in path.iterdir() if entry.is_file()) if path.is_dir() else []
 
 
+@locking.archive_locked
+def has_queued_audio():
+    return bool(_scheduled_chime()) or any(
+        archive.safe_name(name) and name.lower().endswith((".mp3", ".wav"))
+        for name in _legacy_audio_files(config.settings.audio_queue))
+
+
 def _apply_chime(mount, audio_id):
     path = _chime_path(audio_id)
     data, _ = lock_chime(path.name, _read_chime(path))

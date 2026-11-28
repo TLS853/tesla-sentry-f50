@@ -62,6 +62,15 @@ def _backing_image(path):
     return os.path.realpath(value) if value else ""
 
 
+def _host_detached(lun):
+    """Only a bound controller reporting physical disconnect permits a background eject."""
+    try:
+        controller = (lun.parents[3] / "UDC").read_text().strip()
+        return bool(controller) and (Path("/sys/class/udc") / controller / "state").read_text().strip() == "not attached"
+    except OSError:
+        return False
+
+
 def _stop_export(lun, *, force=False):
     try:
         lun.write_text("\n")
@@ -110,7 +119,7 @@ class UsbVolume:
         self.loop = None
         self.restore = False
 
-    def open(self, *, force=False):
+    def open(self, *, force=False, background=False):
         if os.path.ismount(MNT):
             raise RuntimeError("已有残留挂载，请先恢复车机 U 盘")
         with exfat.ExFat(IMG) as volume:
@@ -124,6 +133,8 @@ class UsbVolume:
         if backing and backing != IMG:
             raise RuntimeError("车机导出的 U 盘与当前镜像配置不一致")
         os.makedirs(MNT, exist_ok=True)
+        if background and not _host_detached(lun):
+            return False
         if backing:
             _stop_export(lun, force=force)
         self.lun = lun
@@ -141,6 +152,7 @@ class UsbVolume:
         _command("连接 U 盘镜像失败", LOSETUP, *args, loop, IMG)
         self.loop = loop
         _command("挂载 exFAT 镜像失败", "mount", "-t", "exfat", "-o", "rw", loop, MNT)
+        return True
 
     def close(self):
         if os.path.ismount(MNT):

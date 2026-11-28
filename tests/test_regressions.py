@@ -248,6 +248,7 @@ procd_set_param() {
         reader = MagicMock()
         reader.return_value.__enter__.return_value = volume
         with patch.object(usb, "IMG", str(image)), patch.object(usb, "_lun", return_value=lun), \
+             patch.object(usb, "_host_detached", return_value=True), \
              patch.object(usb.exfat, "ExFat", reader), patch.object(usb, "MNT", str(self.root / "mount")), \
              patch.object(usb.os.path, "ismount", side_effect=lambda path: mounted), \
              patch.object(usb, "_command", side_effect=command), patch.dict(usb.config.environment, TSF_IDLE="0"), \
@@ -257,6 +258,68 @@ procd_set_param() {
                 self.runtime.cli.sync_archive()
         self.assertEqual(lun.read_text().strip(), "")
         self.assertEqual(udc.read_text(), "controller")
+
+    def test_no_background_eject_for_a_connected_or_unknown_host(self):
+        usb = self.runtime.usb
+        lun = self.root / "gadget/functions/mass_storage.0/lun.0/file"
+        lun.parent.mkdir(parents=True)
+        lun.write_text(usb.IMG)
+        (lun.parents[3] / "UDC").write_text("controller")
+        states = self.root / "udc"
+        state = states / "controller/state"
+        state.parent.mkdir(parents=True)
+        with patch.object(usb, "Path", return_value=states):
+            for value in (None, "configured", "default", "addressed", "suspended", "powered", "not attached"):
+                if value:
+                    state.write_text(value)
+                self.assertEqual(usb._host_detached(lun), value == "not attached")
+        reader = MagicMock()
+        reader.return_value.__enter__.return_value = Mock(vol_flags=0, heap_byte=0, vol_len=10,
+            bytes_per_sector=512, cluster_count=1, cluster_size=512, volume_offset=0)
+        with patch.object(usb, "_lun", return_value=lun), patch.object(usb, "_stop_export") as eject, \
+             patch.object(usb.exfat, "ExFat", reader), patch.object(usb, "MNT", str(self.root / "mount")), \
+             patch.object(usb, "_host_detached", return_value=False):
+            self.assertFalse(usb.UsbVolume().open(background=True))
+            eject.assert_not_called()
+
+    def test_idle_live_archive_and_empty_queue_never_mounts(self):
+        img = self.root / "image"
+        img.touch()
+        with patch.dict(self.runtime.config.environment, TSF_IDLE="0"), \
+             patch.object(self.runtime.usb, "IMG", str(img)), patch.object(self.live, "live_scan_current", return_value=True), \
+             patch.object(self.runtime.usb.UsbVolume, "open") as mount:
+            self.assertEqual(self.runtime.cli.sync_archive(), 0)
+            mount.assert_not_called()
+
+    def test_gadget_restores_only_missing_components_even_without_an_enumerated_host(self):
+        gadget = self.root / "gadget"
+        function = gadget / "functions/mass_storage.0"
+        lun = function / "lun.0/file"
+        lun.parent.mkdir(parents=True)
+        config = gadget / "configs/c.1"
+        config.mkdir(parents=True)
+        controller = gadget / "UDC"
+        controller.write_text("fake-controller\n")
+        image = self.root / "image"
+        image.touch()
+        lun.write_text(str(image))
+        link = config / "massstorage"
+        speed = gadget / "max_speed"
+        speed.write_text("super-speed-plus")
+        env = dict(self.env, TSF_USB_LOCK_FD="9", TSF_LOG_DIR=str(self.root), TSF_GADGET=str(gadget),
+                   TSF_IMG=str(image), TSF_USB2_COMPAT="1")
+        cmd = ["/bin/sh", str(ROOT / "scripts/tesla-gadget.sh"), "on"]
+        subprocess.run(cmd, check=True, env=env, capture_output=True)
+        self.assertEqual(link.resolve(), function.resolve())
+        self.assertEqual(speed.read_text().strip(), "high-speed")
+        before = controller.stat().st_mtime_ns
+        lun.write_text("")
+        subprocess.run(cmd, check=True, env=env, capture_output=True)
+        self.assertEqual(lun.read_text().strip(), str(image))
+        self.assertEqual(controller.stat().st_mtime_ns, before)
+        lun.write_text("/different-image")
+        self.assertNotEqual(subprocess.run(cmd, env=env, capture_output=True).returncode, 0)
+        self.assertEqual(lun.read_text(), "/different-image")
 
     def test_http_routes_keep_authentication_and_response_contracts(self):
         handler = object.__new__(self.runtime.http.Handler)

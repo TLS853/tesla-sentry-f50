@@ -48,7 +48,7 @@ def bootstrap_flat_install():
 
 def sync_archive():
     """Cron entry point. A busy vehicle or management session leaves the disk alone."""
-    from . import archive_policy, usb, vehicle_assets
+    from . import archive_policy, sync, usb, vehicle_assets
 
     log = logging.getLogger(__name__)
 
@@ -60,6 +60,9 @@ def sync_archive():
     if age < idle:
         log.info("skip: image written %.0f seconds ago", age)
         return 0
+    if sync.live_scan_current() and not vehicle_assets.has_queued_audio():
+        log.info("skip: live archive up to date and no queued USB writes")
+        return 0
 
     def stop(*_):
         raise SystemExit(1)
@@ -67,7 +70,9 @@ def sync_archive():
     previous = {sig: signal.signal(sig, stop) for sig in (signal.SIGHUP, signal.SIGTERM)}
     volume = usb.UsbVolume()
     try:
-        volume.open()
+        if not volume.open(background=True):
+            log.info("skip: USB host still connected or controller state unknown")
+            return 0
         pushed = vehicle_assets.flush_audio(usb.MNT)
         log.info("wrote %d audio files to the USB root", pushed)
         copied = archive_policy.copy_mounted_archive(usb.MNT)
